@@ -1,0 +1,44 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VSCode
+.vscode/
+
+# PyCharm
+.idea/
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# Build
+build/
+dist/
+
+# AI Models
+*.pt
+*.pth
+*.onnx
+*.h5
+*.ckpt
+
+# Dataset
+data/
+datasets/
+
+# OS
+.DS_Store
+Thumbs.db

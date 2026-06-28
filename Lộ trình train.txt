@@ -1,0 +1,37 @@
+- Ngân hàng eKYC Face ID thường dùng: Anti-spoofing + Liveness + Blink detection + Head movement
+- Lộ trình chi tiết cho 4 bước trên: Camera → Face Detection → Face Alignment → Face Crop → Anti-Spoof Model → Temporal Smoothing → Blink Detection → Head Movement → Final Decision
+Camera
+↓
+Face Detection
+↓
+Landmark Detection
+↓
+Pose Validation
+↓
+Face Alignment
+↓
+Face Crop
+↓
+Anti-Spoof Model
+↓
+Temporal Smoothing
+↓
+Blink Detection
+↓
+Head Movement
+↓
+Final Decision
+Face Detection:
+- Dùng để tìm vị trí khuôn mặt trong frame.
+- Trả về bounding box (x1, y1, x2, y2).
+- Giúp các bước sau không cần scan toàn bộ ảnh → nhanh hơn, nhẹ hơn, chính xác hơn.
+
+Face Alignment:
+- Dùng landmark để căn chỉnh khuôn mặt về tư thế chuẩn.
+- Xoay mặt cho mắt nằm ngang, giảm ảnh hưởng nghiêng đầu/góc camera.
+- Giúp AI học ổn định và tăng accuracy.
+
+Face Crop:
+- Cắt riêng vùng khuôn mặt sau khi alignment.
+- Loại bỏ background và phần dư thừa.
+- Resize về kích thước cố định (ví dụ 224x224) để đưa vào model AI.

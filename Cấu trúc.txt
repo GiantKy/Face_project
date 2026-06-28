@@ -1,0 +1,22 @@
+project/
+│
+├── src/
+│   ├── face_detection/
+│   ├── face_alignment/
+│   ├── anti_spoof/
+│   ├── blink_detection/
+│   └── utils/
+│
+├── inference/
+│   ├── webcam.py
+│   └── api.py
+│
+├── tests/
+│   ├── test_face_detection.py
+│   
+│
+│
+├── models/
+│
+├── requirements.txt
+└── .gitignore

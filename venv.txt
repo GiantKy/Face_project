@@ -1,0 +1,4 @@
+Tạo môi trường: python -m venv venv
+Kích hoạt môi trường: venv\Scripts\activate
+Lưu môi trường: pip freeze > requirements.txt
+Cài lại môi trường: pip install -r requirements.txt
