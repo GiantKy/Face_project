@@ -1,0 +1,99 @@
+# Backup - Face Project (Fixed)
+
+Thư mục này chứa các file đã sửa lỗi, hoạt động độc lập với thư mục gốc.  
+File gốc **không bị thay đổi**.
+
+---
+
+## Lỗi đã sửa
+
+| # | File gốc | Lỗi | Nguyên nhân | Cách sửa |
+|---|----------|------|-------------|----------|
+| 1 | `src/face_alignment_crop/face_align_crop.py` | `AttributeError: module 'mediapipe' has no attribute 'solutions'` | mediapipe 0.10.14+ xóa API `mp.solutions` | Chuyển sang `mp.tasks.vision.FaceLandmarker` |
+| 2 | `src/landmark_detection/landmark_detector.py` | `AttributeError: module 'mediapipe' has no attribute 'solutions'` | Cùng lỗi trên | Chuyển sang `mp.tasks.vision.FaceLandmarker` |
+| 3 | `tests/test_anti_spoof.py` | `UnpicklingError` + `TypeError: load_state_dict` | File `Anti_Spoof.pt` là YOLO model, code cũ dùng EfficientNet | Dùng `ultralytics.YOLO()` để load trực tiếp |
+
+---
+
+## Cấu trúc thư mục
+
+```
+backup/
+├── README.md
+├── src/
+│   ├── face_alignment_crop/
+│   │   ├── __init__.py
+│   │   └── face_align_crop.py       ← FIXED (mp.tasks API)
+│   ├── face_detection/               ← Copy từ gốc (path đã sửa)
+│   │   ├── __init__.py
+│   │   ├── detector.py
+│   │   └── face_crop.py
+│   ├── landmark_detection/
+│   │   ├── __init__.py
+│   │   ├── landmark_detector.py      ← FIXED (mp.tasks API)
+│   │   ├── config.py
+│   │   ├── constants.py
+│   │   ├── draw_landmarks.py
+│   │   └── utils.py
+│   └── pose_validation/              ← Copy từ gốc (không lỗi)
+│       ├── __init__.py
+│       ├── constants.py
+│       ├── draw_pose.py
+│       ├── head_pose_3d.py
+│       ├── utils.py
+│       └── validator.py
+└── tests/
+    ├── test_anti_spoof.py            ← FIXED (YOLO thay EfficientNet)
+    ├── test_face_alignment_crop.py
+    ├── test_face_detection.py
+    ├── test_landmark_detection.py
+    ├── test_pose_validation.py
+    ├── test_pipeline.py              ← MỚI (chạy pipeline trên ảnh 0.jpg)
+    └── output/                       ← Ảnh kết quả pipeline
+```
+
+---
+
+## Cách chạy
+
+```bash
+cd backup/tests
+
+# Test từng module
+python test_face_detection.py
+python test_landmark_detection.py
+python test_face_alignment_crop.py
+python test_pose_validation.py
+python test_anti_spoof.py
+
+# Test pipeline (dùng ảnh data_raw/0.jpg)
+python test_pipeline.py
+```
+
+---
+
+## Yêu cầu
+
+- Python 3.11
+- mediapipe >= 0.10.14 (đã test với 0.10.33)
+- ultralytics (YOLO)
+- torch, torchvision
+- opencv-python
+
+---
+
+## Model files cần có
+
+Các model nằm ở thư mục gốc `Face-Project/models/`:
+
+| Model | File | Dùng bởi |
+|-------|------|----------|
+| Face Detection | `Face_Detection.pt` | `face_detection/detector.py` |
+| Face Landmark | `face_landmarker.task` | `face_alignment_crop/`, `landmark_detection/` |
+| Anti-Spoof | `Anti_Spoof_v2.pt` | `tests/test_anti_spoof.py` |
+
+> **Lưu ý:** File `face_landmarker.task` được tải từ Google MediaPipe.  
+> Nếu thiếu, chạy:
+> ```powershell
+> Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task" -OutFile "models/face_landmarker.task"
+> ```
