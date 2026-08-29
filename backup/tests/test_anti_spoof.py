@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import cv2
 
 sys.path.append(
     os.path.abspath(
@@ -8,25 +9,19 @@ sys.path.append(
     )
 )
 
-import cv2
 from ultralytics import YOLO
 
 # =========================
 # MODEL PATH
 # =========================
-BASE_DIR = os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))
-)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "Anti_Spoof_v2.pt")
 
-MODEL_PATH = os.path.join(
-    BASE_DIR, "models", "Face_Detection.pt"
-)
-
-print(f"[INFO] Loading model: {MODEL_PATH}")
+print(f"[INFO] Loading anti-spoof model: {MODEL_PATH}")
 
 model = YOLO(MODEL_PATH)
 
-print("[INFO] Model loaded successfully!")
+print(f"[INFO] Model loaded! Classes: {model.names}")
 
 # =========================
 # CAMERA
@@ -63,19 +58,15 @@ while True:
         for box in result.boxes:
 
             x1, y1, x2, y2 = map(int, box.xyxy[0])
-
             conf = float(box.conf[0])
-
             cls = int(box.cls[0])
 
-            # class name
+            # class name: 0=fake, 1=real
             label = model.names[cls] if cls in model.names else f"class_{cls}"
 
-            # color: green for high conf, yellow for low
-            if conf > 0.7:
+            # color: green=REAL, red=FAKE
+            if label == "real":
                 color = (0, 255, 0)
-            elif conf > 0.4:
-                color = (0, 255, 255)
             else:
                 color = (0, 0, 255)
 
@@ -89,13 +80,13 @@ while True:
             )
 
             # label + confidence
-            text = f"{label} {conf:.2f}"
+            text = f"{label.upper()} {conf:.2f}"
 
             (tw, th), _ = cv2.getTextSize(
                 text,
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                1
+                0.7,
+                2
             )
 
             cv2.rectangle(
@@ -111,9 +102,9 @@ while True:
                 text,
                 (x1, y1 - 5),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (0, 0, 0),
-                1
+                0.7,
+                (255, 255, 255),
+                2
             )
 
     # ---- FPS ----
@@ -131,26 +122,8 @@ while True:
         2
     )
 
-    # ---- Detection count ----
-    total = sum(
-        len(r.boxes) for r in results
-    )
-
-    cv2.putText(
-        frame,
-        f"Detected: {total}",
-        (10, 60),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
-        (255, 255, 0),
-        2
-    )
-
     # ---- Display ----
-    cv2.imshow(
-        "Test Best(8) Model - Face Detection",
-        frame
-    )
+    cv2.imshow("E-KYC Anti-Spoof Test", frame)
 
     if cv2.waitKey(1) == 27:
         break
