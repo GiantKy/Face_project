@@ -37,7 +37,7 @@ model.classifier[1] = nn.Linear(
 )
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_PATH = os.path.join(BASE_DIR, "models", "Anti_Spoof_v2.pt")
+MODEL_PATH = os.path.join(BASE_DIR, "models", "Anti_Spoof_v3.pt")
 
 checkpoint = torch.load(MODEL_PATH, map_location=device)
 
