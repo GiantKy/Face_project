@@ -15,7 +15,7 @@ from ultralytics import YOLO
 # MODEL PATH
 # =========================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MODEL_PATH = os.path.join(BASE_DIR, "models", "Anti_Spoof_v2.pt")
+MODEL_PATH = os.path.join(BASE_DIR, "models", "Anti_Spoof_v4.pt")
 
 print(f"[INFO] Loading anti-spoof model: {MODEL_PATH}")
 
