@@ -1,0 +1,5 @@
+Image,Verdict,Liveness,Spoof Conf,Pose Valid,Yaw,Pitch,Roll,EAR,Time (ms),Output Folder
+0.jpg,APPROVED,REAL,0.732,PASS,-9.25,-14.28,0.68,0.252,1278.99,C:\Users\HP\Desktop\Face-Project\backup\tests\output\0
+1.jpg,REJECTED,SPOOF,0.8359,PASS,-9.85,6.81,8.0,0.319,451.74,C:\Users\HP\Desktop\Face-Project\backup\tests\output\1
+2.jpg,APPROVED,REAL,0.7756,PASS,-1.23,4.06,-0.09,0.228,444.36,C:\Users\HP\Desktop\Face-Project\backup\tests\output\2
+3.jpg,REJECTED,SPOOF,0.8172,PASS,-17.79,5.15,-9.47,0.315,501.51,C:\Users\HP\Desktop\Face-Project\backup\tests\output\3

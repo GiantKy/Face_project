@@ -1,0 +1,31 @@
+{
+  "image_name": "0.jpg",
+  "output_folder": "C:\\Users\\HP\\Desktop\\Face-Project\\backup\\tests\\output\\0",
+  "time_ms": 1278.99,
+  "face_detected": true,
+  "face_confidence": 0.8962,
+  "face_bbox": [
+    216,
+    261,
+    737,
+    954
+  ],
+  "pose_validation": {
+    "is_valid": true,
+    "yaw": -9.25,
+    "pitch": -14.28,
+    "roll": 0.68
+  },
+  "anti_spoof": {
+    "label": "REAL",
+    "is_real": true,
+    "confidence": 0.732
+  },
+  "liveness": {
+    "ear": 0.252,
+    "mar": 0.005,
+    "eye_open": true
+  },
+  "final_verdict": "APPROVED",
+  "reasons": []
+}
