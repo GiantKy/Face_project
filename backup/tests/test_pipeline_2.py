@@ -10,9 +10,12 @@ Quy trình hoàn chỉnh:
   6. Liveness & Facial Actions (EAR - Mắt mở/nhắm/chớp, MAR - Miệng)
   7. Final eKYC Decision Engine (Đánh giá tổng hợp tiêu chí eKYC)
 
-Hỗ trợ:
-  - Chế độ Ảnh tĩnh (mặc định): test trên ảnh (mặc định: data_raw/0.jpg)
-  - Chế độ Webcam (--webcam): test thời gian thực với Real-time HUD & Blink Counter
+Tính năng nâng cấp:
+  - Tự động duyệt qua TẤT CẢ các file ảnh trong thư mục data_raw/
+  - Tự động tạo thư mục con riêng biệt cho từng ảnh trong output/<tên_ảnh>/
+    để lưu chi tiết từng bước mà không bị nhầm lẫn kết quả.
+  - Xuất bảng tổng kết kết quả toàn bộ ảnh ra file JSON và CSV.
+  - Hỗ trợ chế độ Webcam Real-Time (--webcam)
 =============================================================================
 """
 
@@ -21,6 +24,9 @@ import os
 import argparse
 import time
 import math
+import json
+import csv
+from pathlib import Path
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -40,6 +46,8 @@ from src.landmark_detection.utils import get_landmark_point
 from src.pose_validation import PoseValidator
 from src.pose_validation.draw_pose import draw_pose_info
 from src.face_alignment_crop import FaceAligner
+
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tiff'}
 
 
 # =============================================================================
@@ -93,13 +101,13 @@ def compute_mouth_aspect_ratio(landmarks):
 # =============================================================================
 class AntiSpoofDetector:
     def __init__(self, model_version="v4"):
-        # Ưu tiên các model theo thứ tự
         candidate_files = [
             f"Anti_Spoof_{model_version}.pt",
             "Anti_Spoof_v4.pt",
             "Anti_Spoof_v3.pt",
             "Anti_Spoof_v2.pt",
-            "Anti_Spoof_v1.pt"
+            "Anti_Spoof_v1.pt",
+            "Anti_Spoof.pt"
         ]
         
         self.model_path = None
@@ -126,22 +134,33 @@ class AntiSpoofDetector:
         detections = []
 
         for r in results:
-            for box in r.boxes:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                conf = float(box.conf[0])
-                cls = int(box.cls[0])
-                label = self.classes.get(cls, f"class_{cls}").lower()
-
-                # Kiểm tra nhãn là real hay spoof/fake
+            if hasattr(r, 'probs') and r.probs is not None:
+                probs = r.probs.data.cpu().numpy()
+                top1 = int(r.probs.top1)
+                score = float(probs[top1])
+                label = self.classes.get(top1, f"class_{top1}").lower()
                 is_real = ("real" in label)
-
                 detections.append({
-                    "bbox": (x1, y1, x2, y2),
+                    "bbox": (0, 0, frame.shape[1], frame.shape[0]),
                     "is_real": is_real,
                     "label": "REAL" if is_real else "SPOOF",
-                    "confidence": conf,
+                    "confidence": score,
                     "raw_class": label
                 })
+            elif hasattr(r, 'boxes') and len(r.boxes) > 0:
+                for box in r.boxes:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    conf = float(box.conf[0])
+                    cls = int(box.cls[0])
+                    label = self.classes.get(cls, f"class_{cls}").lower()
+                    is_real = ("real" in label)
+                    detections.append({
+                        "bbox": (x1, y1, x2, y2),
+                        "is_real": is_real,
+                        "label": "REAL" if is_real else "SPOOF",
+                        "confidence": conf,
+                        "raw_class": label
+                    })
 
         return detections
 
@@ -172,12 +191,10 @@ def draw_ekyc_hud(
     h, w = image.shape[:2]
     vis = image.copy()
 
-    # Panel tổng hợp bên góc trái trên
     card_w = min(420, w - 20)
     card_h = 240
     draw_ui_card(vis, 15, 15, card_w, card_h, bg_color=(15, 15, 20), alpha=0.85)
 
-    # Tiêu đề
     cv2.putText(vis, "E-KYC PIPELINE v2 DASHBOARD", (25, 42),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 220, 255), 2)
     cv2.line(vis, (25, 52), (15 + card_w - 20, 52), (80, 80, 80), 1)
@@ -239,210 +256,107 @@ def draw_ekyc_hud(
 
 
 # =============================================================================
-# 4. FULL PIPELINE EXECUTION FOR SINGLE IMAGE
+# 4. PROCESS SINGLE IMAGE IN PIPELINE
 # =============================================================================
-def run_pipeline_on_image(image_path=None):
-    if image_path is None:
-        image_path = os.path.join(BASE_DIR, "data_raw", "0.jpg")
+def process_single_image(
+    image_path: str,
+    output_root_dir: str,
+    models_bundle: tuple,
+) -> dict:
+    detector, landmark_detector, pose_validator, aligner, anti_spoof_detector = models_bundle
 
-    print("\n" + "=" * 65)
-    print("           CHẠY FULL E-KYC PIPELINE v2 TRÊN ẢNH")
-    print("=" * 65)
+    filename = os.path.basename(image_path)
+    stem_name = os.path.splitext(filename)[0]
 
-    if not os.path.exists(image_path):
-        print(f"[ERROR] Không tìm thấy file ảnh: {image_path}")
-        sys.exit(1)
+    # Tạo thư mục con riêng biệt cho từng ảnh trong output/
+    img_output_dir = os.path.join(output_root_dir, stem_name)
+    os.makedirs(img_output_dir, exist_ok=True)
 
-    print(f"[INFO] File ảnh đầu vào: {image_path}")
+    print(f"\n{'='*65}")
+    print(f"  [DANG XU LY] File anh: {filename}")
+    print(f"  -> Thu muc luu rieng: {img_output_dir}")
+    print(f"{'='*65}")
+
     image = cv2.imread(image_path)
     if image is None:
-        print(f"[ERROR] Không đọc được file ảnh: {image_path}")
-        sys.exit(1)
+        print(f"[ERROR] Khong doc duoc file anh: {image_path}")
+        return None
 
     img_h, img_w = image.shape[:2]
-    print(f"[INFO] Kích thước ảnh: {img_w}x{img_h}")
+    start_time = time.perf_counter()
 
-    # -------------------------------------------------------------
-    # KHỞI TẠO TẤT CẢ CÁC MODULE
-    # -------------------------------------------------------------
-    print("\n[INFO] Đang khởi tạo các model trong Pipeline...")
-    detector = FaceDetector()
-    print("  [✓] 1. FaceDetector (YOLO) sẵn sàng")
-
-    landmark_detector = LandmarkDetector()
-    print("  [✓] 2. LandmarkDetector (MediaPipe 478 Tasks) sẵn sàng")
-
-    pose_validator = PoseValidator()
-    print("  [✓] 3. PoseValidator (Head Pose 3D) sẵn sàng")
-
-    aligner = FaceAligner()
-    print("  [✓] 4. FaceAligner & Cropper sẵn sàng")
-
-    anti_spoof_detector = AntiSpoofDetector()
-    print("  [✓] 5. AntiSpoofDetector (YOLO Anti-Spoof) sẵn sàng")
-
-    # -------------------------------------------------------------
-    # BƯỚC 1: FACE DETECTION
-    # -------------------------------------------------------------
-    print("\n" + "-" * 40)
-    print("BƯỚC 1: Phát hiện khuôn mặt (Face Detection)")
-    print("-" * 40)
+    # Step 1: Face Detection
     faces = detector.detect(image)
-    print(f"[KẾT QUẢ] Tìm thấy {len(faces)} khuôn mặt.")
+    primary_face = faces[0] if len(faces) > 0 else None
+    print(f"[1. Face Detection] Tim thay {len(faces)} khuon mat.")
+    if primary_face:
+        bx1, by1, bx2, by2 = primary_face["bbox"]
+        print(f"   -> BBox=({bx1}, {by1}, {bx2}, {by2}) | Conf={primary_face['confidence']:.3f}")
 
-    primary_face = None
-    if len(faces) > 0:
-        primary_face = faces[0]
-        x1, y1, x2, y2 = primary_face["bbox"]
-        conf = primary_face["confidence"]
-        print(f"  -> Khuôn mặt chính: BBox=({x1}, {y1}, {x2}, {y2}), Confidence={conf:.3f}")
-    else:
-        print("  [CẢNH BÁO] Không phát hiện được khuôn mặt nào!")
-
-    # -------------------------------------------------------------
-    # BƯỚC 2: LANDMARK DETECTION
-    # -------------------------------------------------------------
-    print("\n" + "-" * 40)
-    print("BƯỚC 2: Trích xuất Landmark 3D (Landmark Detection)")
-    print("-" * 40)
+    # Step 2: Landmarks
     landmarks = landmark_detector.detect(image)
-    print(f"[KẾT QUẢ] Trích xuất thành công {len(landmarks)} điểm mốc khuôn mặt.")
+    print(f"[2. Landmarks] Trich xuat duoc {len(landmarks) if landmarks else 0} diem landmarks.")
 
-    # -------------------------------------------------------------
-    # BƯỚC 3: POSE VALIDATION (Góc quay đầu)
-    # -------------------------------------------------------------
-    print("\n" + "-" * 40)
-    print("BƯỚC 3: Kiểm tra tư thế đầu (Pose Validation)")
-    print("-" * 40)
+    # Step 3: Pose Validation
     pose_valid = False
     pose_text = "Unknown"
     pose_dict = None
-
-    if len(landmarks) > 0:
-        pose_valid, pose_text, pose_dict = pose_validator.validate(
-            landmarks,
-            get_landmark_point
-        )
+    if landmarks and len(landmarks) > 0:
+        pose_valid, pose_text, pose_dict = pose_validator.validate(landmarks, get_landmark_point)
         if pose_dict:
-            print(f"  -> Yaw (Trái/Phải):   {pose_dict['yaw']:+.2f}°")
-            print(f"  -> Pitch (Lên/Xuống): {pose_dict['pitch']:+.2f}°")
-            print(f"  -> Roll (Nghiêng):    {pose_dict['roll']:+.2f}°")
-        print(f"[KẾT QUẢ] Đánh giá Pose: {pose_text} -> {'ĐẠT (PASS)' if pose_valid else 'KHÔNG ĐẠT (FAIL)'}")
+            print(f"[3. Head Pose] Y={pose_dict['yaw']:+.1f} deg | P={pose_dict['pitch']:+.1f} deg | R={pose_dict['roll']:+.1f} deg -> {'PASS' if pose_valid else 'FAIL'}")
     else:
-        print("  [BỎ QUA] Không có landmark để tính Pose.")
+        print("[3. Head Pose] Bo qua vi khong co landmarks.")
 
-    # -------------------------------------------------------------
-    # BƯỚC 4: FACE ALIGNMENT & FACE CROP
-    # -------------------------------------------------------------
-    print("\n" + "-" * 40)
-    print("BƯỚC 4: Căn chỉnh & Cắt khuôn mặt (Face Alignment & Crop)")
-    print("-" * 40)
+    # Step 4: Face Alignment & Crop
     aligned_img = None
     face_crop = None
-
-    if len(landmarks) > 0:
+    if landmarks and len(landmarks) > 0:
         aligned_img = aligner.align_face(image, landmarks)
-        print("  [✓] Căn chỉnh mắt nằm ngang (Face Alignment) thành công.")
-
         aligned_lms = aligner.get_landmarks(aligned_img)
         if aligned_lms:
             face_crop = aligner.crop_face(aligned_img, aligned_lms, padding=20, output_size=(224, 224))
-            print(f"  [✓] Cắt khuôn mặt (Face Crop 224x224) thành công: shape={face_crop.shape}")
-        else:
-            print("  [CẢNH BÁO] Không lấy được landmark trên ảnh đã align để crop.")
+            print(f"[4. Alignment & Crop] CROP 224x224 thanh cong: shape={face_crop.shape}")
+
+    # Step 5: Anti-Spoof
+    input_for_spoof = face_crop if face_crop is not None else image
+    spoof_results = anti_spoof_detector.predict(input_for_spoof, conf_threshold=0.25)
+    best_spoof_info = spoof_results[0] if spoof_results else None
+    if best_spoof_info:
+        print(f"[5. Anti-Spoof] {best_spoof_info['label']} ({best_spoof_info['confidence']*100:.1f}%) | Real={best_spoof_info['is_real']}")
     else:
-        print("  [BỎ QUA] Không có landmark để thực hiện Align & Crop.")
+        print("[5. Anti-Spoof] Khong co ket qua Anti-Spoof.")
 
-    # -------------------------------------------------------------
-    # BƯỚC 5: ANTI-SPOOFING DETECTION
-    # -------------------------------------------------------------
-    print("\n" + "-" * 40)
-    print("BƯỚC 5: Kiểm tra Giả mạo (Anti-Spoofing Detection)")
-    print("-" * 40)
-    spoof_results = anti_spoof_detector.predict(image, conf_threshold=0.25)
-    best_spoof_info = None
-
-    if spoof_results:
-        best_spoof_info = spoof_results[0]
-        status_str = "REAL (Người thật)" if best_spoof_info["is_real"] else "SPOOF / FAKE (Giả mạo)"
-        print(f"[KẾT QUẢ] Phân loại Anti-Spoof: {status_str}")
-        print(f"  -> Độ tin cậy (Confidence): {best_spoof_info['confidence']*100:.2f}%")
-        print(f"  -> Bounding Box: {best_spoof_info['bbox']}")
-    else:
-        print("  [CẢNH BÁO] Model Anti-Spoof không tìm thấy box phù hợp trên ảnh.")
-
-    # -------------------------------------------------------------
-    # BƯỚC 6: LIVENESS / BLINK & EXPRESSION ANALYSIS
-    # -------------------------------------------------------------
-    print("\n" + "-" * 40)
-    print("BƯỚC 6: Phân tích biểu cảm & Mắt (Liveness / EAR & MAR)")
-    print("-" * 40)
-    ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks)
-    mar_val = compute_mouth_aspect_ratio(landmarks)
+    # Step 6: EAR & MAR
+    ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks) if landmarks else (0.0, 0.0, 0.0)
+    mar_val = compute_mouth_aspect_ratio(landmarks) if landmarks else 0.0
     eye_open = (ear_avg >= 0.20)
+    print(f"[6. Liveness] EAR={ear_avg:.3f} ({'OPEN' if eye_open else 'CLOSED'}) | MAR={mar_val:.3f}")
 
-    print(f"  -> Eye Aspect Ratio (EAR): Trái={ear_l:.3f}, Phải={ear_r:.3f}, Trung bình={ear_avg:.3f}")
-    print(f"  -> Trạng thái mắt: {'MỞ MẮT (OPEN)' if eye_open else 'NHẮM MẮT / CHỚP (CLOSED)'}")
-    print(f"  -> Mouth Aspect Ratio (MAR): {mar_val:.3f} ({'MỞ MIỆNG / NÓI' if mar_val > 0.4 else 'NGẬM MIỆNG (CLOSED)'})")
-
-    # -------------------------------------------------------------
-    # BƯỚC 7: TỔNG HỢP ĐÁNH GIÁ CUỐI CÙNG (FINAL eKYC DECISION)
-    # -------------------------------------------------------------
-    print("\n" + "=" * 65)
-    print("              BẢNG TỔNG KẾT TIÊU CHÍ eKYC")
-    print("=" * 65)
+    # Step 7: Final Decision
+    c1 = (primary_face is not None)
+    c2 = pose_valid
+    c3 = (best_spoof_info is not None and best_spoof_info["is_real"])
+    c4 = eye_open
 
     reasons = []
-    
-    # Tiêu chí 1: Có khuôn mặt
-    c1 = (primary_face is not None)
-    if not c1:
-        reasons.append("Không tìm thấy khuôn mặt")
-
-    # Tiêu chí 2: Góc nghiêng hợp lệ
-    c2 = pose_valid
-    if not c2:
-        reasons.append("Góc nghiêng đầu không hợp lệ (Pose FAIL)")
-
-    # Tiêu chí 3: Người thật (Anti-Spoof = REAL)
-    c3 = (best_spoof_info is not None and best_spoof_info["is_real"])
-    if not c3:
-        reasons.append("Phát hiện giả mạo hoặc chưa xác thực Anti-Spoof")
-
-    # Tiêu chí 4: Mắt mở bình thường
-    c4 = eye_open
-    if not c4:
-        reasons.append("Mắt đang nhắm")
+    if not c1: reasons.append("Khong tim thay khuon mat")
+    if not c2: reasons.append("Goc mat chua chuan (Pose)")
+    if not c3: reasons.append("Nghi van gia mao (Spoof)")
+    if not c4: reasons.append("Mat dang nham")
 
     final_pass = c1 and c2 and c3 and c4
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
 
-    print(f"1. Phát hiện khuôn mặt (Face Detection) : {'[ PASS ]' if c1 else '[ FAIL ]'}")
-    print(f"2. Tư thế chuẩn góc mặt (Head Pose)     : {'[ PASS ]' if c2 else '[ FAIL ]'}")
-    print(f"3. Chống giả mạo (Anti-Spoofing Real)  : {'[ PASS ]' if c3 else '[ FAIL ]'}")
-    print(f"4. Trạng thái mắt (Eye Open / Liveness): {'[ PASS ]' if c4 else '[ FAIL ]'}")
-    print("-" * 65)
-    if final_pass:
-        print(">>> KẾT QUẢ eKYC CUỐI CÙNG: [ ĐẠT CHUẨN - APPROVED ] <<<")
-    else:
-        print(f">>> KẾT QUẢ eKYC CUỐI CÙNG: [ BỊ TỪ CHỐI - REJECTED ] <<<")
-        print(f"    Lý do: {', '.join(reasons)}")
-    print("=" * 65)
+    print(f"[7. Final Verdict] {'APPROVED (DAT)' if final_pass else 'REJECTED (TU CHOI)'} | Ly do: {', '.join(reasons) if reasons else 'None'}")
 
-    # -------------------------------------------------------------
-    # BƯỚC 8: VẼ HUD VÀ LƯU ẢNH KẾT QUẢ
-    # -------------------------------------------------------------
+    # Step 8: Drawing & Saving Individual Results in img_output_dir
     display = image.copy()
-
-    # 1. Vẽ Face BBox
     if primary_face:
         bx1, by1, bx2, by2 = primary_face["bbox"]
         cv2.rectangle(display, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
-
-    # 2. Vẽ Landmarks
     if landmarks:
         display = draw_landmarks(display, landmarks)
-
-    # 3. Vẽ Anti-Spoof BBox nếu có
     if best_spoof_info:
         sx1, sy1, sx2, sy2 = best_spoof_info["bbox"]
         s_col = (0, 255, 0) if best_spoof_info["is_real"] else (0, 0, 255)
@@ -451,7 +365,6 @@ def run_pipeline_on_image(image_path=None):
         cv2.putText(display, tag, (sx1, max(25, sy1 - 10)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, s_col, 2)
 
-    # 4. Vẽ HUD Dashboard
     display = draw_ekyc_hud(
         display,
         primary_face,
@@ -464,35 +377,151 @@ def run_pipeline_on_image(image_path=None):
         reasons
     )
 
-    # Lưu kết quả vào backup/tests/output/
-    output_dir = os.path.join(CURRENT_DIR, "output")
-    os.makedirs(output_dir, exist_ok=True)
-
-    out_full = os.path.join(output_dir, "pipeline2_result.jpg")
-    cv2.imwrite(out_full, display)
-    print(f"\n[LƯU FILE] Ảnh kết quả Pipeline 2 : {out_full}")
+    # Lưu từng file vào thư mục riêng của ảnh
+    out_result_img = os.path.join(img_output_dir, "1_pipeline_result.jpg")
+    cv2.imwrite(out_result_img, display)
 
     if face_crop is not None:
-        out_crop = os.path.join(output_dir, "pipeline2_face_crop.jpg")
-        cv2.imwrite(out_crop, face_crop)
-        print(f"[LƯU FILE] Ảnh khuôn mặt crop     : {out_crop}")
+        out_crop_img = os.path.join(img_output_dir, "2_face_crop_224.jpg")
+        cv2.imwrite(out_crop_img, face_crop)
 
     if aligned_img is not None:
-        out_aligned = os.path.join(output_dir, "pipeline2_aligned_full.jpg")
-        cv2.imwrite(out_aligned, aligned_img)
-        print(f"[LƯU FILE] Ảnh sau Alignment      : {out_aligned}")
+        out_aligned_img = os.path.join(img_output_dir, "3_aligned_full.jpg")
+        cv2.imwrite(out_aligned_img, aligned_img)
 
-    print("\n[HOÀN TẤT] Pipeline 2 đã chạy xong toàn bộ các bước thành công!\n")
+    # Xuất file JSON chi tiết cho ảnh
+    record = {
+        "image_name": filename,
+        "output_folder": img_output_dir,
+        "time_ms": round(elapsed_ms, 2),
+        "face_detected": primary_face is not None,
+        "face_confidence": round(primary_face["confidence"], 4) if primary_face else 0.0,
+        "face_bbox": primary_face["bbox"] if primary_face else None,
+        "pose_validation": {
+            "is_valid": pose_valid,
+            "yaw": round(pose_dict["yaw"], 2) if pose_dict else 0.0,
+            "pitch": round(pose_dict["pitch"], 2) if pose_dict else 0.0,
+            "roll": round(pose_dict["roll"], 2) if pose_dict else 0.0,
+        },
+        "anti_spoof": {
+            "label": best_spoof_info["label"] if best_spoof_info else "NONE",
+            "is_real": best_spoof_info["is_real"] if best_spoof_info else False,
+            "confidence": round(best_spoof_info["confidence"], 4) if best_spoof_info else 0.0,
+        },
+        "liveness": {
+            "ear": round(ear_avg, 3),
+            "mar": round(mar_val, 3),
+            "eye_open": eye_open,
+        },
+        "final_verdict": "APPROVED" if final_pass else "REJECTED",
+        "reasons": reasons
+    }
+
+    with open(os.path.join(img_output_dir, "4_report.json"), "w", encoding="utf-8") as f:
+        json.dump(record, f, ensure_ascii=False, indent=2)
+
+    print(f"  [OK] Da luu toan bo file ket qua vao: {img_output_dir}")
+    return record
 
 
 # =============================================================================
-# 5. WEBCAM REAL-TIME MODE
+# 5. BATCH EXECUTION ACROSS ALL IMAGES
+# =============================================================================
+def run_pipeline_batch(input_path=None, output_path=None):
+    if input_path is None:
+        input_path = os.path.join(BASE_DIR, "data_raw")
+        if not os.path.exists(input_path):
+            input_path = os.path.join(BASE_DIR, "data", "raw")
+
+    if output_path is None:
+        output_path = os.path.join(CURRENT_DIR, "output")
+
+    os.makedirs(output_path, exist_ok=True)
+
+    # Kiểm tra nếu input_path là 1 file đơn lẻ
+    if os.path.isfile(input_path):
+        image_files = [input_path]
+    elif os.path.isdir(input_path):
+        image_files = [
+            os.path.join(input_path, f)
+            for f in sorted(os.listdir(input_path))
+            if os.path.splitext(f)[1].lower() in IMAGE_EXTENSIONS
+        ]
+    else:
+        print(f"[ERROR] Thu muc hoac file khong ton tai: {input_path}")
+        sys.exit(1)
+
+    if not image_files:
+        print(f"[WARNING] Khong tim thay file anh nao trong: {input_path}")
+        return
+
+    print("\n" + "=" * 70)
+    print("           FULL E-KYC PIPELINE v2 - BATCH PROCESSING")
+    print(f"  * Thu muc dau vao : {input_path}")
+    print(f"  * Thu muc output  : {output_path}")
+    print(f"  * So luong anh    : {len(image_files)}")
+    print("=" * 70)
+
+    # Khởi tạo models 1 lần duy nhất cho toàn bộ batch
+    print("\n[INFO] Dang khoi tao cac models cho toan bo Batch...")
+    detector = FaceDetector()
+    landmark_detector = LandmarkDetector()
+    pose_validator = PoseValidator()
+    aligner = FaceAligner()
+    anti_spoof_detector = AntiSpoofDetector()
+    models_bundle = (detector, landmark_detector, pose_validator, aligner, anti_spoof_detector)
+
+    all_records = []
+    total_time = 0.0
+
+    for idx, img_file in enumerate(image_files, 1):
+        print(f"\n>>> Processing [{idx}/{len(image_files)}]: {os.path.basename(img_file)}")
+        rec = process_single_image(img_file, output_path, models_bundle)
+        if rec:
+            all_records.append(rec)
+            total_time += rec["time_ms"]
+
+    # Xuất file tổng kết batch JSON & CSV
+    batch_json_path = os.path.join(output_path, "batch_summary.json")
+    with open(batch_json_path, "w", encoding="utf-8") as f:
+        json.dump(all_records, f, ensure_ascii=False, indent=2)
+
+    batch_csv_path = os.path.join(output_path, "batch_summary.csv")
+    with open(batch_csv_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Image", "Verdict", "Liveness", "Spoof Conf", "Pose Valid", "Yaw", "Pitch", "Roll", "EAR", "Time (ms)", "Output Folder"])
+        for r in all_records:
+            writer.writerow([
+                r["image_name"],
+                r["final_verdict"],
+                r["anti_spoof"]["label"],
+                r["anti_spoof"]["confidence"],
+                "PASS" if r["pose_validation"]["is_valid"] else "FAIL",
+                r["pose_validation"]["yaw"],
+                r["pose_validation"]["pitch"],
+                r["pose_validation"]["roll"],
+                r["liveness"]["ear"],
+                r["time_ms"],
+                r["output_folder"]
+            ])
+
+    print("\n" + "=" * 70)
+    print(f"  [HOAN TAT BATCH] Da xu ly xong {len(all_records)}/{len(image_files)} anh")
+    print(f"  * Tong thoi gian   : {total_time:.1f} ms (TB: {total_time/max(1, len(all_records)):.1f} ms/anh)")
+    print(f"  * Thu muc ket qua  : {output_path}")
+    print(f"  * File tong ket CSV: {batch_csv_path}")
+    print(f"  * File tong ket JSON: {batch_json_path}")
+    print("=" * 70 + "\n")
+
+
+# =============================================================================
+# 6. WEBCAM REAL-TIME MODE
 # =============================================================================
 def run_pipeline_webcam(cam_id=0):
     print("\n" + "=" * 65)
-    print("       CHẠY FULL E-KYC PIPELINE v2 TRÊN WEBCAM REALTIME")
-    print("  * Nhấn ESC hoặc 'q' để thoát.")
-    print("  * Nhấn 's' để lưu ảnh snapshot vào thư mục output.")
+    print("       CHAY FULL E-KYC PIPELINE v2 TREN WEBCAM REALTIME")
+    print("  * Nhan ESC hoac 'q' de thoat.")
+    print("  * Nhan 's' de luu anh snapshot vao thu muc output.")
     print("=" * 65)
 
     detector = FaceDetector()
@@ -503,15 +532,14 @@ def run_pipeline_webcam(cam_id=0):
 
     cap = cv2.VideoCapture(cam_id)
     if not cap.isOpened():
-        print(f"[ERROR] Không thể mở camera thiết bị ID {cam_id}!")
+        print(f"[ERROR] Khong the mo camera thiet bi ID {cam_id}!")
         sys.exit(1)
 
     output_dir = os.path.join(CURRENT_DIR, "output")
     os.makedirs(output_dir, exist_ok=True)
 
-    # State tracking cho Liveness (Blink Counter)
     blink_counter = 0
-    blink_state = False  # True nếu mắt đang nhắm
+    blink_state = False
     prev_time = time.time()
 
     while True:
@@ -522,25 +550,20 @@ def run_pipeline_webcam(cam_id=0):
         frame = cv2.flip(frame, 1)
         display = frame.copy()
 
-        # Step 1: Face Detection
         faces = detector.detect(frame)
         primary_face = faces[0] if faces else None
 
-        # Step 2: Landmarks
         landmarks = landmark_detector.detect(frame)
 
-        # Step 3: Pose
         pose_valid = False
         pose_dict = None
         if landmarks:
             pose_valid, _, pose_dict = pose_validator.validate(landmarks, get_landmark_point)
 
-        # Step 4: Liveness EAR / MAR & Blink count
         ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks)
         mar_val = compute_mouth_aspect_ratio(landmarks)
         eye_open = (ear_avg >= 0.20)
 
-        # Blink state machine
         if ear_avg > 0.05 and ear_avg < 0.18:
             if not blink_state:
                 blink_state = True
@@ -549,11 +572,9 @@ def run_pipeline_webcam(cam_id=0):
                 blink_counter += 1
                 blink_state = False
 
-        # Step 5: Anti-Spoof
         spoof_results = anti_spoof_detector.predict(frame, conf_threshold=0.35)
         best_spoof = spoof_results[0] if spoof_results else None
 
-        # Step 6: Final Decision
         c1 = (primary_face is not None)
         c2 = pose_valid
         c3 = (best_spoof is not None and best_spoof["is_real"])
@@ -566,7 +587,6 @@ def run_pipeline_webcam(cam_id=0):
         if not c3: reasons.append("Spoof Detected")
         if not c4: reasons.append("Liveness Check")
 
-        # Step 7: Drawing
         if landmarks:
             display = draw_landmarks(display, landmarks)
 
@@ -577,7 +597,6 @@ def run_pipeline_webcam(cam_id=0):
             cv2.putText(display, f"{best_spoof['label']} {best_spoof['confidence']*100:.0f}%",
                         (sx1, max(20, sy1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, s_col, 2)
 
-        # Draw HUD
         display = draw_ekyc_hud(
             display,
             primary_face,
@@ -590,11 +609,9 @@ def run_pipeline_webcam(cam_id=0):
             reasons
         )
 
-        # Blink counter badge
         cv2.putText(display, f"Blinks: {blink_counter}", (display.shape[1] - 170, 40),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
-        # FPS
         curr_time = time.time()
         fps = 1.0 / (curr_time - prev_time) if curr_time > prev_time else 0.0
         prev_time = curr_time
@@ -613,20 +630,23 @@ def run_pipeline_webcam(cam_id=0):
 
     cap.release()
     cv2.destroyAllWindows()
-    print("[INFO] Webcam pipeline dừng.")
+    print("[INFO] Webcam pipeline da dung.")
 
 
 # =============================================================================
 # MAIN ENTRY POINT
 # =============================================================================
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Full E-KYC Pipeline 2")
-    parser.add_argument("--image", type=str, default=None, help="Đường dẫn đến file ảnh cần test")
-    parser.add_argument("--webcam", action="store_true", help="Chạy chế độ Webcam Real-Time")
-    parser.add_argument("--cam", type=int, default=0, help="Camera device index (mặc định 0)")
+    parser = argparse.ArgumentParser(description="Full E-KYC Pipeline 2 (Batch & Realtime)")
+    parser.add_argument("--input", "-i", type=str, default=None, help="Thu muc chua anh hoac file anh dau vao (mac dinh: data_raw)")
+    parser.add_argument("--output", "-o", type=str, default=None, help="Thu muc luu ket qua (mac dinh: backup/tests/output)")
+    parser.add_argument("--image", type=str, default=None, help="Duong dan 1 file anh cu the (tuong thich cu)")
+    parser.add_argument("--webcam", action="store_true", help="Chay che do Webcam Real-Time")
+    parser.add_argument("--cam", type=int, default=0, help="Camera device index (mac dinh 0)")
     args = parser.parse_args()
 
     if args.webcam:
         run_pipeline_webcam(cam_id=args.cam)
     else:
-        run_pipeline_on_image(image_path=args.image)
+        target_input = args.image if args.image is not None else args.input
+        run_pipeline_batch(input_path=target_input, output_path=args.output)
