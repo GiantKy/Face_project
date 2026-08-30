@@ -49,6 +49,7 @@ backup/
     ├── test_landmark_detection.py
     ├── test_pose_validation.py
     ├── test_pipeline.py              ← MỚI (chạy pipeline trên ảnh 0.jpg)
+    ├── test_pipeline_2.py            ← FULL eKYC (Face + Landmark + Pose + Align/Crop + Anti-Spoof + Liveness + Decision)
     └── output/                       ← Ảnh kết quả pipeline
 ```
 
@@ -66,8 +67,14 @@ python test_face_alignment_crop.py
 python test_pose_validation.py
 python test_anti_spoof.py
 
-# Test pipeline (dùng ảnh data_raw/0.jpg)
+# Test pipeline 1 (Face + Landmark + Pose + Align/Crop)
 python test_pipeline.py
+
+# Test pipeline 2 (Full E-KYC: Thêm Anti-Spoof, Liveness EAR/MAR, Final Decision)
+python test_pipeline_2.py
+
+# Test pipeline 2 Real-Time trên Webcam (hỗ trợ đếm chớp mắt Blink Counter)
+python test_pipeline_2.py --webcam
 ```
 
 ---
