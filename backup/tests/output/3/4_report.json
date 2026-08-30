@@ -1,0 +1,33 @@
+{
+  "image_name": "3.jpg",
+  "output_folder": "C:\\Users\\HP\\Desktop\\Face-Project\\backup\\tests\\output\\3",
+  "time_ms": 501.51,
+  "face_detected": true,
+  "face_confidence": 0.885,
+  "face_bbox": [
+    249,
+    16,
+    741,
+    600
+  ],
+  "pose_validation": {
+    "is_valid": true,
+    "yaw": -17.79,
+    "pitch": 5.15,
+    "roll": -9.47
+  },
+  "anti_spoof": {
+    "label": "SPOOF",
+    "is_real": false,
+    "confidence": 0.8172
+  },
+  "liveness": {
+    "ear": 0.315,
+    "mar": 0.068,
+    "eye_open": true
+  },
+  "final_verdict": "REJECTED",
+  "reasons": [
+    "Nghi van gia mao (Spoof)"
+  ]
+}
