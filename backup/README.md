@@ -35,23 +35,28 @@ backup/
 │   │   ├── constants.py
 │   │   ├── draw_landmarks.py
 │   │   └── utils.py
-│   └── pose_validation/              ← Copy từ gốc (không lỗi)
+│   ├── pose_validation/              ← Copy từ gốc (không lỗi)
+│   │   ├── __init__.py
+│   │   ├── constants.py
+│   │   ├── draw_pose.py
+│   │   ├── head_pose_3d.py
+│   │   ├── utils.py
+│   │   └── validator.py
+│   └── head_movement/                ← MỚI (Active Head Movement Liveness)
 │       ├── __init__.py
-│       ├── constants.py
-│       ├── draw_pose.py
-│       ├── head_pose_3d.py
-│       ├── utils.py
-│       └── validator.py
+│       └── head_movement_detector.py
 └── tests/
     ├── test_anti_spoof.py            ← FIXED (YOLO thay EfficientNet)
     ├── test_face_alignment_crop.py
     ├── test_face_detection.py
     ├── test_landmark_detection.py
     ├── test_pose_validation.py
-    ├── test_pipeline.py              ← MỚI (chạy pipeline trên ảnh 0.jpg)
-    ├── test_pipeline_2.py            ← FULL eKYC (Face + Landmark + Pose + Align/Crop + Anti-Spoof + Liveness + Decision)
-    └── output/                       ← Ảnh kết quả pipeline
-```
+    ├── test_head_movement.py         ← MỚI (Test thử thách cử động đầu)
+    ├── test_pipeline.py              ← Pipeline 1 (Face + Landmark + Pose + Align/Crop)
+    ├── test_pipeline_2.py            ← Pipeline 2 (Full E-KYC: Anti-Spoof, Liveness EAR/MAR)
+    ├── test_pipeline_3.py            ← Pipeline 3 (Batch / Full Interactive Liveness)
+    ├── test_pipeline_4.py            ← PIPELINE 4 HOÀN CHỈNH (Mở Webcam -> Chụp ảnh -> AI Model -> Blink & Head Movement -> Output)
+    └── output/                       ← Ảnh và báo cáo JSON/CSV kết quả
 
 ---
 
@@ -65,16 +70,16 @@ python test_face_detection.py
 python test_landmark_detection.py
 python test_face_alignment_crop.py
 python test_pose_validation.py
+python test_head_movement.py          # Test thử thách cử động đầu trên Webcam
 python test_anti_spoof.py
 
-# Test pipeline 1 (Face + Landmark + Pose + Align/Crop)
+# Test Pipeline 1, 2, 3
 python test_pipeline.py
-
-# Test pipeline 2 (Full E-KYC: Thêm Anti-Spoof, Liveness EAR/MAR, Final Decision)
 python test_pipeline_2.py
+python test_pipeline_3.py
 
-# Test pipeline 2 Real-Time trên Webcam (hỗ trợ đếm chớp mắt Blink Counter)
-python test_pipeline_2.py --webcam
+# Test Pipeline 4 (Quy trình hoàn chỉnh: Mở Webcam -> Chụp ảnh lưu vào data_raw/ -> Chạy AI Model -> Live Blink & Head Movement -> Xuất kết quả output/<id>/):
+python test_pipeline_4.py
 ```
 
 ---
