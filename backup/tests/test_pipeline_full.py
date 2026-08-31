@@ -64,6 +64,21 @@ OUTPUT_DIR = os.path.join(CURRENT_DIR, "output")
 # =============================================================================
 # 1. HELPER FUNCTIONS: EAR & QUẢN LÝ THỨ TỰ ẢNH
 # =============================================================================
+def calculate_iou(boxA, boxB):
+    """Tính Intersection over Union (IoU) giữa 2 bounding box [x1, y1, x2, y2]"""
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+    boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+    boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+
+    iou = interArea / float(boxAArea + boxBArea - interArea + 1e-6)
+    return iou
+
+
 def calc_dist(p1, p2):
     """Tính khoảng cách Euclidean giữa 2 điểm (x, y)"""
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
@@ -125,6 +140,7 @@ class AntiSpoofDetector:
     def __init__(self, model_version="v2"):
         candidate_files = [
             f"Anti_Spoof_{model_version}.pt",
+            "Anti_Spoof_v7.pt",
             "Anti_Spoof_v2.pt",
             "Anti_Spoof_v1.pt",
             "Anti_Spoof_v4.pt",
@@ -198,9 +214,11 @@ def draw_pipeline4_result_hud(
     image,
     img_idx,
     face_info,
+    num_faces,
     pose_info,
     pose_valid,
     anti_spoof_info,
+    spoof_iou,
     blink_passed,
     blink_count,
     head_movement_passed,
@@ -211,18 +229,26 @@ def draw_pipeline4_result_hud(
     h, w = image.shape[:2]
     vis = image.copy()
 
-    card_w = min(480, w - 20)
-    card_h = 280
+    card_w = min(500, w - 20)
+    card_h = 295
     draw_ui_card(vis, 15, 15, card_w, card_h, bg_color=(15, 15, 20), alpha=0.88)
 
     cv2.putText(vis, f"E-KYC PIPELINE v4 REPORT (ID: {img_idx})", (25, 42),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 230, 255), 2)
     cv2.line(vis, (25, 50), (15 + card_w - 20, 50), (80, 80, 80), 1)
 
-    # 1. Face Detection
-    f_txt = f"1. Face Detection : DETECTED ({face_info['confidence']:.2f})" if face_info else "1. Face Detection : NO FACE"
-    f_col = (0, 255, 0) if face_info else (0, 0, 255)
-    cv2.putText(vis, f_txt, (25, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.46, f_col, 1)
+    # 1. Face Detection & Single Person Rule
+    if face_info:
+        if num_faces == 1:
+            f_txt = f"1. Face Detect   : 1 FACE (CONF: {face_info['confidence']:.2f}) -> PASS"
+            f_col = (0, 255, 0)
+        else:
+            f_txt = f"1. Face Detect   : MULTI-FACE ({num_faces} FACES) -> WARNING"
+            f_col = (0, 165, 255)
+    else:
+        f_txt = "1. Face Detect   : NO FACE DETECTED -> FAIL"
+        f_col = (0, 0, 255)
+    cv2.putText(vis, f_txt, (25, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.44, f_col, 1)
 
     # 2. Pose 3D
     if pose_info:
@@ -235,28 +261,29 @@ def draw_pipeline4_result_hud(
     else:
         p_txt = "2. Head Pose     : UNKNOWN"
         p_col = (0, 0, 255)
-    cv2.putText(vis, p_txt, (25, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.46, p_col, 1)
+    cv2.putText(vis, p_txt, (25, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.44, p_col, 1)
 
-    # 3. Anti-Spoof
+    # 3. Anti-Spoof (Quét ảnh gốc + IoU Matching)
     if anti_spoof_info:
         as_lbl = anti_spoof_info["label"]
         as_conf = anti_spoof_info["confidence"]
         as_col = (0, 255, 0) if anti_spoof_info["is_real"] else (0, 0, 255)
-        as_txt = f"3. Anti-Spoof    : {as_lbl} ({as_conf*100:.1f}%)"
+        iou_str = f" | IoU:{spoof_iou:.2f}" if spoof_iou > 0 else ""
+        as_txt = f"3. Anti-Spoof (Full) : {as_lbl} ({as_conf*100:.1f}%{iou_str})"
     else:
         as_txt = "3. Anti-Spoof    : NO DATA"
         as_col = (0, 165, 255)
-    cv2.putText(vis, as_txt, (25, 118), cv2.FONT_HERSHEY_SIMPLEX, 0.46, as_col, 1)
+    cv2.putText(vis, as_txt, (25, 118), cv2.FONT_HERSHEY_SIMPLEX, 0.44, as_col, 1)
 
     # 4. Blink Liveness
     b_txt = f"4. Blink Liveness: PASS ({blink_count} blinks)" if blink_passed else f"4. Blink Liveness: FAIL ({blink_count} blinks)"
     b_col = (0, 255, 0) if blink_passed else (0, 0, 255)
-    cv2.putText(vis, b_txt, (25, 141), cv2.FONT_HERSHEY_SIMPLEX, 0.46, b_col, 1)
+    cv2.putText(vis, b_txt, (25, 141), cv2.FONT_HERSHEY_SIMPLEX, 0.44, b_col, 1)
 
     # 5. Head Movement Liveness
     hm_txt = f"5. Head Movement : PASS [{head_action_name.upper()}]" if head_movement_passed else f"5. Head Movement : FAIL [{head_action_name.upper()}]"
     hm_col = (0, 255, 0) if head_movement_passed else (0, 0, 255)
-    cv2.putText(vis, hm_txt, (25, 164), cv2.FONT_HERSHEY_SIMPLEX, 0.46, hm_col, 1)
+    cv2.putText(vis, hm_txt, (25, 164), cv2.FONT_HERSHEY_SIMPLEX, 0.44, hm_col, 1)
 
     cv2.line(vis, (25, 180), (15 + card_w - 20, 180), (80, 80, 80), 1)
 
@@ -267,9 +294,13 @@ def draw_pipeline4_result_hud(
                 cv2.FONT_HERSHEY_SIMPLEX, 0.68, verdict_col, 2)
 
     if not final_pass and reasons:
-        reason_str = "Ly do: " + ", ".join(reasons[:2])
+        reason_str = "Ly do: " + "; ".join(reasons[:2])
         cv2.putText(vis, reason_str, (25, 240),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 200, 255), 1)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 200, 255), 1)
+        if len(reasons) > 2:
+            reason_str_2 = "; ".join(reasons[2:])
+            cv2.putText(vis, reason_str_2, (25, 260),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 200, 255), 1)
 
     return vis
 
@@ -285,14 +316,15 @@ class PipelineStage(Enum):
     FINAL_DECISION = 5      # Giai đoạn 5: Tổng hợp toàn bộ & lưu vào output/<id>/
 
 
-def main_pipeline_4(cam_id=0):
+def main_pipeline_4(cam_id=0, skip_liveness=False):
     print("\n" + "=" * 75)
     print("      FULL E-KYC PIPELINE 4 (CHỤP ẢNH -> AI MODEL -> BLINK & HEAD MOVEMENT)")
     print("=" * 75)
     print(f"  * Thư mục lưu ảnh gốc : {DATA_RAW_DIR}")
     print(f"  * Thư mục lưu kết quả : {OUTPUT_DIR}")
     print("  * Điều khiển:")
-    print("      [SPACE] hoặc [c]  : Chụp ảnh ngay và bắt đầu quy trình")
+    print("      [SPACE] hoặc [c]  : Chụp ảnh và chạy Full Quy trình (AI + Live Liveness)")
+    print("      [s]               : CHỤP NHANH & LƯU NGAY (Chạy AI Model -> Lưu kết quả ngay)")
     print("      [a]               : Bật/Tắt chế độ tự động chụp khi mặt chuẩn")
     print("      [r]               : Khởi tạo lại phiên eKYC mới")
     print("      [q] hoặc [ESC]    : Thoát")
@@ -319,6 +351,7 @@ def main_pipeline_4(cam_id=0):
     # Trạng thái luồng
     stage = PipelineStage.PREVIEW_ALIGN
     auto_capture_mode = False
+    quick_snapshot_mode = False
     consecutive_center_frames = 0
 
     # Dữ liệu của phiên hiện tại
@@ -357,13 +390,14 @@ def main_pipeline_4(cam_id=0):
         nonlocal primary_face, landmarks_static, pose_dict_static, pose_valid_static
         nonlocal face_crop_static, aligned_img_static, best_spoof_static
         nonlocal blink_counter, blink_state, blink_passed, head_movement_passed, current_head_action, head_action_prompt
-        nonlocal final_pass, reasons, final_display_img, final_record, consecutive_center_frames
+        nonlocal final_pass, reasons, final_display_img, final_record, consecutive_center_frames, quick_snapshot_mode
 
         current_img_idx = get_next_image_index(DATA_RAW_DIR)
         stage = PipelineStage.PREVIEW_ALIGN
         captured_frame = None
         captured_img_path = None
         captured_result_dir = None
+        quick_snapshot_mode = False
 
         primary_face = None
         landmarks_static = None
@@ -462,14 +496,53 @@ def main_pipeline_4(cam_id=0):
             cv2.imwrite(captured_img_path, captured_frame)
             print(f"\n[1. CHỤP ẢNH GỐC] Đã lưu ảnh vào: {captured_img_path}")
 
-            # 2. Tạo thư mục output/<id>/
+            # 2. Tạo thư mục output/<id>/ và thư mục con all_faces_cropped/
             captured_result_dir = os.path.join(OUTPUT_DIR, str(current_img_idx))
             os.makedirs(captured_result_dir, exist_ok=True)
+            all_faces_dir = os.path.join(captured_result_dir, "all_faces_cropped")
+            os.makedirs(all_faces_dir, exist_ok=True)
 
-            # 3. Chạy Face Detection
+            # 3. Chạy Face Detection: Tìm & Crop TẤT CẢ các khuôn mặt trong ảnh
             faces = detector.detect(captured_frame)
-            primary_face = faces[0] if len(faces) > 0 else None
-            print(f"[2. Face Detection] Tìm thấy {len(faces)} khuôn mặt.")
+            num_faces = len(faces)
+            print(f"[2. Face Detection] Tìm thấy {num_faces} khuôn mặt trong khung hình.")
+
+            all_face_crops_info = []
+            h_f, w_f = captured_frame.shape[:2]
+
+            for idx_f, f_item in enumerate(faces, 1):
+                fx1, fy1, fx2, fy2 = f_item["bbox"]
+                fx1_c = max(0, min(w_f - 1, fx1))
+                fy1_c = max(0, min(h_f - 1, fy1))
+                fx2_c = max(0, min(w_f, fx2))
+                fy2_c = max(0, min(h_f, fy2))
+
+                crop_f = captured_frame[fy1_c:fy2_c, fx1_c:fx2_c]
+                if crop_f.size > 0:
+                    crop_filename = f"face_{idx_f}.jpg"
+                    crop_save_path = os.path.join(all_faces_dir, crop_filename)
+                    cv2.imwrite(crop_save_path, crop_f)
+                    all_face_crops_info.append({
+                        "face_index": idx_f,
+                        "bbox": [fx1, fy1, fx2, fy2],
+                        "confidence": round(float(f_item["confidence"]), 4),
+                        "crop_file": crop_filename
+                    })
+
+            # Chọn Khuôn mặt chính (Primary Face: To nhất và gần trung tâm màn hình nhất)
+            primary_face = None
+            if faces:
+                def get_face_priority(f):
+                    bx1, by1, bx2, by2 = f["bbox"]
+                    area = (bx2 - bx1) * (by2 - by1)
+                    cx, cy = (bx1 + bx2) / 2.0, (by1 + by2) / 2.0
+                    dist_center = math.hypot(cx - w_f / 2.0, cy - h_f / 2.0)
+                    return area - (dist_center * 10)
+
+                primary_face = max(faces, key=get_face_priority)
+                print(f"  -> Đã chọn Primary Face: BBox={primary_face['bbox']} (Conf: {primary_face['confidence']:.2f})")
+                if num_faces > 1:
+                    print(f"  [CẢNH BÁO] Phát hiện {num_faces} người trong ảnh! Đã crop lưu tất cả {num_faces} mặt vào output/{current_img_idx}/all_faces_cropped/")
 
             # 4. Chạy Landmarks
             landmarks_static = landmark_detector.detect(captured_frame)
@@ -483,7 +556,7 @@ def main_pipeline_4(cam_id=0):
                 if pose_dict_static:
                     print(f"[4. Head Pose 3D] Y={pose_dict_static['yaw']:+.1f}° | P={pose_dict_static['pitch']:+.1f}° | R={pose_dict_static['roll']:+.1f}° -> {'PASS' if pose_valid_static else 'FAIL'}")
 
-            # 6. Face Alignment & 224x224 Crop
+            # 6. Face Alignment & 224x224 Crop cho Primary Face
             aligned_img_static = None
             face_crop_static = None
             if landmarks_static:
@@ -491,21 +564,71 @@ def main_pipeline_4(cam_id=0):
                 aligned_lms = aligner.get_landmarks(aligned_img_static)
                 if aligned_lms:
                     face_crop_static = aligner.crop_face(aligned_img_static, aligned_lms, padding=20, output_size=(224, 224))
-                    print(f"[5. Face Alignment & Crop] Cắt ảnh chuẩn 224x224 thành công.")
+                    print(f"[5. Face Alignment & Crop] Cắt ảnh chuẩn 224x224 cho Primary Face thành công.")
 
-            # 7. Chạy Anti-Spoofing Model (YOLO Detection hoạt động chính xác nhất trên ảnh nguyên khung hình)
+            # Fallback nếu không căn chỉnh được Landmark nhưng có Primary Face BBox
+            if face_crop_static is None and primary_face is not None:
+                px1, py1, px2, py2 = primary_face["bbox"]
+                px1_c = max(0, min(w_f - 1, px1))
+                py1_c = max(0, min(h_f - 1, py1))
+                px2_c = max(0, min(w_f, px2))
+                py2_c = max(0, min(h_f, py2))
+                raw_crop_p = captured_frame[py1_c:py2_c, px1_c:px2_c]
+                if raw_crop_p.size > 0:
+                    face_crop_static = cv2.resize(raw_crop_p, (224, 224))
+                    print(f"[5. Face Crop] Sử dụng ảnh crop dự phòng từ BBox (224x224).")
+
+            if aligned_img_static is None:
+                aligned_img_static = captured_frame.copy()
+
+            # LƯU NGAY LẬP TỨC CÁC FILE CROP & ALIGNED
+            if face_crop_static is not None:
+                out_crop_p = os.path.join(captured_result_dir, "2_face_crop_224.jpg")
+                cv2.imwrite(out_crop_p, face_crop_static)
+
+            if aligned_img_static is not None:
+                out_align_p = os.path.join(captured_result_dir, "3_aligned_full.jpg")
+                cv2.imwrite(out_align_p, aligned_img_static)
+
+            # 7. Quét Anti-Spoofing Model trên TOÀN BỘ ẢNH GỐC + Khớp IoU với Primary Face
             input_spoof = captured_frame
             spoof_res = anti_spoof_detector.predict(input_spoof, conf_threshold=0.25)
-            best_spoof_static = spoof_res[0] if spoof_res else None
-            if best_spoof_static:
-                print(f"[6. Anti-Spoofing Model] Kết quả: {best_spoof_static['label']} ({best_spoof_static['confidence']*100:.1f}%) | Real={best_spoof_static['is_real']}")
+            print(f"[6. Anti-Spoofing Full Frame] Tìm thấy {len(spoof_res)} vùng nhận diện trên ảnh gốc.")
 
-            # Chuyển sang giai đoạn Active Liveness trên Webcam
-            print("\n[INFO] Chuyển sang giai đoạn Live Active Liveness (Blink & Head Movement)...")
-            stage = PipelineStage.LIVE_BLINK
-            blink_counter = 0
-            blink_state = False
-            blink_passed = False
+            best_spoof_static = None
+            primary_spoof_iou = 0.0
+            if primary_face and spoof_res:
+                for sd in spoof_res:
+                    iou = calculate_iou(primary_face["bbox"], sd["bbox"])
+                    if iou > primary_spoof_iou:
+                        primary_spoof_iou = iou
+                        best_spoof_static = sd
+
+            # Fallback nếu không trùng bbox nhưng có kết quả anti-spoof
+            if best_spoof_static is None and spoof_res:
+                best_spoof_static = spoof_res[0]
+
+            has_any_spoof_in_frame = any(not sd["is_real"] for sd in spoof_res) if spoof_res else False
+
+            if best_spoof_static:
+                print(f"  -> Kết quả Anti-Spoof Primary Face: {best_spoof_static['label']} ({best_spoof_static['confidence']*100:.1f}%) | IoU={primary_spoof_iou:.2f} | Real={best_spoof_static['is_real']}")
+                if has_any_spoof_in_frame and best_spoof_static["is_real"]:
+                    print(f"  [CẢNH BÁO] Phát hiện có vùng giả mạo (Spoof) khác ở bối cảnh xung quanh ảnh gốc!")
+
+            # Nếu chạy chế độ chụp nhanh (Snapshot) hoặc bỏ qua liveness -> Chuyển ngay đến FINAL_DECISION
+            if quick_snapshot_mode or skip_liveness:
+                print("\n[INFO] Chế độ Quick Save / Skip Liveness -> Chuyển ngay đến Lưu Kết quả Final...")
+                blink_passed = True
+                head_movement_passed = True
+                stage = PipelineStage.FINAL_DECISION
+            else:
+                # Chuyển sang giai đoạn Active Liveness trên Webcam
+                print("\n[INFO] Chuyển sang giai đoạn Live Active Liveness (Blink & Head Movement)...")
+                print("  (Mẹo: Nhấn phím 's' bất cứ lúc nào để lưu kết quả ngay lập tức)")
+                stage = PipelineStage.LIVE_BLINK
+                blink_counter = 0
+                blink_state = False
+                blink_passed = False
 
         # =====================================================================
         # GIAI ĐOẠN 3: ACTIVE LIVENESS - BLINK DETECTION (LIVE WEBCAM)
@@ -597,41 +720,68 @@ def main_pipeline_4(cam_id=0):
             if final_record is None:
                 # 1. Đánh giá Final Decision
                 c_face = (primary_face is not None)
+                c_single = (num_faces == 1)
                 c_pose = pose_valid_static
-                c_spoof = (best_spoof_static is not None and best_spoof_static["is_real"])
+                c_spoof = (best_spoof_static is not None and best_spoof_static["is_real"] and not has_any_spoof_in_frame)
                 c_blink = blink_passed
                 c_head = head_movement_passed
 
                 reasons.clear()
-                if not c_face: reasons.append("Không tìm thấy khuôn mặt trong ảnh")
-                if not c_pose: reasons.append("Góc mặt ảnh chụp bị nghiêng/lệch")
-                if not c_spoof: reasons.append("Phát hiện giả mạo Anti-Spoof (Fake/Spoof)")
-                if not c_blink: reasons.append("Chưa hoàn thành chớp mắt (Blink)")
-                if not c_head: reasons.append("Chưa hoàn thành cử động đầu (Head Movement)")
+                if not c_face:
+                    reasons.append("Không tìm thấy khuôn mặt trong ảnh")
+                elif not c_single:
+                    reasons.append(f"Phát hiện {num_faces} người trong khung hình (Yêu cầu 1 người duy nhất)")
 
-                final_pass = (c_face and c_pose and c_spoof and c_blink and c_head)
+                if not c_pose:
+                    reasons.append("Góc mặt ảnh chụp bị nghiêng/lệch")
+
+                if not c_spoof:
+                    if has_any_spoof_in_frame and best_spoof_static and best_spoof_static["is_real"]:
+                        reasons.append("Phát hiện vật thể giả mạo (Spoof) ở bối cảnh xung quanh")
+                    else:
+                        reasons.append("Phát hiện giả mạo Anti-Spoof (Fake/Spoof)")
+
+                if not c_blink:
+                    reasons.append("Chưa hoàn thành chớp mắt (Blink)")
+                if not c_head:
+                    reasons.append("Chưa hoàn thành cử động đầu (Head Movement)")
+
+                final_pass = (c_face and c_single and c_pose and c_spoof and c_blink and c_head)
 
                 # 2. Vẽ Dashboard kết quả lên ảnh chụp gốc
                 res_img = captured_frame.copy()
-                if primary_face:
-                    bx1, by1, bx2, by2 = primary_face["bbox"]
-                    cv2.rectangle(res_img, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
+
+                # Vẽ tất cả các khuôn mặt tìm thấy
+                for f_it in faces:
+                    bx1, by1, bx2, by2 = f_it["bbox"]
+                    is_p = (primary_face and f_it["bbox"] == primary_face["bbox"])
+                    box_c = (0, 255, 0) if is_p else (200, 200, 200)
+                    box_thick = 2 if is_p else 1
+                    cv2.rectangle(res_img, (bx1, by1), (bx2, by2), box_c, box_thick)
+                    lbl_tag = "PRIMARY FACE" if is_p else "EXTRA FACE"
+                    cv2.putText(res_img, lbl_tag, (bx1, max(15, by1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, box_c, 1)
+
                 if landmarks_static:
                     res_img = draw_landmarks(res_img, landmarks_static)
-                if best_spoof_static:
-                    sx1, sy1, sx2, sy2 = best_spoof_static["bbox"]
-                    s_col = (0, 255, 0) if best_spoof_static["is_real"] else (0, 0, 255)
-                    cv2.rectangle(res_img, (sx1, sy1), (sx2, sy2), s_col, 2)
-                    cv2.putText(res_img, f"{best_spoof_static['label']} {best_spoof_static['confidence']*100:.1f}%",
-                                (sx1, max(25, sy1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, s_col, 2)
+
+                # Vẽ các box Anti-Spoof từ ảnh gốc
+                if spoof_res:
+                    for sd in spoof_res:
+                        sx1, sy1, sx2, sy2 = sd["bbox"]
+                        s_col = (0, 255, 0) if sd["is_real"] else (0, 0, 255)
+                        cv2.rectangle(res_img, (sx1, sy1), (sx2, sy2), s_col, 2)
+                        cv2.putText(res_img, f"{sd['label']} {sd['confidence']*100:.1f}%",
+                                    (sx1, max(25, sy1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.65, s_col, 2)
 
                 final_display_img = draw_pipeline4_result_hud(
                     res_img,
                     current_img_idx,
                     primary_face,
+                    num_faces,
                     pose_dict_static,
                     pose_valid_static,
                     best_spoof_static,
+                    primary_spoof_iou,
                     blink_passed,
                     blink_counter,
                     head_movement_passed,
@@ -647,7 +797,6 @@ def main_pipeline_4(cam_id=0):
 
                 # File 1B: 1_pipeline_result_clean.jpg (Ảnh kết quả sạch, giữ BBox/Landmarks/Tag nhưng BỎ ĐI BẢNG ĐIỀU KHIỂN)
                 clean_img = res_img.copy()
-                # Vẽ 1 badge kết quả nhỏ gọn góc trên bên phải không che mặt
                 verdict_badge = "eKYC: APPROVED" if final_pass else "eKYC: REJECTED"
                 badge_col = (0, 255, 0) if final_pass else (0, 0, 255)
                 cv2.rectangle(clean_img, (w - 240, 15), (w - 15, 55), (15, 15, 20), -1)
@@ -657,7 +806,7 @@ def main_pipeline_4(cam_id=0):
                 out_clean_path = os.path.join(captured_result_dir, "1_pipeline_result_clean.jpg")
                 cv2.imwrite(out_clean_path, clean_img)
 
-                # File 2: 2_face_crop_224.jpg
+                # File 2: 2_face_crop_224.jpg (Khuôn mặt chính đã align chuẩn hóa 224x224)
                 if face_crop_static is not None:
                     out_crop_path = os.path.join(captured_result_dir, "2_face_crop_224.jpg")
                     cv2.imwrite(out_crop_path, face_crop_static)
@@ -673,9 +822,15 @@ def main_pipeline_4(cam_id=0):
                     "image_name": f"{current_img_idx}.jpg",
                     "raw_image_path": captured_img_path,
                     "output_folder": captured_result_dir,
-                    "face_detected": primary_face is not None,
-                    "face_confidence": round(primary_face["confidence"], 4) if primary_face else 0.0,
-                    "face_bbox": primary_face["bbox"] if primary_face else None,
+                    "face_detection": {
+                        "face_detected": primary_face is not None,
+                        "num_faces_detected": num_faces,
+                        "single_person_passed": (num_faces == 1),
+                        "primary_face_bbox": primary_face["bbox"] if primary_face else None,
+                        "primary_face_confidence": round(primary_face["confidence"], 4) if primary_face else 0.0,
+                        "all_faces_cropped_folder": all_faces_dir,
+                        "all_faces": all_face_crops_info
+                    },
                     "pose_validation": {
                         "is_valid": bool(pose_valid_static),
                         "yaw": round(pose_dict_static["yaw"], 2) if pose_dict_static else 0.0,
@@ -686,6 +841,9 @@ def main_pipeline_4(cam_id=0):
                         "label": best_spoof_static["label"] if best_spoof_static else "NONE",
                         "is_real": bool(best_spoof_static["is_real"]) if best_spoof_static else False,
                         "confidence": round(best_spoof_static["confidence"], 4) if best_spoof_static else 0.0,
+                        "matched_iou": round(primary_spoof_iou, 4),
+                        "has_global_spoof_in_frame": bool(has_any_spoof_in_frame),
+                        "all_spoof_detections": spoof_res
                     },
                     "active_liveness": {
                         "blink_passed": bool(blink_passed),
@@ -701,18 +859,23 @@ def main_pipeline_4(cam_id=0):
                 with open(out_json_path, "w", encoding="utf-8") as f:
                     json.dump(final_record, f, ensure_ascii=False, indent=2, default=json_serialize_helper)
 
-                # 4. Cập nhật Báo cáo tổng kết batch_summary_v4.csv / json
+                # 4. Cập nhật Báo cáo tổng kết batch_summary_v4.csv
                 batch_csv_path = os.path.join(OUTPUT_DIR, "batch_summary_v4.csv")
                 file_exists = os.path.exists(batch_csv_path)
                 with open(batch_csv_path, "a", newline="", encoding="utf-8") as f:
                     writer = csv.writer(f)
                     if not file_exists:
-                        writer.writerow(["Image ID", "Verdict", "AntiSpoof", "Spoof Conf", "Pose Valid", "Blink", "Head Movement", "Reasons", "Output Folder"])
+                        writer.writerow([
+                            "Image ID", "Verdict", "Num Faces", "Primary Spoof", "Spoof Conf",
+                            "IoU", "Pose Valid", "Blink", "Head Movement", "Reasons", "Output Folder"
+                        ])
                     writer.writerow([
                         f"{current_img_idx}.jpg",
                         final_record["final_verdict"],
+                        num_faces,
                         final_record["anti_spoof"]["label"],
                         final_record["anti_spoof"]["confidence"],
+                        f"{primary_spoof_iou:.2f}",
                         "PASS" if final_record["pose_validation"]["is_valid"] else "FAIL",
                         "PASS" if blink_passed else "FAIL",
                         f"PASS ({current_head_action.value})" if head_movement_passed else f"FAIL ({current_head_action.value})",
@@ -752,19 +915,35 @@ def main_pipeline_4(cam_id=0):
             auto_capture_mode = not auto_capture_mode
             print(f"[INFO] Chế độ Auto-Capture: {'BẬT' if auto_capture_mode else 'TẮT'}")
 
+        # Phím 's': Chụp ảnh nhanh (Snapshot Mode) và lưu kết quả ngay lập tức
+        elif (key == ord('s') or key == ord('S')):
+            if stage == PipelineStage.PREVIEW_ALIGN:
+                captured_frame = frame.copy()
+                quick_snapshot_mode = True
+                stage = PipelineStage.RUN_AI_STATIC
+                print(f"\n[QUICK SAVE] Đã kích hoạt Chụp nhanh & Lưu ngay cho ID: {current_img_idx}!")
+            elif stage in (PipelineStage.LIVE_BLINK, PipelineStage.LIVE_HEAD_MOVEMENT):
+                print("\n[QUICK SAVE] Bỏ qua các bước Liveness tiếp theo và Lưu kết quả ngay lập tức!")
+                blink_passed = True
+                head_movement_passed = True
+                stage = PipelineStage.FINAL_DECISION
+
+        # Phím SPACE hoặc 'c': Chụp ảnh và chạy Full quy trình eKYC
         elif (key == 32 or key == ord('c') or key_trigger == ord(' ')) and stage == PipelineStage.PREVIEW_ALIGN:
             captured_frame = frame.copy()
+            quick_snapshot_mode = False
             stage = PipelineStage.RUN_AI_STATIC
-            print(f"\n[TRIGGER] Đã kích hoạt chụp ảnh cho ID: {current_img_idx}!")
+            print(f"\n[TRIGGER] Đã kích hoạt chụp ảnh Full Quy trình cho ID: {current_img_idx}!")
 
     cap.release()
     cv2.destroyAllWindows()
-    print("[INFO] Đã đóng chương trình Pipeline 4.")
+    print("[INFO] Đã đóng chương trình Pipeline 4 an toàn.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Full E-KYC Pipeline 4 (Interactive Capture & Live Liveness)")
     parser.add_argument("--cam", type=int, default=0, help="Camera device index (mặc định 0)")
+    parser.add_argument("--static", "--skip-liveness", action="store_true", help="Chế độ chụp và lưu AI nhanh, bỏ qua thử thách Liveness")
     args = parser.parse_args()
 
-    main_pipeline_4(cam_id=args.cam)
+    main_pipeline_4(cam_id=args.cam, skip_liveness=getattr(args, 'static', False))

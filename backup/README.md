@@ -42,11 +42,16 @@ backup/
 │   │   ├── head_pose_3d.py
 │   │   ├── utils.py
 │   │   └── validator.py
-│   └── head_movement/                ← MỚI (Active Head Movement Liveness)
+│    ├── head_movement/                ← MỚI (Active Head Movement Liveness)
+│   │   ├── __init__.py
+│   │   └── head_movement_detector.py
+│   └── anti_spoof/                   ← MỚI (MiniFASNetV2 Anti-Spoofing Architecture)
 │       ├── __init__.py
-│       └── head_movement_detector.py
+│       └── minifasnet.py
 └── tests/
-    ├── test_anti_spoof.py            ← FIXED (YOLO thay EfficientNet)
+    ├── test_anti_spoof.py            ← YOLO Anti-Spoof (v7.pt)
+    ├── test_anti_spoof_minifasnet.py ← MỚI (Test MiniFASNetV2: Webcam, Image, Directory)
+    ├── test_anti_spoof_minisfasr.py  ← MỚI (Alias cho test_anti_spoof_minifasnet.py)
     ├── test_face_alignment_crop.py
     ├── test_face_detection.py
     ├── test_landmark_detection.py
@@ -71,7 +76,14 @@ python test_landmark_detection.py
 python test_face_alignment_crop.py
 python test_pose_validation.py
 python test_head_movement.py          # Test thử thách cử động đầu trên Webcam
-python test_anti_spoof.py
+python test_anti_spoof.py             # Test Anti-Spoof YOLO
+
+# Test Anti-Spoof MiniFASNetV2
+python test_anti_spoof_minifasnet.py                    # Chế độ Live Webcam
+python test_anti_spoof_minifasnet.py --dir ../../data_raw  # Test toàn bộ ảnh trong data_raw
+python test_anti_spoof_minifasnet.py --image ../../data_raw/0.jpg # Test 1 ảnh cụ thể
+# Hoặc dùng alias:
+python test_anti_spoof_minisfasr.py
 
 # Test Pipeline 1, 2, 3
 python test_pipeline.py
@@ -102,10 +114,12 @@ Các model nằm ở thư mục gốc `Face-Project/models/`:
 |-------|------|----------|
 | Face Detection | `Face_Detection.pt` | `face_detection/detector.py` |
 | Face Landmark | `face_landmarker.task` | `face_alignment_crop/`, `landmark_detection/` |
-| Anti-Spoof | `Anti_Spoof_v2.pt` | `tests/test_anti_spoof.py` |
+| Anti-Spoof YOLO | `Anti_Spoof_v7.pt` | `tests/test_anti_spoof.py` |
+| Anti-Spoof MiniFASNet | `Anti_Spoof_minifasnetv2.pth` | `src/anti_spoof/`, `tests/test_anti_spoof_minifasnet.py` |
 
 > **Lưu ý:** File `face_landmarker.task` được tải từ Google MediaPipe.  
 > Nếu thiếu, chạy:
 > ```powershell
 > Invoke-WebRequest -Uri "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task" -OutFile "models/face_landmarker.task"
 > ```
+

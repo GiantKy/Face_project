@@ -1,44 +1,59 @@
-# Virtual Environment
+# =============================================================================
+# Python & Virtual Environment
+# =============================================================================
 venv/
 env/
 ENV/
-
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Jupyter
-.ipynb_checkpoints/
-
-# VSCode
-.vscode/
-
-# PyCharm
-.idea/
-
-# Logs
-*.log
-
-# Environment variables
 .env
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 
-# Build
+# =============================================================================
+# IDE & System Files
+# =============================================================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# =============================================================================
+# Logs, Cache & Build Artifacts
+# =============================================================================
+*.log
 build/
 dist/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
 
-# AI Models
+# =============================================================================
+# Large AI Models / Weights (> 5MB)
+# =============================================================================
 *.pt
 *.pth
 *.onnx
+*.engine
+*.tflite
 *.h5
 *.ckpt
+*.task
 
-# Dataset
+# =============================================================================
+# Datasets, Captured Photos & Output Folders
+# =============================================================================
+data_raw/
 data/
 datasets/
+output/
+backup/tests/output/
 
-# OS
-.DS_Store
-Thumbs.db
+# Captured test images
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.webp
