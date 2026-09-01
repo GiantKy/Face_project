@@ -27,6 +27,14 @@ Phím tắt trong chế độ Webcam:
 
 import sys
 import os
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 import time
 import argparse
 import glob
@@ -435,10 +443,7 @@ def main():
         "--model", type=str, default=None,
         help="Đường dẫn tuỳ chỉnh tới file model Anti_Spoof_minifasnetv2.pth"
     )
-    parser.add_argument(
-        "--scale", type=float, default=1.0,
-        help="Tỷ lệ phóng to vùng crop khuôn mặt (mặc định 1.0)"
-    )
+    parser.add_argument("--scale", type=float, default=2.7, help="Tỷ lệ crop khuôn mặt (mặc định 2.7x)")
     parser.add_argument(
         "--thresh", type=float, default=0.5,
         help="Ngưỡng phân loại REAL (mặc định 0.5)"

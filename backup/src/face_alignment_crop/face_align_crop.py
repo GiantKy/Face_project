@@ -57,7 +57,13 @@ class FaceAligner:
 
         return landmarks
 
-    def align_face(self, image, landmarks):
+    def align_face(self, image, landmarks=None, bbox=None, **kwargs):
+        if landmarks is None:
+            landmarks = self.get_landmarks(image)
+
+        if landmarks is None or len(landmarks) < 363:
+            return image.copy()
+
         left_eye = np.mean([
             landmarks[33],
             landmarks[133]
@@ -93,21 +99,35 @@ class FaceAligner:
     def crop_face(
         self,
         image,
-        landmarks,
+        landmarks=None,
+        bbox=None,
         padding=20,
-        output_size=(224, 224)
+        output_size=(224, 224),
+        **kwargs
     ):
-        xs = [p[0] for p in landmarks]
-        ys = [p[1] for p in landmarks]
+        if landmarks is None and bbox is None:
+            landmarks = self.get_landmarks(image)
 
-        x1 = max(min(xs) - padding, 0)
-        y1 = max(min(ys) - padding, 0)
+        if landmarks is not None and len(landmarks) > 0:
+            xs = [p[0] for p in landmarks]
+            ys = [p[1] for p in landmarks]
 
-        x2 = min(max(xs) + padding, image.shape[1])
-        y2 = min(max(ys) + padding, image.shape[0])
+            x1 = max(min(xs) - padding, 0)
+            y1 = max(min(ys) - padding, 0)
+            x2 = min(max(xs) + padding, image.shape[1])
+            y2 = min(max(ys) + padding, image.shape[0])
+        elif bbox is not None:
+            bx1, by1, bx2, by2 = bbox
+            x1 = max(bx1 - padding, 0)
+            y1 = max(by1 - padding, 0)
+            x2 = min(bx2 + padding, image.shape[1])
+            y2 = min(by2 + padding, image.shape[0])
+        else:
+            return cv2.resize(image, output_size)
 
         face = image[y1:y2, x1:x2]
+        if face.size == 0:
+            return cv2.resize(image, output_size)
 
         face = cv2.resize(face, output_size)
-
         return face

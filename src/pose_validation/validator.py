@@ -1,4 +1,5 @@
 from .head_pose_3d import HeadPoseEstimator
+from src.landmark_detection.utils import get_landmark_point
 
 
 class PoseValidator:
@@ -6,7 +7,9 @@ class PoseValidator:
     def __init__(self):
         self.estimator = HeadPoseEstimator()
 
-    def validate(self, landmarks, get_point):
+    def validate(self, landmarks, get_point=get_landmark_point):
+        if get_point is None:
+            get_point = get_landmark_point
 
         pose = self.estimator.estimate(landmarks, get_point)
 
@@ -42,3 +45,12 @@ class PoseValidator:
             return False, "Head Tilt", pose
 
         return True, "Valid Pose", pose
+
+    def validate_pose(self, frame_or_landmarks, landmarks=None, get_point=get_landmark_point):
+        lm = landmarks if landmarks is not None else frame_or_landmarks
+        valid, text, pose = self.validate(lm, get_point)
+        return {
+            "is_valid": valid,
+            "text": text,
+            "pose": pose if pose is not None else {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+        }

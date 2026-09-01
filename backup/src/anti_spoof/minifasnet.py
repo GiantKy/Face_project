@@ -1,3 +1,4 @@
+import sys
 import os
 import glob
 import cv2
@@ -6,12 +7,18 @@ import torch
 import torch.nn as nn
 from typing import Optional, Union, Tuple, Dict, Any, List
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Tự động tìm thư mục gốc Face-Project
+# __file__ = src/anti_spoof/minifasnet.py → 3 lần dirname để về Face-Project/
 BASE_DIR = os.path.dirname(
     os.path.dirname(
-        os.path.dirname(
-            os.path.dirname(os.path.abspath(__file__))
-        )
+        os.path.dirname(os.path.abspath(__file__))
     )
 )
 
@@ -186,9 +193,14 @@ def check_model_quality(state_dict: dict) -> Dict[str, Any]:
 def find_default_minifasnet_model() -> str:
     """
     Tự động tìm kiếm file model MiniFASNet trong thư mục models/,
-    ưu tiên các phiên bản mới nhất: (5), (4), (3), (2), (1) hoặc file mặc định.
+    ưu tiên các phiên bản mới nhất: (10), (9), ..., (1) hoặc file mặc định.
     """
     candidate_files = [
+        "Anti_Spoof_minifasnetv2_(10).pth",
+        "Anti_Spoof_minifasnetv2_(9).pth",
+        "Anti_Spoof_minifasnetv2_(8).pth",
+        "Anti_Spoof_minifasnetv2_(7).pth",
+        "Anti_Spoof_minifasnetv2_(6).pth",
         "Anti_Spoof_minifasnetv2_(5).pth",
         "Anti_Spoof_minifasnetv2_(4).pth",
         "Anti_Spoof_minifasnetv2_(3).pth",
@@ -234,11 +246,16 @@ def load_minifasnet_model(model_path: Optional[str] = None, device: Optional[tor
     model = MiniFASNetV2()
     state_dict = torch.load(model_path, map_location=device)
 
-    # Hỗ trợ checkpoint được bọc dict {'state_dict': ...} hoặc trực tiếp OrderedDict
-    if isinstance(state_dict, dict) and "state_dict" in state_dict:
-        state_dict = state_dict["state_dict"]
-    elif isinstance(state_dict, dict) and "model" in state_dict:
-        state_dict = state_dict["model"]
+    # Hỗ trợ checkpoint được bọc dict {'model_state_dict': ...}, {'state_dict': ...} hoặc trực tiếp OrderedDict
+    if isinstance(state_dict, dict):
+        if "model_state_dict" in state_dict:
+            state_dict = state_dict["model_state_dict"]
+        elif "state_dict" in state_dict:
+            state_dict = state_dict["state_dict"]
+        elif "model" in state_dict:
+            state_dict = state_dict["model"]
+        elif "net" in state_dict:
+            state_dict = state_dict["net"]
 
     # Xử lý prefix 'module.' nếu train bằng DataParallel
     cleaned_state_dict = {}
@@ -272,7 +289,7 @@ class AntiSpoofMiniFASNet:
         self,
         model_path: Optional[str] = None,
         input_size: Tuple[int, int] = (80, 80),
-        scale_factor: float = 1.0,
+        scale_factor: float = 2.7,
         real_threshold: float = 0.5,
         device: Optional[Union[str, torch.device]] = None
     ):
