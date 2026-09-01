@@ -2,13 +2,16 @@ import os
 from ultralytics import YOLO
 
 # Tự động tìm thư mục gốc Face-Project
-# __file__       = src/face_detection/detector.py
-# dirname 1 lần  = src/face_detection/
-# dirname 2 lần  = src/
-# dirname 3 lần  = Face-Project/
+# __file__       = backup/src/face_detection/detector.py
+# dirname 1 lần  = backup/src/face_detection/
+# dirname 2 lần  = backup/src/
+# dirname 3 lần  = backup/
+# dirname 4 lần  = Face-Project/
 BASE_DIR = os.path.dirname(
     os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__))
+        os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))
+        )
     )
 )
 

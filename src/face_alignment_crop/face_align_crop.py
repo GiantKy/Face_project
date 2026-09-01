@@ -1,33 +1,55 @@
 import cv2
+import os
 import numpy as np
 import mediapipe as mp
 
-mp_face_mesh = mp.solutions.face_mesh
+# =========================
+# MEDIAPIPE FACE LANDMARKER (new API for mediapipe >= 0.10.14)
+# =========================
+BaseOptions = mp.tasks.BaseOptions
+FaceLandmarker = mp.tasks.vision.FaceLandmarker
+FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
+VisionRunningMode = mp.tasks.vision.RunningMode
+
+# Path to the face_landmarker.task model
+# Go up: face_alignment_crop -> src -> backup -> Face-Project (project root)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "face_landmarker.task")
 
 
 class FaceAligner:
     def __init__(self):
-        self.face_mesh = mp_face_mesh.FaceMesh(
-            static_image_mode=False,
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
+        options = FaceLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=MODEL_PATH),
+            running_mode=VisionRunningMode.IMAGE,
+            num_faces=1,
+            min_face_detection_confidence=0.5,
+            min_face_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
+            output_face_blendshapes=False,
+            output_facial_transformation_matrixes=False,
         )
+
+        self.landmarker = FaceLandmarker.create_from_options(options)
 
     def get_landmarks(self, image):
         rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        results = self.face_mesh.process(rgb)
+        mp_image = mp.Image(
+            image_format=mp.ImageFormat.SRGB,
+            data=rgb
+        )
 
-        if not results.multi_face_landmarks:
+        result = self.landmarker.detect(mp_image)
+
+        if not result.face_landmarks:
             return None
 
         h, w, _ = image.shape
 
         landmarks = []
 
-        for lm in results.multi_face_landmarks[0].landmark:
+        for lm in result.face_landmarks[0]:
             x = int(lm.x * w)
             y = int(lm.y * h)
 
