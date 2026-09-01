@@ -31,13 +31,12 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-# Trỏ import vào backup/src
+# Cấu hình đường dẫn import
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-BACKUP_DIR = os.path.dirname(CURRENT_DIR)
-BASE_DIR = os.path.dirname(BACKUP_DIR)
+BASE_DIR = os.path.dirname(CURRENT_DIR)  # Face-Project/
 
-if BACKUP_DIR not in sys.path:
-    sys.path.insert(0, BACKUP_DIR)
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
 from src.face_detection import FaceDetector
 from src.landmark_detection import LandmarkDetector

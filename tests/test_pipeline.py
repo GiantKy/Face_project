@@ -47,8 +47,8 @@ print("[OK] FaceAligner loaded")
 # =========================
 # LOAD IMAGE
 # =========================
-# Go up: tests -> backup -> Face-Project (project root)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Go up: tests -> Face-Project (project root)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IMG_PATH = os.path.join(BASE_DIR, "data_raw", "0.jpg")
 
 print(f"[INFO] Loading image: {IMG_PATH}")

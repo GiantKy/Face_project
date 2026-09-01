@@ -23,11 +23,11 @@ import time
 import cv2
 import numpy as np
 
-# Thêm backup vào sys.path
+# Thêm project root vào sys.path
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-BACKUP_DIR = os.path.dirname(CURRENT_DIR)
-if BACKUP_DIR not in sys.path:
-    sys.path.insert(0, BACKUP_DIR)
+PROJECT_DIR = os.path.dirname(CURRENT_DIR)  # Face-Project/
+if PROJECT_DIR not in sys.path:
+    sys.path.insert(0, PROJECT_DIR)
 
 from src.landmark_detection import LandmarkDetector
 from src.landmark_detection.draw_landmarks import draw_landmarks

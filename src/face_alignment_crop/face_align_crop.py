@@ -12,8 +12,8 @@ FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 # Path to the face_landmarker.task model
-# Go up: face_alignment_crop -> src -> backup -> Face-Project (project root)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# Go up: face_alignment_crop -> src -> Face-Project (project root)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MODEL_PATH = os.path.join(BASE_DIR, "models", "face_landmarker.task")
 
 

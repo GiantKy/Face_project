@@ -7,11 +7,10 @@ import torch.nn as nn
 from typing import Optional, Union, Tuple, Dict, Any, List
 
 # Tự động tìm thư mục gốc Face-Project
+# __file__ = src/anti_spoof/minifasnet.py → 3 lần dirname để về Face-Project/
 BASE_DIR = os.path.dirname(
     os.path.dirname(
-        os.path.dirname(
-            os.path.dirname(os.path.abspath(__file__))
-        )
+        os.path.dirname(os.path.abspath(__file__))
     )
 )
 
@@ -186,9 +185,14 @@ def check_model_quality(state_dict: dict) -> Dict[str, Any]:
 def find_default_minifasnet_model() -> str:
     """
     Tự động tìm kiếm file model MiniFASNet trong thư mục models/,
-    ưu tiên các phiên bản mới nhất: (5), (4), (3), (2), (1) hoặc file mặc định.
+    ưu tiên các phiên bản mới nhất: (10), (9), ..., (1) hoặc file mặc định.
     """
     candidate_files = [
+        "Anti_Spoof_minifasnetv2_(10).pth",
+        "Anti_Spoof_minifasnetv2_(9).pth",
+        "Anti_Spoof_minifasnetv2_(8).pth",
+        "Anti_Spoof_minifasnetv2_(7).pth",
+        "Anti_Spoof_minifasnetv2_(6).pth",
         "Anti_Spoof_minifasnetv2_(5).pth",
         "Anti_Spoof_minifasnetv2_(4).pth",
         "Anti_Spoof_minifasnetv2_(3).pth",
