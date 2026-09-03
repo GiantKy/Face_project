@@ -9,6 +9,10 @@ from .minifasnet_official import (
     build_minifasnet_v2_se,
     MiniFASNet
 )
+from .mobilenetv2 import (
+    AntiSpoofMobileNetV2,
+    find_default_mobilenetv2_model
+)
 
 __all__ = [
     "MiniFASNetV2",
@@ -22,4 +26,7 @@ __all__ = [
     "build_minifasnet_v1_se",
     "build_minifasnet_v2_se",
     "MiniFASNet",
+    "AntiSpoofMobileNetV2",
+    "find_default_mobilenetv2_model",
 ]
+
