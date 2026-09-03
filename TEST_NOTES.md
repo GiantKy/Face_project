@@ -49,12 +49,15 @@ flowchart TD
 | 5 | `test_anti_spoof.py` | Anti-Spoof | Nhận diện Real/Spoof trực tiếp qua YOLO | `Anti_Spoof_v7.pt` |
 | 6 | `test_anti_spoof_minifasnet.py` | Anti-Spoof | Kiểm thử mạng MiniFASNetV2 với Face Crop | `Anti_Spoof_minifasnetv2_(9).pth` |
 | 7 | `test_anti_spoof_official_ensemble.py` | Anti-Spoof | Ensemble đa model MiniFASNet (V2 + V1SE) | `2.7_80x80_...pth` + `4_0_0_...pth` |
-| 8 | `test_head_movement.py` | Liveness | Thử thách cử động đầu (Trái/Phải/Lên/Xuống) | Pose Angle Tracker |
-| 9 | `test_pipeline.py` | Pipeline v1 | Tích hợp Face Detection + Anti-Spoof cơ bản | YOLO Det + YOLO Anti-Spoof |
-| 10 | `test_pipeline_2.py` | Pipeline v2 | Tích hợp Alignment, Crop & Smooth Score | Detection + Align + Anti-Spoof |
-| 11 | `test_pipeline_3.py` | Pipeline v3 | Bổ sung Blink Detection (chớp mắt đo EAR) | Det + Align + Anti-Spoof + Blink |
-| 12 | `test_pipeline_ensemble.py` | Pipeline Ensemble | Pipeline kết hợp Ensemble đa model MiniFASNet | MiniFASNet Ensemble + Pipeline |
-| 13 | `test_pipeline_full.py` | Full eKYC v4 | Pipeline hoàn chỉnh: Chụp ảnh + Liveness + Báo cáo xuất ra file | Toàn bộ module + Export Report |
+| 8 | `test_anti_spoof_yolov7_minifasnet_ensemble.py` | Anti-Spoof | Ensemble kết hợp YOLOv7 + MiniFASNet(4) | `Anti_Spoof_v7.pt` + `Anti_Spoof_minifasnetv2_(4).pth` |
+| 9 | `test_head_movement.py` | Liveness | Thử thách cử động đầu (Trái/Phải/Lên/Xuống) | Pose Angle Tracker |
+| 10 | `test_pipeline.py` | Pipeline v1 | Tích hợp Face Detection + Anti-Spoof cơ bản | YOLO Det + YOLO Anti-Spoof |
+| 11 | `test_pipeline_2.py` | Pipeline v2 | Tích hợp Alignment, Crop & Smooth Score | Detection + Align + Anti-Spoof |
+| 12 | `test_pipeline_3.py` | Pipeline v3 | Bổ sung Blink Detection (chớp mắt đo EAR) | Det + Align + Anti-Spoof + Blink |
+| 13 | `test_pipeline_ensemble.py` | Pipeline Ensemble | Pipeline kết hợp Ensemble đa model MiniFASNet | MiniFASNet Ensemble + Pipeline |
+| 14 | `test_pipeline_full.py` | Full eKYC v4 | Pipeline hoàn chỉnh: Chụp ảnh + Liveness + Báo cáo xuất ra file | Toàn bộ module + Export Report |
+| 15 | `test_pipeline_yolov7_minifasnet_ensemble.py` | Full eKYC High FPS | Pipeline hoàn chỉnh tích hợp Ensemble YOLOv7 + MiniFASNet(4) | YOLOv7 + MiniFASNet(4) + Full eKYC |
+| 16 | `test_anti_spoof_dual_minifasnet_ensemble.py` | Anti-Spoof | Ensemble 2 model MiniFASNet nội bộ mới nhất ((4) + (3)) | `Anti_Spoof_minifasnetv2_(4).pth` + `_(3).pth` |
 
 ---
 
@@ -127,6 +130,21 @@ flowchart TD
   ```
 * **Tiêu chí đạt:** Giảm tỷ lệ False Acceptance Rate (FAR) khi gặp các thủ thuật in ảnh chất lượng cao hoặc video replay.
 
+#### 8. `test_anti_spoof_yolov7_minifasnet_ensemble.py`
+* **Kiến trúc:** Ensemble đa mô hình khác biệt (Multi-Architecture):
+  * **YOLO Anti-Spoof v7** (`Anti_Spoof_v7.pt`): Nhận diện tổng thể khuôn mặt & vật thể spoof trong bối cảnh.
+  * **MiniFASNetV2(4)** (`Anti_Spoof_minifasnetv2_(4).pth`): Phân tích chi tiết vi mô (micro-texture) trên Face Crop 80x80.
+* **Chiến lược:** Hỗ trợ linh hoạt 3 chế độ: `Weighted Soft Voting`, `Strict eKYC (min real)`, `Cascade`.
+* **Lệnh chạy:**
+  ```powershell
+  # Chạy webcam tương tác trực tiếp
+  python tests/test_anti_spoof_yolov7_minifasnet_ensemble.py
+
+  # Hoặc test trên ảnh đơn / thư mục
+  python tests/test_anti_spoof_yolov7_minifasnet_ensemble.py --image path/to/image.jpg
+  python tests/test_anti_spoof_yolov7_minifasnet_ensemble.py --dir path/to/dir/
+  ```
+
 ---
 
 ### Nhóm 3: Kiểm thử Liveness tương tác (Active Liveness)
@@ -165,6 +183,35 @@ flowchart TD
   * `output/<id>/3_aligned_full.jpg`: Ảnh đã xoay thẳng góc mặt.
   * `output/<id>/4_report.json`: Báo cáo chi tiết các chỉ số (Score, Blink count, Pose angle, Decision).
   * `batch_summary_v4.csv` & `batch_summary_v4.json`: Lịch sử tất cả các phiên kiểm thử.
+
+#### 15. `test_pipeline_yolov7_minifasnet_ensemble.py`
+* **Kiến trúc:** Pipeline eKYC hoàn chỉnh thế hệ mới, tối ưu hóa tốc độ cao (30-60 FPS):
+  * **Preview & Liveness:** Sử dụng Face Detection & MediaPipe Landmarks siêu nhẹ, không bị nghẽn FPS.
+  * **Static AI Analysis:** Chạy mô hình kết hợp Ensemble giữa **YOLOv7** (`Anti_Spoof_v7.pt`) và **MiniFASNet(4)** (`Anti_Spoof_minifasnetv2_(4).pth`).
+  * **Active Liveness:** Blink (chớp mắt) + Head Movement (quay đầu theo hướng).
+* **Lệnh chạy:**
+  ```powershell
+  python tests/test_pipeline_yolov7_minifasnet_ensemble.py
+  ```
+* **Tham số bổ sung:**
+  * `--auto`: Tự động chụp khi mặt nhìn thẳng và ổn định
+  * `--quick`: Chế độ chụp nhanh bỏ qua thử thách Liveness
+  * `--strategy {WEIGHTED,STRICT_EKYC,CASCADE}`: Chọn chiến lược gộp Ensemble
+
+#### 16. `test_anti_spoof_dual_minifasnet_ensemble.py`
+* **Kiến trúc:** Ensemble kết hợp 2 mô hình MiniFASNetV2 nội bộ mới nhất do dự án train (loại trừ 2 model official):
+  * **Model 1:** `Anti_Spoof_minifasnetv2_(4).pth` (233.8 KB - Scale 1.2x)
+  * **Model 2:** `Anti_Spoof_minifasnetv2_(3).pth` (232.5 KB - Scale 2.0x)
+* **Ưu điểm:** Tốc độ siêu nhanh (~5-10 ms trên CPU), đạt **45 - 60+ FPS** mượt mà không giật lag.
+* **Lệnh chạy:**
+  ```powershell
+  # Chạy webcam thời gian thực tốc độ cao
+  python tests/test_anti_spoof_dual_minifasnet_ensemble.py
+
+  # Test trên ảnh hoặc thư mục
+  python tests/test_anti_spoof_dual_minifasnet_ensemble.py --image path/to/image.jpg
+  python tests/test_anti_spoof_dual_minifasnet_ensemble.py --dir path/to/dir/
+  ```
 
 ---
 

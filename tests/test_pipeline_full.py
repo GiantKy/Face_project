@@ -136,12 +136,13 @@ def json_serialize_helper(obj):
 # 2. ANTI-SPOOF DETECTOR CLASS
 # =============================================================================
 class AntiSpoofDetector:
-    def __init__(self, model_version="v2"):
+    def __init__(self, model_version="v7"):
         candidate_files = [
             f"Anti_Spoof_{model_version}.pt",
             "Anti_Spoof_v7.pt",
-            "Anti_Spoof_v2.pt",
+            "Anti_Spoof_v5.pt",
             "Anti_Spoof_v1.pt",
+            "Anti_Spoof_v2.pt",
             "Anti_Spoof_v4.pt",
             "Anti_Spoof_v3.pt",
             "Anti_Spoof.pt"
@@ -315,12 +316,13 @@ class PipelineStage(Enum):
     FINAL_DECISION = 5      # Giai đoạn 5: Tổng hợp toàn bộ & lưu vào output/<id>/
 
 
-def main_pipeline_4(cam_id=0, skip_liveness=False):
+def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
     print("\n" + "=" * 75)
     print("      FULL E-KYC PIPELINE 4 (CHỤP ẢNH -> AI MODEL -> BLINK & HEAD MOVEMENT)")
     print("=" * 75)
     print(f"  * Thư mục lưu ảnh gốc : {DATA_RAW_DIR}")
     print(f"  * Thư mục lưu kết quả : {OUTPUT_DIR}")
+    print(f"  * Model Anti-Spoof    : YOLO v{model_version}")
     print("  * Điều khiển:")
     print("      [SPACE] hoặc [c]  : Chụp ảnh và chạy Full Quy trình (AI + Live Liveness)")
     print("      [s]               : CHỤP NHANH & LƯU NGAY (Chạy AI Model -> Lưu kết quả ngay)")
@@ -338,7 +340,7 @@ def main_pipeline_4(cam_id=0, skip_liveness=False):
     landmark_detector = LandmarkDetector()
     pose_validator = PoseValidator()
     aligner = FaceAligner()
-    anti_spoof_detector = AntiSpoofDetector()
+    anti_spoof_detector = AntiSpoofDetector(model_version=model_version)
     head_movement_detector = HeadMovementDetector(yaw_threshold=16.0, pitch_threshold=12.0, timeout=7.0)
     print("[OK] Đã khởi tạo hoàn tất toàn bộ Models!\n")
 
@@ -450,11 +452,24 @@ def main_pipeline_4(cam_id=0, skip_liveness=False):
             cv2.putText(display, f"E-KYC PIPELINE 4: CHUAN BI CHUP ANH (ID: {current_img_idx}.jpg)", (35, 48),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 230, 255), 2)
 
-            is_aligned_good = (landmarks_live is not None and pose_valid_live)
+            face_size_h = 0
+            is_too_far = False
+            if landmarks_live and len(landmarks_live) >= 468:
+                ys = [p[1] for p in landmarks_live]
+                face_size_h = max(ys) - min(ys)
+                # Nếu chiều cao khuôn mặt < 170 pixel thì mặt quá nhỏ / ngồi quá xa
+                if face_size_h < 170:
+                    is_too_far = True
+
+            is_aligned_good = (landmarks_live is not None and pose_valid_live and not is_too_far)
             if is_aligned_good:
                 align_msg = "Goc mat CHUAN! Nhan [SPACE] hoac [c] de chup anh"
                 align_col = (0, 255, 0)
                 consecutive_center_frames += 1
+            elif is_too_far:
+                align_msg = "Vui long tien lai GAN CAMERA hon (Khuon mat qua nho)..."
+                align_col = (0, 165, 255)
+                consecutive_center_frames = max(0, consecutive_center_frames - 1)
             else:
                 align_msg = "Vui long nhin thang, giu mat chinh giua khung hinh..."
                 align_col = (0, 200, 255)
@@ -721,7 +736,9 @@ def main_pipeline_4(cam_id=0, skip_liveness=False):
                 c_face = (primary_face is not None)
                 c_single = (num_faces == 1)
                 c_pose = pose_valid_static
-                c_spoof = (best_spoof_static is not None and best_spoof_static["is_real"] and not has_any_spoof_in_frame)
+                # Đánh giá Anti-Spoof: Tập trung vào chính khuôn mặt xác thực (Primary Face)
+                is_primary_real = (best_spoof_static is not None and best_spoof_static["is_real"])
+                c_spoof = is_primary_real
                 c_blink = blink_passed
                 c_head = head_movement_passed
 
@@ -735,10 +752,9 @@ def main_pipeline_4(cam_id=0, skip_liveness=False):
                     reasons.append("Góc mặt ảnh chụp bị nghiêng/lệch")
 
                 if not c_spoof:
-                    if has_any_spoof_in_frame and best_spoof_static and best_spoof_static["is_real"]:
-                        reasons.append("Phát hiện vật thể giả mạo (Spoof) ở bối cảnh xung quanh")
-                    else:
-                        reasons.append("Phát hiện giả mạo Anti-Spoof (Fake/Spoof)")
+                    reasons.append("Phát hiện giả mạo Anti-Spoof (Fake/Spoof)")
+                elif has_any_spoof_in_frame:
+                    print("  [CẢNH BÁO BỐI CẢNH] Phát hiện vật thể nghi ngờ ở nền xung quanh, nhưng khuôn mặt chính đạt chuẩn REAL.")
 
                 if not c_blink:
                     reasons.append("Chưa hoàn thành chớp mắt (Blink)")
@@ -943,6 +959,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Full E-KYC Pipeline 4 (Interactive Capture & Live Liveness)")
     parser.add_argument("--cam", type=int, default=0, help="Camera device index (mặc định 0)")
     parser.add_argument("--static", "--skip-liveness", action="store_true", help="Chế độ chụp và lưu AI nhanh, bỏ qua thử thách Liveness")
+    parser.add_argument("--version", type=str, default="v7", help="Phiên bản model Anti-Spoof (mặc định v7)")
     args = parser.parse_args()
 
-    main_pipeline_4(cam_id=args.cam, skip_liveness=getattr(args, 'static', False))
+    try:
+        main_pipeline_4(
+            cam_id=args.cam,
+            skip_liveness=getattr(args, 'static', False),
+            model_version=args.version
+        )
+    except KeyboardInterrupt:
+        print("\n[INFO] Đã dừng pipeline theo yêu cầu của người dùng.")
+
