@@ -34,11 +34,22 @@ import math
 import json
 import csv
 import glob
+import unicodedata
 from enum import Enum
 from pathlib import Path
 import cv2
 import numpy as np
 from ultralytics import YOLO
+
+
+def remove_vietnamese_accents(text: str) -> str:
+    """Chuyển đổi văn bản tiếng Việt có dấu thành không dấu để OpenCV cv2.putText hiển thị đẹp, không bị lỗi phông"""
+    if not text:
+        return ""
+    text = str(text)
+    text = text.replace("đ", "d").replace("Đ", "D")
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join([c for c in nfkd if not unicodedata.combining(c)])
 
 # Cấu hình đường dẫn import
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -229,12 +240,17 @@ def draw_pipeline4_result_hud(
     h, w = image.shape[:2]
     vis = image.copy()
 
-    card_w = min(500, w - 20)
-    card_h = 295
+    # Tính toán chiều cao thẻ linh hoạt theo từng dòng lý do
+    clean_reasons = [remove_vietnamese_accents(r) for r in reasons] if (not final_pass and reasons) else []
+    num_reasons = len(clean_reasons)
+    extra_h = max(0, num_reasons * 22) if num_reasons > 0 else 0
+
+    card_w = min(540, w - 20)
+    card_h = min(h - 25, 235 + extra_h)
     draw_ui_card(vis, 15, 15, card_w, card_h, bg_color=(15, 15, 20), alpha=0.88)
 
     cv2.putText(vis, f"E-KYC PIPELINE v4 REPORT (ID: {img_idx})", (25, 42),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 230, 255), 2)
+                cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 230, 255), 2, cv2.LINE_AA)
     cv2.line(vis, (25, 50), (15 + card_w - 20, 50), (80, 80, 80), 1)
 
     # 1. Face Detection & Single Person Rule
@@ -248,7 +264,7 @@ def draw_pipeline4_result_hud(
     else:
         f_txt = "1. Face Detect   : NO FACE DETECTED -> FAIL"
         f_col = (0, 0, 255)
-    cv2.putText(vis, f_txt, (25, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.44, f_col, 1)
+    cv2.putText(vis, f_txt, (25, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.44, f_col, 1, cv2.LINE_AA)
 
     # 2. Pose 3D
     if pose_info:
@@ -261,7 +277,7 @@ def draw_pipeline4_result_hud(
     else:
         p_txt = "2. Head Pose     : UNKNOWN"
         p_col = (0, 0, 255)
-    cv2.putText(vis, p_txt, (25, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.44, p_col, 1)
+    cv2.putText(vis, p_txt, (25, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.44, p_col, 1, cv2.LINE_AA)
 
     # 3. Anti-Spoof (Quét ảnh gốc + IoU Matching)
     if anti_spoof_info:
@@ -273,34 +289,38 @@ def draw_pipeline4_result_hud(
     else:
         as_txt = "3. Anti-Spoof    : NO DATA"
         as_col = (0, 165, 255)
-    cv2.putText(vis, as_txt, (25, 118), cv2.FONT_HERSHEY_SIMPLEX, 0.44, as_col, 1)
+    cv2.putText(vis, as_txt, (25, 118), cv2.FONT_HERSHEY_SIMPLEX, 0.44, as_col, 1, cv2.LINE_AA)
 
     # 4. Blink Liveness
     b_txt = f"4. Blink Liveness: PASS ({blink_count} blinks)" if blink_passed else f"4. Blink Liveness: FAIL ({blink_count} blinks)"
     b_col = (0, 255, 0) if blink_passed else (0, 0, 255)
-    cv2.putText(vis, b_txt, (25, 141), cv2.FONT_HERSHEY_SIMPLEX, 0.44, b_col, 1)
+    cv2.putText(vis, b_txt, (25, 141), cv2.FONT_HERSHEY_SIMPLEX, 0.44, b_col, 1, cv2.LINE_AA)
 
     # 5. Head Movement Liveness
     hm_txt = f"5. Head Movement : PASS [{head_action_name.upper()}]" if head_movement_passed else f"5. Head Movement : FAIL [{head_action_name.upper()}]"
     hm_col = (0, 255, 0) if head_movement_passed else (0, 0, 255)
-    cv2.putText(vis, hm_txt, (25, 164), cv2.FONT_HERSHEY_SIMPLEX, 0.44, hm_col, 1)
+    cv2.putText(vis, hm_txt, (25, 164), cv2.FONT_HERSHEY_SIMPLEX, 0.44, hm_col, 1, cv2.LINE_AA)
 
     cv2.line(vis, (25, 180), (15 + card_w - 20, 180), (80, 80, 80), 1)
 
     # 6. Final Decision
     verdict_text = "eKYC: APPROVED (HOP LE)" if final_pass else "eKYC: REJECTED (TU CHOI)"
     verdict_col = (0, 255, 0) if final_pass else (0, 0, 255)
-    cv2.putText(vis, verdict_text, (25, 212),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.68, verdict_col, 2)
+    cv2.putText(vis, verdict_text, (25, 208),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.68, verdict_col, 2, cv2.LINE_AA)
 
-    if not final_pass and reasons:
-        reason_str = "Ly do: " + "; ".join(reasons[:2])
-        cv2.putText(vis, reason_str, (25, 240),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 200, 255), 1)
-        if len(reasons) > 2:
-            reason_str_2 = "; ".join(reasons[2:])
-            cv2.putText(vis, reason_str_2, (25, 260),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 200, 255), 1)
+    # Tách mỗi lý do thành 1 dòng riêng biệt
+    if not final_pass and clean_reasons:
+        cv2.putText(vis, "Ly do tu choi:", (25, 230),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 200, 255), 1, cv2.LINE_AA)
+        start_y = 250
+        line_spacing = 20
+        for idx_r, r_text in enumerate(clean_reasons[:5]):
+            if len(r_text) > 65:
+                r_text = r_text[:62] + "..."
+            line_txt = f" * {r_text}"
+            cv2.putText(vis, line_txt, (25, start_y + idx_r * line_spacing),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.40, (140, 210, 255), 1, cv2.LINE_AA)
 
     return vis
 
@@ -877,7 +897,7 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                 # 4. Cập nhật Báo cáo tổng kết batch_summary_v4.csv
                 batch_csv_path = os.path.join(OUTPUT_DIR, "batch_summary_v4.csv")
                 file_exists = os.path.exists(batch_csv_path)
-                with open(batch_csv_path, "a", newline="", encoding="utf-8") as f:
+                with open(batch_csv_path, "a", newline="", encoding="utf-8-sig") as f:
                     writer = csv.writer(f)
                     if not file_exists:
                         writer.writerow([
