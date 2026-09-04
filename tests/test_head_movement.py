@@ -4,15 +4,11 @@ Test Head Movement Challenge (Real-Time Webcam)
 Kiểm tra tính năng phát hiện cử động đầu (Active Liveness Challenge):
   - Quay trái (Turn Left)
   - Quay phải (Turn Right)
-  - Ngước lên (Look Up)
-  - Cúi xuống (Look Down)
 
 Phím tắt:
-  - 'r' hoặc 'c': Đổi thử thách ngẫu nhiên mới
+  - 'r' hoặc 'c': Đổi thử thách ngẫu nhiên mới (Trái / Phải)
   - '1': Thử thách Quay Trái
   - '2': Thử thách Quay Phải
-  - '3': Thử thách Ngước Lên
-  - '4': Thử thách Cúi Xuống
   - 'q' hoặc ESC: Thoát
 =============================================================================
 """
@@ -96,7 +92,7 @@ def draw_ui_overlay(frame, hm_status, pose_dict, challenge_detector):
     cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (150, 150, 150), 1)
 
     # Hướng dẫn phím bấm ở góc dưới
-    help_txt = "[r/c]: Random Challenge | [1]: Left | [2]: Right | [3]: Up | [4]: Down | [q]: Thoat"
+    help_txt = "[r/c]: Random Challenge (Left/Right) | [1]: Left | [2]: Right | [q]: Thoat"
     cv2.putText(frame, help_txt, (20, h - 20),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
 
@@ -156,12 +152,6 @@ def main():
         elif key == ord('2'):
             head_movement.start_challenge(HeadAction.TURN_RIGHT)
             print(f"\n[CHALLENGE MOI] TURN_RIGHT -> {head_movement.get_prompt()}")
-        elif key == ord('3'):
-            head_movement.start_challenge(HeadAction.LOOK_UP)
-            print(f"\n[CHALLENGE MOI] LOOK_UP -> {head_movement.get_prompt()}")
-        elif key == ord('4'):
-            head_movement.start_challenge(HeadAction.LOOK_DOWN)
-            print(f"\n[CHALLENGE MOI] LOOK_DOWN -> {head_movement.get_prompt()}")
 
     cap.release()
     cv2.destroyAllWindows()

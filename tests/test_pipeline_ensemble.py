@@ -20,7 +20,7 @@ Quy trình thực hiện toàn diện (End-to-End eKYC Verification Pipeline):
      - Phân loại chi tiết 3 Classes: Real (Thật), 2D Paper Spoof, 3D Screen Spoof.
   5. Active Liveness (Tương tác thời gian thực trên Live Webcam):
      - Blink Detection: Đo chỉ số Eye Aspect Ratio (EAR) khi người dùng chớp mắt.
-     - Head Movement Challenge: Thử thách chuyển động đầu ngẫu nhiên (Quay trái/phải/ngước/cúi).
+     - Head Movement Challenge: Thử thách chuyển động đầu ngẫu nhiên (Quay trái/phải).
   6. Tổng hợp dữ liệu & Đưa ra quyết định cuối cùng (Final eKYC Decision):
      - Xuất các ảnh kết quả và file báo cáo chi tiết JSON/CSV vào thư mục output/<id>/.
 

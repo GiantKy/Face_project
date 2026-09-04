@@ -8,7 +8,7 @@ Quy trình eKYC chuẩn Ngân hàng:
   4. Face Alignment & 224x224 Face Crop (Căn chỉnh xoay ngang và cắt mặt)
   5. Anti-Spoofing Model (YOLO Model: Phân loại Real vs Fake/Spoof)
   6. Blink Detection (EAR - Eye Aspect Ratio: Đếm số lần chớp mắt)
-  7. Head Movement Detection (Thử thách cử động đầu: Quay trái/phải/ngước/cúi)
+  7. Head Movement Detection (Thử thách cử động đầu: Quay trái/phải)
   8. Final eKYC Decision Engine (Đánh giá tổng hợp toàn diện các tiêu chí)
 
 Chế độ hoạt động:
@@ -94,8 +94,9 @@ def compute_mouth_aspect_ratio(landmarks):
 # 2. ANTI-SPOOF DETECTOR CLASS
 # =============================================================================
 class AntiSpoofDetector:
-    def __init__(self, model_version="v2"):
+    def __init__(self, model_version="YOLO"):
         candidate_files = [
+            "Anti_Spoof_YOLO.pt",
             f"Anti_Spoof_{model_version}.pt",
             "Anti_Spoof_v2.pt",
             "Anti_Spoof_v1.pt",
@@ -112,7 +113,12 @@ class AntiSpoofDetector:
                 break
 
         if self.model_path is None:
-            raise FileNotFoundError("Không tìm thấy model Anti_Spoof trong thư mục models/")
+            import glob
+            pts = glob.glob(os.path.join(BASE_DIR, "models", "*Anti_Spoof*.pt"))
+            if pts:
+                self.model_path = pts[0]
+            else:
+                raise FileNotFoundError("Không tìm thấy model Anti_Spoof trong thư mục models/")
 
         print(f"[INFO] Loading Anti-Spoof model: {self.model_path}")
         self.model = YOLO(self.model_path)
@@ -539,7 +545,7 @@ class EKYCStep(Enum):
     ALIGN_FACE = 1        # Bước 1: Canh giữa khuôn mặt
     CHECK_SPOOF = 2       # Bước 2: Kiểm tra chống giả mạo
     BLINK_CHALLENGE = 3   # Bước 3: Thử thách chớp mắt
-    HEAD_CHALLENGE = 4    # Bước 4: Thử thách cử động đầu (quay trái/phải/ngước/cúi)
+    HEAD_CHALLENGE = 4    # Bước 4: Thử thách cử động đầu (quay trái/phải)
     SUCCESS = 5           # Bước 5: eKYC thành công (Approved)
     FAILED = 6            # Bước 6: eKYC thất bại (Rejected/Timeout)
 

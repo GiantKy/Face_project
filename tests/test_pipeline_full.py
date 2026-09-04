@@ -9,7 +9,7 @@ Quy trình thực hiện:
      - Face Detection -> Landmark Detection -> Pose 3D -> Face Align & Crop 224x224 -> Anti-Spoof Model.
   4. Bắt đầu Active Liveness trên luồng Live Webcam:
      - Blink Detection: Yêu cầu người dùng chớp mắt (đo EAR).
-     - Head Movement: Đưa ra thử thách quay đầu ngẫu nhiên (Trái/Phải/Ngước/Cúi).
+     - Head Movement: Đưa ra thử thách quay đầu ngẫu nhiên (Trái/Phải).
   5. Tổng hợp toàn bộ dữ liệu & Đưa ra quyết định cuối cùng (Final eKYC Decision).
   6. Lưu toàn bộ kết quả vào output/<id>/ gồm:
      - 1_pipeline_result.jpg
@@ -147,16 +147,9 @@ def json_serialize_helper(obj):
 # 2. ANTI-SPOOF DETECTOR CLASS
 # =============================================================================
 class AntiSpoofDetector:
-    def __init__(self, model_version="v7"):
+    def __init__(self, model_version="YOLO"):
         candidate_files = [
-            f"Anti_Spoof_{model_version}.pt",
-            "Anti_Spoof_v7.pt",
-            "Anti_Spoof_v5.pt",
-            "Anti_Spoof_v1.pt",
-            "Anti_Spoof_v2.pt",
-            "Anti_Spoof_v4.pt",
-            "Anti_Spoof_v3.pt",
-            "Anti_Spoof.pt"
+            "Anti_Spoof_YOLO.pt"
         ]
 
         self.model_path = None
@@ -167,7 +160,11 @@ class AntiSpoofDetector:
                 break
 
         if self.model_path is None:
-            raise FileNotFoundError("Không tìm thấy model Anti_Spoof trong thư mục models/")
+            pts = glob.glob(os.path.join(BASE_DIR, "models", "*Anti_Spoof*.pt"))
+            if pts:
+                self.model_path = pts[0]
+            else:
+                raise FileNotFoundError("Không tìm thấy model Anti_Spoof trong thư mục models/")
 
         print(f"[INFO] Loading Anti-Spoof model: {self.model_path}")
         self.model = YOLO(self.model_path)
@@ -979,7 +976,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Full E-KYC Pipeline 4 (Interactive Capture & Live Liveness)")
     parser.add_argument("--cam", type=int, default=0, help="Camera device index (mặc định 0)")
     parser.add_argument("--static", "--skip-liveness", action="store_true", help="Chế độ chụp và lưu AI nhanh, bỏ qua thử thách Liveness")
-    parser.add_argument("--version", type=str, default="v7", help="Phiên bản model Anti-Spoof (mặc định v7)")
+    parser.add_argument("--version", type=str, default="YOLO", help="Phiên bản model Anti-Spoof (mặc định YOLO)")
     args = parser.parse_args()
 
     try:

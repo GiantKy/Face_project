@@ -441,7 +441,7 @@ def main():
     )
     parser.add_argument(
         "--model", type=str, default=None,
-        help="Đường dẫn tuỳ chỉnh tới file model Anti_Spoof_minifasnetv2.pth"
+        help="Đường dẫn tuỳ chỉnh tới file model Anti_Spoof_minifasnet.pth"
     )
     parser.add_argument("--scale", type=float, default=2.7, help="Tỷ lệ crop khuôn mặt (mặc định 2.7x)")
     parser.add_argument(

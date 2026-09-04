@@ -1,0 +1,28 @@
+# ==============================================================================
+# Face-Project: eKYC Face ID, Anti-Spoofing & Liveness Detection Pipeline
+# ==============================================================================
+
+# Core Computer Vision & Image Processing
+opencv-python>=4.8.0.76
+numpy>=1.24.3,<2.0.0
+Pillow>=9.5.0
+
+# Face Landmark & Pose Estimation (Hỗ trợ MediaPipe Tasks API >= 0.10.14)
+mediapipe>=0.10.14
+
+# Deep Learning & Face Detection (YOLO)
+ultralytics>=8.0.0
+
+# PyTorch Ecosystem (MiniFASNet & MobileNetV2 Anti-Spoofing)
+# Lưu ý: Cài đặt bản CUDA tương ứng nếu có GPU NVIDIA (Xem chi tiết tại README.md)
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Hugging Face & Safetensors (Hỗ trợ model MobileNetV2 Anti-Spoof)
+transformers>=4.30.0
+safetensors>=0.4.0
+
+# Utilities & Data Processing
+tqdm>=4.65.0
+pandas>=2.0.0
+requests>=2.28.0

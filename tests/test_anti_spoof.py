@@ -15,12 +15,28 @@ from ultralytics import YOLO
 # MODEL PATH
 # =========================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_PATH = os.path.join(BASE_DIR, "models", "Anti_Spoof_v7.pt")
+candidate_models = [
+    "Anti_Spoof_YOLO.pt"
+]
+
+MODEL_PATH = None
+for name in candidate_models:
+    p = os.path.join(BASE_DIR, "models", name)
+    if os.path.exists(p):
+        MODEL_PATH = p
+        break
+
+if MODEL_PATH is None:
+    import glob
+    pts = glob.glob(os.path.join(BASE_DIR, "models", "*Anti_Spoof*.pt"))
+    if pts:
+        MODEL_PATH = pts[0]
+    else:
+        MODEL_PATH = os.path.join(BASE_DIR, "models", "Anti_Spoof_YOLO.pt")
 
 print(f"[INFO] Loading anti-spoof model: {MODEL_PATH}")
 
 model = YOLO(MODEL_PATH)
-
 
 print(f"[INFO] Model loaded! Classes: {model.names}")
 

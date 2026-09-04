@@ -1,6 +1,6 @@
 # 📋 SỔ TAY GHI CHÚ KIỂM THỬ (TEST NOTES & GUIDE)
 > **Dự án:** Hệ thống eKYC Face ID - Anti-Spoofing & Liveness Detection  
-> **Cập nhật ngày:** 01/09/2026
+> **Cập nhật ngày:** 04/09/2026
 
 ---
 
@@ -20,20 +20,24 @@
 
 ## 1. 🌐 Tổng quan Luồng eKYC Pipeline
 
-Hệ thống kiểm thử tuân theo lộ trình chuẩn 9 bước chuẩn Ngân hàng / eKYC:
+Hệ thống kiểm thử tuân theo lộ trình chuẩn quy định Ngân hàng / eKYC:
 
 ```mermaid
 flowchart TD
-    A[📷 Camera Frame] --> B[1. Face Detection]
-    B --> C[2. Landmark Detection]
-    C --> D[3. Pose Validation]
-    D --> E[4. Face Alignment]
-    E --> F[5. Face Crop 224x224 / 80x80]
-    F --> G[6. Anti-Spoof Model YOLO / MiniFASNet]
-    G --> H[7. Temporal Smoothing Score]
-    H --> I[8. Blink Detection EAR]
-    I --> J[9. Head Movement Challenge]
-    J --> K{🎯 Final Decision PASS / FAIL}
+    A[📷 Camera / Video Stream] --> B[1. Face Detection - YOLO]
+    B --> C[2. Face Landmark Extraction - MediaPipe 478 pts]
+    C --> D[3. 3D Pose Validation - Euler Angles: Yaw/Pitch/Roll]
+    D -->|Chưa đạt chuẩn| A
+    D -->|Hợp lệ| E[4. Face Alignment - Affine Transform]
+    E --> F[5. Normalized Face Crop - 224x224 / 80x80]
+    F --> G[6. Passive Anti-Spoofing - MobileNetV2 / MiniFASNet / YOLO]
+    G --> H[7. Active Liveness - Blink Detection via EAR]
+    H --> I[8. Active Challenge - Head Movement Turn Left/Right/Up/Down]
+    I --> J{🎯 Quyết Định eKYC Cuối Cùng}
+    J -->|Hợp Lệ| K[✅ PASS - Người Thật & Đạt Chuẩn]
+    J -->|Không Hợp Lệ| L[❌ FAIL - Giả Mạo / Thất Bại Thử Thách]
+    K --> M[💾 Xuất Báo Cáo JSON / CSV & Ảnh Lưu Trữ]
+    L --> M
 ```
 
 ---
@@ -46,20 +50,20 @@ flowchart TD
 | 2 | `test_landmark_detection.py` | Component | Trích xuất 468/478 điểm mốc khuôn mặt | `face_landmarker.task` (MediaPipe) |
 | 3 | `test_pose_validation.py` | Component | Ước lượng góc nghiêng 3D (Yaw, Pitch, Roll) | PnP Solver + MediaPipe |
 | 4 | `test_face_alignment_crop.py` | Component | Xoay thẳng mặt (Eye alignment) & Cắt vùng mặt | OpenCV Affine Transform |
-| 5 | `test_anti_spoof.py` | Anti-Spoof | Nhận diện Real/Spoof trực tiếp qua YOLO | `Anti_Spoof_v7.pt` |
-| 6 | `test_anti_spoof_minifasnet.py` | Anti-Spoof | Kiểm thử mạng MiniFASNetV2 với Face Crop | `Anti_Spoof_minifasnetv2_(9).pth` |
+| 5 | `test_anti_spoof.py` | Anti-Spoof | Nhận diện Real/Spoof trực tiếp qua YOLO | `Anti_Spoof_YOLO.pt` |
+| 6 | `test_anti_spoof_minifasnet.py` | Anti-Spoof | Kiểm thử mạng MiniFASNetV2 với Face Crop | `Anti_Spoof_minifasnet.pth` |
 | 7 | `test_anti_spoof_mobilenetv2.py` | Anti-Spoof | Kiểm thử mạng MobileNetV2 (Hugging Face Safetensors 224x224) | `Model_MobilenetV2` (`model.safetensors`) |
 | 8 | `test_anti_spoof_official_ensemble.py` | Anti-Spoof | Ensemble đa model MiniFASNet (V2 + V1SE) | `2.7_80x80_...pth` + `4_0_0_...pth` |
-| 9 | `test_anti_spoof_yolov7_minifasnet_ensemble.py` | Anti-Spoof | Ensemble kết hợp YOLOv7 + MiniFASNet(4) | `Anti_Spoof_v7.pt` + `Anti_Spoof_minifasnetv2_(4).pth` |
-| 10 | `test_head_movement.py` | Liveness | Thử thách cử động đầu (Trái/Phải/Lên/Xuống) | Pose Angle Tracker |
-| 11 | `test_pipeline.py` | Pipeline v1 | Tích hợp Face Detection + Anti-Spoof cơ bản | YOLO Det + YOLO Anti-Spoof |
-| 12 | `test_pipeline_2.py` | Pipeline v2 | Tích hợp Alignment, Crop & Smooth Score | Detection + Align + Anti-Spoof |
-| 13 | `test_pipeline_3.py` | Pipeline v3 | Bổ sung Blink Detection (chớp mắt đo EAR) | Det + Align + Anti-Spoof + Blink |
-| 14 | `test_pipeline_ensemble.py` | Pipeline Ensemble | Pipeline kết hợp Ensemble đa model MiniFASNet | MiniFASNet Ensemble + Pipeline |
-| 15 | `test_pipeline_full.py` | Full eKYC v4 | Pipeline hoàn chỉnh: Chụp ảnh + Liveness + Báo cáo xuất ra file | Toàn bộ module + Export Report |
-| 16 | `test_pipeline_yolov7_minifasnet_ensemble.py` | Full eKYC High FPS | Pipeline hoàn chỉnh tích hợp Ensemble YOLOv7 + MiniFASNet(4) | YOLOv7 + MiniFASNet(4) + Full eKYC |
-| 17 | `test_anti_spoof_dual_minifasnet_ensemble.py` | Anti-Spoof | Ensemble 2 model MiniFASNet nội bộ mới nhất ((4) + (3)) | `Anti_Spoof_minifasnetv2_(4).pth` + `_(3).pth` |
+| 9 | `test_head_movement.py` | Liveness | Thử thách cử động đầu (Trái/Phải/Lên/Xuống) | Pose Angle Tracker |
+| 10 | `test_pipeline.py` | Pipeline v1 | Tích hợp Face Detection + Anti-Spoof cơ bản | YOLO Det + YOLO Anti-Spoof |
+| 11 | `test_pipeline_2.py` | Pipeline v2 | Tích hợp Alignment, Crop & Smooth Score | Detection + Align + Anti-Spoof |
+| 12 | `test_pipeline_3.py` | Pipeline v3 | Bổ sung Blink Detection (chớp mắt đo EAR) | Det + Align + Anti-Spoof + Blink |
+| 13 | `test_pipeline_ensemble.py` | Pipeline Ensemble | Pipeline kết hợp Ensemble đa model MiniFASNet | MiniFASNet Ensemble + Pipeline |
+| 14 | `test_pipeline_mobilenet.py` | Full eKYC MobileNetV2 | Quy trình hoàn chỉnh với MobileNetV2: Chụp ảnh -> AI -> Chớp mắt -> Quay đầu -> Báo cáo | `Model_MobilenetV2` (Threshold 0.6) |
+| 15 | `test_pipeline_full.py` | Full eKYC YOLOv8 | Quy trình hoàn chỉnh với YOLO: Chụp ảnh -> AI -> Chớp mắt -> Quay đầu -> Báo cáo | `Anti_Spoof_YOLO.pt` + Full eKYC |
 
+> [!TIP]
+> **Khuyên dùng:** Sử dụng lệnh `py` (trình khởi chạy Python có sẵn của Windows) để chạy các file test nhằm đảm bảo gọi đúng môi trường Python 3.11 đã cài đặt đầy đủ OpenCV, PyTorch và MediaPipe.
 
 ---
 
@@ -71,15 +75,15 @@ flowchart TD
 * **Mục tiêu:** Kiểm tra độ nhạy, bounding box và tốc độ FPS của model Face Detection.
 * **Lệnh chạy:**
   ```powershell
-  python tests/test_face_detection.py
+  py tests/test_face_detection.py
   ```
 * **Tiêu chí đạt:** Khung xanh bắt chính xác khuôn mặt khi di chuyển, không bị giật, hiển thị confidence score $\ge 0.7$.
 
 #### 2. `test_landmark_detection.py`
-* **Mục tiêu:** Kiểm tra trích xuất các điểm mốc chính: Mắt trái, mắt phải, mũi, miệng.
+* **Mục tiêu:** Kiểm tra trích xuất 478 điểm mốc khuôn mặt (MediaPipe Face Landmarker Tasks API).
 * **Lệnh chạy:**
   ```powershell
-  python tests/test_landmark_detection.py
+  py tests/test_landmark_detection.py
   ```
 * **Tiêu chí đạt:** Các chấm landmark bám sát từng chuyển động của mắt, môi và sống mũi.
 
@@ -90,7 +94,7 @@ flowchart TD
   * **Roll:** Nghiêng đầu ($-15^\circ \le \text{Roll} \le 15^\circ$).
 * **Lệnh chạy:**
   ```powershell
-  python tests/test_pose_validation.py
+  py tests/test_pose_validation.py
   ```
 * **Tiêu chí đạt:** Báo `VALID` (xanh) khi nhìn thẳng, chuyển sang `INVALID` (đỏ/cam) kèm chỉ dẫn điều chỉnh khi quay lệch.
 
@@ -98,18 +102,19 @@ flowchart TD
 * **Mục tiêu:** Kiểm tra ma trận biến đổi Affine để xoay trục 2 mắt về đường nằm ngang và crop kích thước chuẩn $224 \times 224$ (hoặc $80 \times 80$).
 * **Lệnh chạy:**
   ```powershell
-  python tests/test_face_alignment_crop.py
+  py tests/test_face_alignment_crop.py
   ```
+* **Tiêu chí đạt:** Khuôn mặt được xoay thẳng trục mắt, tỷ lệ crop cân đối, không bị méo hình.
 
 ---
 
 ### Nhóm 2: Kiểm thử Anti-Spoofing Models
 
 #### 5. `test_anti_spoof.py`
-* **Kiến trúc:** YOLO Anti-Spoofing (`Anti_Spoof_v7.pt` / `Anti_Spoof_v5.pt`).
+* **Kiến trúc:** YOLO Anti-Spoofing (`Anti_Spoof_YOLO.pt`).
 * **Lệnh chạy:**
   ```powershell
-  python tests/test_anti_spoof.py
+  py tests/test_anti_spoof.py
   ```
 * **Kịch bản test:**
   1. Mặt thật trước camera $\rightarrow$ Nhãn `Real` (Màu xanh).
@@ -117,150 +122,160 @@ flowchart TD
   3. Đưa ảnh in giấy $\rightarrow$ Nhãn `Spoof` (Màu đỏ).
 
 #### 6. `test_anti_spoof_minifasnet.py`
-* **Kiến trúc:** MiniFASNetV2 (`.pth`) tối ưu hóa phát hiện giả mạo qua tần số Fourier & texture bề mặt.
+* **Kiến trúc:** MiniFASNetV2 (`Anti_Spoof_minifasnet.pth`) phân tích tần số Fourier và micro-texture trên Face Crop $80 \times 80$.
 * **Lệnh chạy:**
   ```powershell
-  python tests/test_anti_spoof_minifasnet.py
+  py tests/test_anti_spoof_minifasnet.py
   ```
-* **Ưu điểm:** Kích thước siêu nhẹ (~230KB - 1.8MB), tốc độ inference cực nhanh trên CPU.
+* **Ưu điểm:** Kích thước siêu nhẹ (~239 KB), tốc độ inference cực nhanh trên CPU.
 
 #### 7. `test_anti_spoof_mobilenetv2.py`
 * **Kiến trúc:** MobileNetV2 Image Classification (`model.safetensors` từ `models/Model_MobilenetV2/`).
 * **Kích thước đầu vào:** $224 \times 224$ pixels (RGB chuẩn hóa ImageNet).
-* **Phân lớp:** `0: LIVE` (Khuôn mặt thật), `1: SPOOF` (Giả mạo ảnh in, màn hình điện thoại/máy tính, video...).
+* **Phân lớp:** `0: LIVE` (Khuôn mặt thật), `1: SPOOF` (Giả mạo ảnh in, màn hình, video phát lại...).
 * **Lệnh chạy:**
   ```powershell
   # Chế độ Webcam trực tiếp
-  python tests/test_anti_spoof_mobilenetv2.py
+  py tests/test_anti_spoof_mobilenetv2.py
 
   # Test trên 1 ảnh đơn
-  python tests/test_anti_spoof_mobilenetv2.py --image path/to/image.jpg
+  py tests/test_anti_spoof_mobilenetv2.py --image data_raw/0.jpg
 
   # Test trên thư mục ảnh
-  python tests/test_anti_spoof_mobilenetv2.py --dir path/to/folder/
+  py tests/test_anti_spoof_mobilenetv2.py --dir data_raw/
   ```
-* **Phím tắt:** `Q`/`ESC` (Thoát), `S` (Chụp ảnh), `C` (Bật/tắt thumbnail 224x224), `M` (Đổi tỷ lệ crop scale 1.0x-2.0x), `+/-` (Chỉnh threshold), `SPACE` (Tạm dừng).
 
 #### 8. `test_anti_spoof_official_ensemble.py`
-* **Kiến trúc:** Ensemble kết hợp đa tỷ lệ crop (Scale 2.7 + Scale 4.0) và đa kiến trúc (MiniFASNetV2 + MiniFASNetV1SE).
+* **Kiến trúc:** Ensemble 2 mô hình MiniFASNet chính thức:
+  1. Model 1: `2.7_80x80_MiniFASNetV2.pth` (Scale 2.7x - Vùng mặt gần)
+  2. Model 2: `4_0_0_80x80_MiniFASNetV1SE.pth` (Scale 4.0x - Vùng ngữ cảnh rộng)
 * **Lệnh chạy:**
   ```powershell
-  python tests/test_anti_spoof_official_ensemble.py
-  ```
-* **Tiêu chí đạt:** Giảm tỷ lệ False Acceptance Rate (FAR) khi gặp các thủ thuật in ảnh chất lượng cao hoặc video replay.
-
-#### 9. `test_anti_spoof_yolov7_minifasnet_ensemble.py`
-
-* **Kiến trúc:** Ensemble đa mô hình khác biệt (Multi-Architecture):
-  * **YOLO Anti-Spoof v7** (`Anti_Spoof_v7.pt`): Nhận diện tổng thể khuôn mặt & vật thể spoof trong bối cảnh.
-  * **MiniFASNetV2(4)** (`Anti_Spoof_minifasnetv2_(4).pth`): Phân tích chi tiết vi mô (micro-texture) trên Face Crop 80x80.
-* **Chiến lược:** Hỗ trợ linh hoạt 3 chế độ: `Weighted Soft Voting`, `Strict eKYC (min real)`, `Cascade`.
-* **Lệnh chạy:**
-  ```powershell
-  # Chạy webcam tương tác trực tiếp
-  python tests/test_anti_spoof_yolov7_minifasnet_ensemble.py
-
-  # Hoặc test trên ảnh đơn / thư mục
-  python tests/test_anti_spoof_yolov7_minifasnet_ensemble.py --image path/to/image.jpg
-  python tests/test_anti_spoof_yolov7_minifasnet_ensemble.py --dir path/to/dir/
+  py tests/test_anti_spoof_official_ensemble.py
   ```
 
 ---
 
 ### Nhóm 3: Kiểm thử Liveness tương tác (Active Liveness)
 
-#### 8. `test_head_movement.py`
+#### 9. `test_head_movement.py`
 * **Mục tiêu:** Thử thách người dùng thực hiện chuyển động đầu theo yêu cầu ngẫu nhiên:
   * `TURN_LEFT`: Quay đầu sang trái
   * `TURN_RIGHT`: Quay đầu sang phải
-  * `LOOK_UP`: Ngước mặt lên trên
-  * `LOOK_DOWN`: Cúi mặt xuống
+  *(Đã loại bỏ `LOOK_UP` và `LOOK_DOWN` khỏi danh sách thử thách ngẫu nhiên để tối ưu hóa góc nhận diện camera và trải nghiệm người dùng)*
 * **Lệnh chạy:**
   ```powershell
-  python tests/test_head_movement.py
+  py tests/test_head_movement.py
   ```
 * **Phím tắt hỗ trợ:**
-  * `r` hoặc `c`: Đổi ngẫu nhiên thử thách mới.
-  * `1`, `2`, `3`, `4`: Chọn trực tiếp thử thách Trái / Phải / Lên / Xuống.
+  * `r` hoặc `c`: Đổi ngẫu nhiên thử thách mới (Trái / Phải).
+  * `1`, `2`: Chọn trực tiếp thử thách Trái / Phải.
 
 ---
 
 ### Nhóm 4: Kiểm thử tích hợp Pipeline
 
-#### 9. `test_pipeline_full.py` (Phiên bản Toàn diện nhất)
-* **Quy trình tương tác:**
-  1. **Bước 1 (Preview & Capture):** Căn khuôn mặt vào khung chuẩn. Bấm `SPACE` (hoặc bấm `a` để tự động chụp khi Pose hợp lệ).
-  2. **Bước 2 (Static Verification):** Hệ thống phân tích ảnh tĩnh: Face Det $\rightarrow$ Align $\rightarrow$ Crop $\rightarrow$ Anti-Spoofing Score.
-  3. **Bước 3 (Active Verification):** Thử thách chớp mắt (Blink EAR) + Thử thách quay đầu ngẫu nhiên.
-  4. **Bước 4 (Final Decision & Export):** Xuất toàn bộ ảnh crop, ảnh align và file JSON report vào thư mục `tests/output/<id>/`.
+#### 10. `test_pipeline.py` (Pipeline v1: Detection + Anti-Spoof Cơ Bản)
+* **Mục tiêu:** Kiểm tra tích hợp module Face Detection (YOLO) và mô hình Anti-Spoofing đầu tiên.
 * **Lệnh chạy:**
   ```powershell
-  python tests/test_pipeline_full.py
+  py tests/test_pipeline.py
   ```
-* **Kết quả đầu ra:**
-  * `output/<id>/1_pipeline_result.jpg`: Ảnh chụp màn hình kết quả tổng quan.
-  * `output/<id>/2_face_crop_224.jpg`: Ảnh khuôn mặt crop chuẩn $224\times224$.
-  * `output/<id>/3_aligned_full.jpg`: Ảnh đã xoay thẳng góc mặt.
-  * `output/<id>/4_report.json`: Báo cáo chi tiết các chỉ số (Score, Blink count, Pose angle, Decision).
-  * `batch_summary_v4.csv` & `batch_summary_v4.json`: Lịch sử tất cả các phiên kiểm thử.
+* **Chức năng:** Tự động phát hiện khuôn mặt trong khung hình camera, cắt bounding box và suy luận trực tiếp trạng thái Real / Spoof.
 
-#### 15. `test_pipeline_yolov7_minifasnet_ensemble.py`
-* **Kiến trúc:** Pipeline eKYC hoàn chỉnh thế hệ mới, tối ưu hóa tốc độ cao (30-60 FPS):
-  * **Preview & Liveness:** Sử dụng Face Detection & MediaPipe Landmarks siêu nhẹ, không bị nghẽn FPS.
-  * **Static AI Analysis:** Chạy mô hình kết hợp Ensemble giữa **YOLOv7** (`Anti_Spoof_v7.pt`) và **MiniFASNet(4)** (`Anti_Spoof_minifasnetv2_(4).pth`).
-  * **Active Liveness:** Blink (chớp mắt) + Head Movement (quay đầu theo hướng).
+#### 11. `test_pipeline_2.py` (Pipeline v2: Căn Chỉnh Mặt & Làm Mượt Điểm)
+* **Mục tiêu:** Bổ sung bước Face Alignment (Affine Transform căn thẳng trục 2 mắt) và bộ lọc làm mượt điểm số theo thời gian (Temporal Confidence Smoothing).
 * **Lệnh chạy:**
   ```powershell
-  python tests/test_pipeline_yolov7_minifasnet_ensemble.py
+  py tests/test_pipeline_2.py
   ```
-* **Tham số bổ sung:**
-  * `--auto`: Tự động chụp khi mặt nhìn thẳng và ổn định
-  * `--quick`: Chế độ chụp nhanh bỏ qua thử thách Liveness
-  * `--strategy {WEIGHTED,STRICT_EKYC,CASCADE}`: Chọn chiến lược gộp Ensemble
+* **Cải tiến:** Triệt tiêu hoàn toàn góc nghiêng đầu trước khi phân loại, giữ xác suất ổn định không bị chớp nháy giữa các frame liên tiếp.
 
-#### 16. `test_anti_spoof_dual_minifasnet_ensemble.py`
-* **Kiến trúc:** Ensemble kết hợp 2 mô hình MiniFASNetV2 nội bộ mới nhất do dự án train (loại trừ 2 model official):
-  * **Model 1:** `Anti_Spoof_minifasnetv2_(4).pth` (233.8 KB - Scale 1.2x)
-  * **Model 2:** `Anti_Spoof_minifasnetv2_(3).pth` (232.5 KB - Scale 2.0x)
-* **Ưu điểm:** Tốc độ siêu nhanh (~5-10 ms trên CPU), đạt **45 - 60+ FPS** mượt mà không giật lag.
+#### 12. `test_pipeline_3.py` (Pipeline v3: Bổ Sung Phát Hiện Chớp Mắt)
+* **Mục tiêu:** Tích hợp kiểm tra cử động sống thụ động thông qua đo tỷ lệ co giãn mí mắt (Eye Aspect Ratio - EAR).
 * **Lệnh chạy:**
   ```powershell
-  # Chạy webcam thời gian thực tốc độ cao
-  python tests/test_anti_spoof_dual_minifasnet_ensemble.py
-
-  # Test trên ảnh hoặc thư mục
-  python tests/test_anti_spoof_dual_minifasnet_ensemble.py --image path/to/image.jpg
-  python tests/test_anti_spoof_dual_minifasnet_ensemble.py --dir path/to/dir/
+  py tests/test_pipeline_3.py
   ```
+* **Chức năng:** Người dùng cần chớp mắt tự nhiên 1-2 lần để vượt qua bài kiểm tra sinh trắc học trước khi xác nhận người thật.
+
+#### 13. `test_pipeline_ensemble.py` (Pipeline Đa Mô Hình MiniFASNet Ensemble)
+* **Mục tiêu:** Kết hợp đồng thời 2 mô hình MiniFASNet chính thức với 2 tỉ lệ mở rộng khác nhau:
+  * Model 1: `2.7_80x80_MiniFASNetV2.pth` (Scale 2.7x)
+  * Model 2: `4_0_0_80x80_MiniFASNetV1SE.pth` (Scale 4.0x)
+* **Lệnh chạy:**
+  ```powershell
+  py tests/test_pipeline_ensemble.py
+  ```
+* **Ưu điểm:** Kháng tấn công màn hình và ảnh in với độ tin cậy vượt trội nhờ phân tích đa vùng ngữ cảnh.
+
+#### 14. `test_pipeline_mobilenet.py` (Pipeline eKYC Tương Tác Với MobileNetV2)
+* **Mô tả:** Pipeline eKYC hoàn chỉnh tích hợp model MobileNetV2 Safetensors 224x224. Mặc định mở Webcam tương tác trực tiếp với ngưỡng Real threshold **0.6**.
+* **Quy trình thực hiện:**
+  1. **Bước 1 (Preview & Align):** Căn mặt vào vị trí chuẩn, kiểm tra khoảng cách và góc nghiêng 3D. Nhấn `SPACE` hoặc `c` để chụp (hoặc `a` để tự động chụp khi căn chuẩn).
+  2. **Bước 2 (Chạy AI Model tĩnh):** Lưu ảnh gốc vào `data_raw/<id>.jpg`, chạy Face Detection -> Landmark -> Pose 3D -> Face Align & Crop 224x224 -> **MobileNetV2 Anti-Spoof** (ngưỡng 0.6).
+  3. **Bước 3 (Thử thách chớp mắt):** Chuyển sang luồng live webcam yêu cầu chớp mắt (đo EAR).
+  4. **Bước 4 (Thử thách cử động đầu):** Yêu cầu quay đầu theo hướng ngẫu nhiên (Trái/Phải/Lên/Xuống) có đếm ngược thời gian.
+  5. **Bước 5 (Tổng hợp quyết định & Xuất file):** Lưu kết quả chi tiết vào `output/pipeline_mobilenet/<id>/` và cập nhật file tổng kết `batch_summary_mobilenet.csv`.
+* **Lệnh chạy:**
+  ```powershell
+  # Chế độ Webcam trực tiếp (MẶC ĐỊNH)
+  py tests/test_pipeline_mobilenet.py
+
+  # Duyệt toàn bộ thư mục ảnh mẫu
+  py tests/test_pipeline_mobilenet.py --batch
+
+  # Chụp nhanh bỏ qua bước Liveness
+  py tests/test_pipeline_mobilenet.py --static
+  ```
+* **Kết quả đầu ra (`output/pipeline_mobilenet/<id>/`):**
+  * `1_pipeline_result.jpg`: Ảnh chụp kèm Dashboard HUD đầy đủ thông số.
+  * `1_pipeline_result_clean.jpg`: Ảnh kết quả sạch chỉ có badge kết quả.
+  * `2_face_crop_224.jpg`: Ảnh khuôn mặt $224 \times 224$ đưa vào MobileNetV2.
+  * `3_aligned_full.jpg`: Ảnh toàn cảnh đã xoay thẳng trục mắt.
+  * `4_report.json`: Báo cáo chi tiết dạng JSON.
+
+#### 15. `test_pipeline_full.py` (Pipeline eKYC Tương Tác Với YOLOv8)
+* **Mô tả:** Quy trình eKYC tương tác chuẩn tích hợp mô hình YOLO Anti-Spoofing (`Anti_Spoof_YOLO.pt`).
+* **Lệnh chạy:**
+  ```powershell
+  py tests/test_pipeline_full.py
+  ```
+* **Kết quả đầu ra (`output/<id>/`):**
+  * `1_pipeline_result.jpg`, `1_pipeline_result_clean.jpg`, `2_face_crop_224.jpg`, `3_aligned_full.jpg`, `4_report.json`.
+  * `batch_summary_v4.csv` và `batch_summary_v4.json`.
 
 ---
 
 ## 4. ⌨️ Bảng phím tắt điều khiển (Hotkeys)
 
-| Phím | Chức năng trong bài Test | File áp dụng |
+| Phím Tắt | Chức Năng | File Áp Dụng |
 |:---:|:---|:---|
-| `ESC` / `q` | Thoát ứng dụng và đóng camera | Tất cả các file test |
-| `SPACE` / `c` | Chụp ảnh để bắt đầu quy trình eKYC | `test_pipeline_full.py` |
-| `a` | Bật / Tắt chế độ tự động chụp (Auto-capture) | `test_pipeline_full.py` |
-| `r` | Reset phiên eKYC mới / Đổi thử thách ngẫu nhiên | `test_pipeline_full.py`, `test_head_movement.py` |
-| `1` - `4` | Chọn nhanh thử thách quay đầu (Trái / Phải / Lên / Xuống) | `test_head_movement.py` |
+| <kbd>SPACE</kbd> / <kbd>c</kbd> | Chụp ảnh và bắt đầu chu trình eKYC đầy đủ | `test_pipeline_mobilenet.py`, `test_pipeline_full.py` |
+| <kbd>s</kbd> | Chụp nhanh & Lưu ngay (Bỏ qua thử thách Liveness) | `test_pipeline_mobilenet.py`, `test_pipeline_full.py` |
+| <kbd>a</kbd> | Bật / Tắt chế độ **Auto-Capture** (tự động chụp khi mặt chuẩn) | `test_pipeline_mobilenet.py`, `test_pipeline_full.py` |
+| <kbd>r</kbd> | Reset phiên eKYC mới (ảnh ID tiếp theo) / Đổi thử thách mới | `test_pipeline_mobilenet.py`, `test_pipeline_full.py`, `test_head_movement.py` |
+| <kbd>1</kbd> - <kbd>4</kbd> | Chọn trực tiếp hướng thử thách quay đầu (Trái / Phải / Lên / Xuống) | `test_head_movement.py` |
+| <kbd>ESC</kbd> / <kbd>q</kbd> | Thoát chương trình an toàn | Tất cả các file test |
 
 ---
 
 ## 5. ⚙️ Cấu hình Model & Môi trường chạy
 
-### Đường dẫn trọng số mô hình (`models/`):
-* **Face Detection:** `models/Face_Detection.pt`
-* **Landmarks:** `models/face_landmarker.task`
-* **Anti-Spoof YOLO:** `models/Anti_Spoof_v7.pt` (hoặc `v1` đến `v5`)
-* **Anti-Spoof MiniFASNet:** `models/Anti_Spoof_minifasnetv2_(9).pth`
-* **Ensemble Models:** `models/2.7_80x80_MiniFASNetV2.pth` & `models/4_0_0_80x80_MiniFASNetV1SE.pth`
+### Danh mục trọng số mô hình (`models/`):
+* **Face Detection:** `models/Face_Detection.pt` (YOLO Face)
+* **Landmarks 3D:** `models/face_landmarker.task` (MediaPipe 478 points)
+* **Anti-Spoof YOLO:** `models/Anti_Spoof_YOLO.pt`
+* **Anti-Spoof MiniFASNet:** `models/Anti_Spoof_minifasnet.pth`
+* **Anti-Spoof Ensemble:** `models/2.7_80x80_MiniFASNetV2.pth` & `models/4_0_0_80x80_MiniFASNetV1SE.pth`
+* **Anti-Spoof MobileNetV2:** `models/Model_MobilenetV2/` (`model.safetensors`, input $224 \times 224$)
 
-### Cấu hình ngưỡng khuyến nghị (Default Thresholds):
-* **Face Det Confidence:** $\ge 0.60$
-* **Anti-Spoof Real Threshold:** $\ge 0.70$
-* **Blink EAR Threshold:** $\le 0.21$ (Mắt nhắm) / $\ge 0.27$ (Mắt mở)
-* **Pose Angles Limit:** $|\text{Yaw}| \le 15^\circ$, $|\text{Pitch}| \le 15^\circ$, $|\text{Roll}| \le 10^\circ$
+### Cấu hình ngưỡng chuẩn (Recommended Thresholds):
+* **Face Detection Confidence:** $\ge 0.70$
+* **MobileNetV2 Real Threshold:** $\ge 0.60$ (Mặc định)
+* **Anti-Spoof YOLO Threshold:** $\ge 0.60$
+* **Blink EAR Threshold:** $\le 0.18$ (Mắt nhắm) / $\ge 0.22$ (Mắt mở)
+* **Pose Angles Limit:** $|\text{Yaw}| \le 20^\circ$, $|\text{Pitch}| \le 15^\circ$, $|\text{Roll}| \le 12^\circ$
 
 ---
 
@@ -268,9 +283,9 @@ flowchart TD
 
 | Lỗi / Hiện tượng | Nguyên nhân | Cách khắc phục |
 |:---|:---|:---|
-| `Cannot open camera!` | Camera đang bị ứng dụng khác (Zoom, Teams, Browser) chiếm dụng hoặc ID camera sai | Tắt các ứng dụng dùng cam, thử đổi `cv2.VideoCapture(0)` thành `1` hoặc `2`. |
-| `FileNotFoundError: models/...` | Thiếu file trọng số hoặc sai đường dẫn tương đối | Kiểm tra thư mục `models/`, chạy script từ thư mục gốc dự án (`Face-Project/`). |
-| `ModuleNotFoundError: No module named 'src'` | Chưa nạp root path vào `sys.path` | Chạy lệnh bằng cú pháp: `python tests/<tên_test>.py` từ thư mục gốc. |
+| `ModuleNotFoundError: No module named 'cv2'` | Chạy bằng `python` của MSYS2 (`C:\msys64\ucrt64\bin\python.exe`) chưa cài OpenCV | Chạy bằng lệnh: `py tests/<tên_test>.py` hoặc mở terminal mới sau khi PATH đã cập nhật. |
+| `Cannot open camera!` | Camera đang bị ứng dụng khác (Zoom, Teams, Browser) chiếm dụng hoặc ID camera sai | Đóng ứng dụng dùng camera, thử thêm cờ `--cam 1` hoặc `--cam 2`. |
+| `FileNotFoundError: models/...` | Thiếu file trọng số hoặc chạy script ngoài thư mục dự án | Kiểm tra thư mục `models/`, đứng tại thư mục gốc `Face-Project/` để chạy lệnh. |
 | `KeyboardInterrupt` khi đang load model | Bấm `Ctrl + C` ngắt tiến trình giữa chừng khi PyTorch/YOLO đang compile đồ thị | Đợi 2-3 giây ở lần đầu tiên model khởi tạo trên CPU. |
-| Model chạy chậm / giật hình | Đang chạy thuần CPU hoặc độ phân giải camera quá lớn | Chỉnh kích thước frame `cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)` và `HEIGHT, 480`. |
-| Nhận diện nhầm Spoof thành Real dưới ánh đèn mạnh | Hiện tượng chóa sáng (Glare) làm mất texture da | Đảm bảo ánh sáng rọi đều khuôn mặt, tránh bóng đèn chiếu thẳng phía sau lưng. |
+| Model chạy chậm / giật FPS | Đang chạy thuần CPU hoặc độ phân giải camera quá lớn | Chỉnh kích thước frame trong code hoặc dùng card đồ họa NVIDIA CUDA. |
+| Nhận diện nhầm Spoof thành Real dưới ánh đèn mạnh | Hiện tượng chóa sáng (Glare) làm mất chi tiết da mặt | Đảm bảo ánh sáng rọi đều khuôn mặt, tránh bóng đèn chiếu thẳng phía sau lưng. |

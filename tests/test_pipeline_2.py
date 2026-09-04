@@ -99,8 +99,9 @@ def compute_mouth_aspect_ratio(landmarks):
 # 2. ANTI-SPOOF DETECTOR CLASS
 # =============================================================================
 class AntiSpoofDetector:
-    def __init__(self, model_version="v4"):
+    def __init__(self, model_version="YOLO"):
         candidate_files = [
+            "Anti_Spoof_YOLO.pt",
             f"Anti_Spoof_{model_version}.pt",
             "Anti_Spoof_v4.pt",
             "Anti_Spoof_v3.pt",
@@ -117,7 +118,12 @@ class AntiSpoofDetector:
                 break
                 
         if self.model_path is None:
-            raise FileNotFoundError("Không tìm thấy model Anti_Spoof trong thư mục models/")
+            import glob
+            pts = glob.glob(os.path.join(BASE_DIR, "models", "*Anti_Spoof*.pt"))
+            if pts:
+                self.model_path = pts[0]
+            else:
+                raise FileNotFoundError("Không tìm thấy model Anti_Spoof trong thư mục models/")
             
         print(f"[INFO] Loading Anti-Spoof model: {self.model_path}")
         self.model = YOLO(self.model_path)

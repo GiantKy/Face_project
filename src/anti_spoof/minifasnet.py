@@ -193,22 +193,17 @@ def check_model_quality(state_dict: dict) -> Dict[str, Any]:
 def find_default_minifasnet_model() -> str:
     """
     Tự động tìm kiếm file model MiniFASNet trong thư mục models/,
-    ưu tiên các phiên bản mới nhất: (10), (9), ..., (1) hoặc file mặc định.
+    ưu tiên các file hiện hành: Anti_Spoof_minifasnet.pth hoặc các phiên bản tương đương.
     """
     candidate_files = [
-        "Anti_Spoof_minifasnetv2_(10).pth",
-        "Anti_Spoof_minifasnetv2_(9).pth",
-        "Anti_Spoof_minifasnetv2_(8).pth",
-        "Anti_Spoof_minifasnetv2_(7).pth",
-        "Anti_Spoof_minifasnetv2_(6).pth",
-        "Anti_Spoof_minifasnetv2_(5).pth",
+        "Anti_Spoof_minifasnet.pth",
+        "Anti_Spoof_minifasnetv2.pth",
         "Anti_Spoof_minifasnetv2_(4).pth",
         "Anti_Spoof_minifasnetv2_(3).pth",
         "Anti_Spoof_minifasnetv2_(2).pth",
         "Anti_Spoof_minifasnetv2_(1).pth",
-        "Anti_Spoof_minifasnetv2.pth",
         "best_minifasnetv2.pth",
-        "Anti_Spoof_minifasnet.pth"
+        "2.7_80x80_MiniFASNetV2.pth"
     ]
 
     for fname in candidate_files:
@@ -216,11 +211,11 @@ def find_default_minifasnet_model() -> str:
         if os.path.exists(path):
             return path
 
-    all_pth = glob.glob(os.path.join(BASE_DIR, "models", "*minifasnet*.pth"))
+    all_pth = glob.glob(os.path.join(BASE_DIR, "models", "*minifas*.pth"))
     if all_pth:
         return max(all_pth, key=os.path.getmtime)
 
-    return os.path.join(BASE_DIR, "models", "Anti_Spoof_minifasnetv2.pth")
+    return os.path.join(BASE_DIR, "models", "Anti_Spoof_minifasnet.pth")
 
 
 def load_minifasnet_model(model_path: Optional[str] = None, device: Optional[torch.device] = None) -> Tuple[MiniFASNetV2, Dict[str, Any]]:

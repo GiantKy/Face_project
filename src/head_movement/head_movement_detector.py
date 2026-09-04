@@ -126,14 +126,13 @@ class HeadMovementDetector:
     def start_challenge(self, action: Optional[HeadAction] = None) -> HeadAction:
         """
         Bắt đầu một thử thách cử động đầu mới.
-        Nếu action = None, hệ thống sẽ chọn ngẫu nhiên giữa (TURN_LEFT, TURN_RIGHT, LOOK_UP, LOOK_DOWN).
+        Nếu action = None, hệ thống sẽ chọn ngẫu nhiên giữa (TURN_LEFT, TURN_RIGHT).
+        (Đã loại bỏ LOOK_UP và LOOK_DOWN để tối ưu trải nghiệm và góc nhìn camera).
         """
         if action is None or action == HeadAction.NONE:
             available_actions = [
                 HeadAction.TURN_LEFT,
-                HeadAction.TURN_RIGHT,
-                HeadAction.LOOK_UP,
-                HeadAction.LOOK_DOWN
+                HeadAction.TURN_RIGHT
             ]
             self.current_action = random.choice(available_actions)
         else:

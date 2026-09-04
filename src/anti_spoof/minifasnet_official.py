@@ -328,9 +328,9 @@ def build_minifasnet_v2_se(conv6_kernel=(5, 5), num_classes=3) -> MiniFASNetSE:
 def find_official_minifasnet_model() -> str:
     """Tìm file weights MiniFASNet chính thức trong models/"""
     candidates = [
-        "Anti_Spoof_minifasnetv2_(Copy).pth",
         "2.7_80x80_MiniFASNetV2.pth",
         "4_0_0_80x80_MiniFASNetV1SE.pth",
+        "Anti_Spoof_minifasnet.pth",
         "best_minifasnetv2.pth"
     ]
     for c in candidates:
@@ -344,7 +344,7 @@ def find_official_minifasnet_model() -> str:
         # Ưu tiên file lớn nhất (model chính thức ~1.85MB)
         return max(pth_files, key=os.path.getsize)
 
-    return os.path.join(BASE_DIR, "models", "Anti_Spoof_minifasnetv2_(Copy).pth")
+    return os.path.join(BASE_DIR, "models", "2.7_80x80_MiniFASNetV2.pth")
 
 
 class AntiSpoofOfficial:
