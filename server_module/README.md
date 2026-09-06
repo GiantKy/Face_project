@@ -295,23 +295,3 @@ Khi chạy `full_verify(..., output_dir="output/")` hoặc gọi qua lệnh CLI/
     "head_action": "TURN_LEFT"
   }
 }
-```
-
----
-
-## 8. Dự Trù Tích Hợp Với Thiết Bị MCU Edge (ESP32-CAM)
-
-Để triển khai hệ thống phần cứng hoàn chỉnh kết hợp giữa **MCU Edge (ESP32-CAM)** và **Server Module**:
-
-### 1. Phân bổ nhiệm vụ:
-- **MCU Edge (ESP32-CAM / ESP32-S3)**:
-  - Cấu hình camera OV2640 xuất ảnh JPEG kích thước VGA ($640 \times 480$) hoặc SVGA ($800 \times 600$).
-  - Bật Auto Exposure (AEC), Auto White Balance (AWB) và bật đèn Flash trợ sáng khi chụp.
-  - Sử dụng cảm biến chuyển động PIR hoặc thuật toán Frame Diff / Tiny Face để kích hoạt chụp khi có người đến gần.
-  - Kết nối WiFi và gửi frame JPEG lên Server qua HTTP POST hoặc WebSocket.
-  - Nhận lệnh phản hồi từ Server để điều khiển dải LED/OLED hướng dẫn người dùng (*"Nhìn thẳng"*, *"Chớp mắt"*, *"Quay trái"*).
-  - Kích hoạt Relay mở khóa cửa khi nhận kết quả `APPROVED`.
-- **Server Module**:
-  - Tiếp nhận frame ảnh từ MCU.
-  - Chạy chuỗi AI YOLO phát hiện khuôn mặt, trích xuất 478 landmarks, kiểm tra góc nghiêng 3D, căn chỉnh crop chuẩn và quét chống giả mạo Anti-Spoofing.
-  - Trả kết quả JSON xác thực về cho Node.js/MCU.
