@@ -34,7 +34,7 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libegl1
+          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libegl1 libgles2
 
       # 4. Cài đặt các gói Python dependencies
       - name: Install Python Dependencies

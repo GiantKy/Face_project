@@ -19,7 +19,7 @@ cache:
 default:
   image: python:3.11-slim
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libegl1
+    - apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libegl1 libgles2
     - python -m pip install --upgrade pip
     - pip install -r requirements.txt
     - mkdir -p server_module/models
