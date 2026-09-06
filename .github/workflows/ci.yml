@@ -30,11 +30,11 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      # 3. Cài đặt thư viện đồ họa hệ thống cho OpenCV trên Linux headless
+      # 3. Cài đặt thư viện đồ họa hệ thống cho OpenCV và MediaPipe trên Linux headless
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
+          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libegl1
 
       # 4. Cài đặt các gói Python dependencies
       - name: Install Python Dependencies
