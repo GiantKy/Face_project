@@ -591,27 +591,31 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                 if pose_dict_static:
                     print(f"[4. Head Pose 3D] Y={pose_dict_static['yaw']:+.1f}° | P={pose_dict_static['pitch']:+.1f}° | R={pose_dict_static['roll']:+.1f}° -> {'PASS' if pose_valid_static else 'FAIL'}")
 
-            # 6. Face Alignment & 224x224 Crop cho Primary Face
+            # 6. Cắt khuôn mặt chính thẳng đứng tự nhiên từ Bounding Box của YOLO trên ảnh gốc
             aligned_img_static = None
             face_crop_static = None
+
+            # Cắt ảnh khuôn mặt thẳng đứng 100% không xoay chéo theo Bounding Box YOLO
+            if primary_face is not None:
+                face_crop_static = aligner.crop_face(
+                    captured_frame,
+                    bbox=primary_face["bbox"],
+                    padding=25,
+                    output_size=(224, 224),
+                    mode="bbox"
+                )
+                print(f"[5. Face Crop] Cắt ảnh chuẩn thẳng đứng tự nhiên từ YOLO BBox (224x224).")
+            elif landmarks_static:
+                face_crop_static = aligner.crop_face(
+                    captured_frame,
+                    landmarks=landmarks_static,
+                    padding=25,
+                    output_size=(224, 224)
+                )
+
+            # Căn chỉnh xoay 2 mắt nếu cần ảnh aligned đối soát
             if landmarks_static:
                 aligned_img_static = aligner.align_face(captured_frame, landmarks_static)
-                aligned_lms = aligner.get_landmarks(aligned_img_static)
-                if aligned_lms:
-                    face_crop_static = aligner.crop_face(aligned_img_static, aligned_lms, padding=20, output_size=(224, 224))
-                    print(f"[5. Face Alignment & Crop] Cắt ảnh chuẩn 224x224 cho Primary Face thành công.")
-
-            # Fallback nếu không căn chỉnh được Landmark nhưng có Primary Face BBox
-            if face_crop_static is None and primary_face is not None:
-                px1, py1, px2, py2 = primary_face["bbox"]
-                px1_c = max(0, min(w_f - 1, px1))
-                py1_c = max(0, min(h_f - 1, py1))
-                px2_c = max(0, min(w_f, px2))
-                py2_c = max(0, min(h_f, py2))
-                raw_crop_p = captured_frame[py1_c:py2_c, px1_c:px2_c]
-                if raw_crop_p.size > 0:
-                    face_crop_static = cv2.resize(raw_crop_p, (224, 224))
-                    print(f"[5. Face Crop] Sử dụng ảnh crop dự phòng từ BBox (224x224).")
 
             if aligned_img_static is None:
                 aligned_img_static = captured_frame.copy()

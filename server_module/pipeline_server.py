@@ -443,24 +443,28 @@ class EKYCPipelineServer:
         if landmarks:
             pose_valid, pose_msg, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point)
 
-        # 4. Face Alignment & 224x224 Crop
+        # 4. Cắt khuôn mặt chính thẳng đứng tự nhiên từ Bounding Box của YOLO trên ảnh gốc
         aligned_img = None
         face_crop_224 = None
+        if primary_face is not None:
+            face_crop_224 = self.aligner.crop_face(
+                frame,
+                bbox=primary_face["bbox"],
+                padding=25,
+                output_size=(224, 224),
+                mode="bbox"
+            )
+        elif landmarks:
+            face_crop_224 = self.aligner.crop_face(
+                frame,
+                landmarks=landmarks,
+                padding=25,
+                output_size=(224, 224)
+            )
+
+        # Căn chỉnh xoay mắt nếu cần ảnh đối soát
         if landmarks:
             aligned_img = self.aligner.align_face(frame, landmarks)
-            aligned_lms = self.aligner.get_landmarks(aligned_img)
-            if aligned_lms:
-                face_crop_224 = self.aligner.crop_face(
-                    aligned_img, aligned_lms, padding=20, output_size=(224, 224)
-                )
-
-        if face_crop_224 is None and primary_face is not None:
-            px1, py1, px2, py2 = primary_face["bbox"]
-            px1_c, py1_c = max(0, min(w_f - 1, px1)), max(0, min(h_f - 1, py1))
-            px2_c, py2_c = max(0, min(w_f, px2)), max(0, min(h_f, py2))
-            raw_crop_p = frame[py1_c:py2_c, px1_c:px2_c]
-            if raw_crop_p.size > 0:
-                face_crop_224 = cv2.resize(raw_crop_p, (224, 224))
 
         if aligned_img is None:
             aligned_img = frame.copy()
