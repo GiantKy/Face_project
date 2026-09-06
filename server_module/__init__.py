@@ -12,7 +12,10 @@ from .utils import (
     calculate_iou,
     compute_eye_aspect_ratio,
     remove_vietnamese_accents,
-    draw_pipeline_result_hud
+    draw_pipeline_result_hud,
+    create_pipeline_result_dashboard,
+    create_side_by_side_result,
+    show_dual_window_result
 )
 from .config import (
     FACE_DETECTION_MODEL_PATH,
@@ -31,6 +34,9 @@ __all__ = [
     "compute_eye_aspect_ratio",
     "remove_vietnamese_accents",
     "draw_pipeline_result_hud",
+    "create_pipeline_result_dashboard",
+    "create_side_by_side_result",
+    "show_dual_window_result",
     "FACE_DETECTION_MODEL_PATH",
     "ANTI_SPOOF_YOLO_MODEL_PATH",
     "FACE_LANDMARKER_MODEL_PATH",

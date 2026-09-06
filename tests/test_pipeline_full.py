@@ -66,6 +66,10 @@ from src.pose_validation import PoseValidator
 from src.pose_validation.draw_pose import draw_pose_info
 from src.face_alignment_crop import FaceAligner
 from src.head_movement import HeadMovementDetector, HeadAction, ChallengeState
+from server_module.utils import (
+    create_pipeline_result_dashboard,
+    create_side_by_side_result
+)
 
 DATA_RAW_DIR = os.path.join(BASE_DIR, "data_raw")
 OUTPUT_DIR = os.path.join(CURRENT_DIR, "output")
@@ -822,12 +826,26 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                     reasons
                 )
 
-                # 3. Lưu các file vào thư mục output/<id>/
-                # File 1A: 1_pipeline_result.jpg (Kèm bảng điều khiển HUD Dashboard chi tiết)
-                out_res_path = os.path.join(captured_result_dir, "1_pipeline_result.jpg")
-                cv2.imwrite(out_res_path, final_display_img)
+                # Tạo bảng Dashboard thông số độc lập (Window 2)
+                dashboard_img = create_pipeline_result_dashboard(
+                    img_idx=current_img_idx,
+                    face_info=primary_face,
+                    num_faces=num_faces,
+                    pose_info=pose_dict_static,
+                    pose_valid=pose_valid_static,
+                    anti_spoof_info=best_spoof_static,
+                    spoof_iou=primary_spoof_iou,
+                    blink_passed=blink_passed,
+                    blink_count=blink_counter,
+                    head_movement_passed=head_movement_passed,
+                    head_action_name=current_head_action.value,
+                    final_pass=final_pass,
+                    reasons=reasons,
+                    face_crop=face_crop_static,
+                    target_height=h
+                )
 
-                # File 1B: 1_pipeline_result_clean.jpg (Ảnh kết quả sạch, giữ BBox/Landmarks/Tag nhưng BỎ ĐI BẢNG ĐIỀU KHIỂN)
+                # Ảnh kết quả sạch (Window 1)
                 clean_img = res_img.copy()
                 verdict_badge = "eKYC: APPROVED" if final_pass else "eKYC: REJECTED"
                 badge_col = (0, 255, 0) if final_pass else (0, 0, 255)
@@ -835,8 +853,28 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                 cv2.rectangle(clean_img, (w - 240, 15), (w - 15, 55), badge_col, 2)
                 cv2.putText(clean_img, verdict_badge, (w - 225, 42),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.62, badge_col, 2)
+
+                # Ghép 2 Window song song cạnh nhau không bao giờ che mặt
+                side_by_side_img = create_side_by_side_result(clean_img, dashboard_img)
+
+                # 3. Lưu các file vào thư mục output/<id>/
+                # File 1A: 1_pipeline_result_clean.jpg (Ảnh khuôn mặt sạch, không bị bảng che)
                 out_clean_path = os.path.join(captured_result_dir, "1_pipeline_result_clean.jpg")
                 cv2.imwrite(out_clean_path, clean_img)
+
+                # File 1B: 1_dashboard_panel.jpg (Bảng thông số Dashboard độc lập)
+                out_dash_path = os.path.join(captured_result_dir, "1_dashboard_panel.jpg")
+                cv2.imwrite(out_dash_path, dashboard_img)
+
+                # File 1C: 1_pipeline_side_by_side.jpg (Ghép 2 window cạnh nhau)
+                out_sbs_path = os.path.join(captured_result_dir, "1_pipeline_side_by_side.jpg")
+                cv2.imwrite(out_sbs_path, side_by_side_img)
+
+                # File 1: 1_pipeline_result.jpg (Mặc định xuất ảnh song song không che mặt)
+                out_res_path = os.path.join(captured_result_dir, "1_pipeline_result.jpg")
+                cv2.imwrite(out_res_path, side_by_side_img)
+
+                final_display_img = side_by_side_img
 
                 # File 2: 2_face_crop_224.jpg (Khuôn mặt chính đã align chuẩn hóa 224x224)
                 if face_crop_static is not None:
@@ -923,8 +961,9 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                 print("=" * 65 + "\n")
 
             display = final_display_img.copy()
-            draw_ui_card(display, 20, h - 70, w - 40, 50, bg_color=(15, 15, 20), alpha=0.85)
-            cv2.putText(display, "[r]: Tiep tuc chup anh tiep theo | [q]: Thoat", (35, h - 38),
+            disp_h, disp_w = display.shape[:2]
+            draw_ui_card(display, 20, disp_h - 70, disp_w - 40, 50, bg_color=(15, 15, 20), alpha=0.85)
+            cv2.putText(display, "[r]: Tiep tuc chup anh tiep theo | [q]: Thoat", (35, disp_h - 38),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 230, 255), 2)
 
         # Vẽ thanh trạng thái FPS ở góc phải trên

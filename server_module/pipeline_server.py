@@ -51,6 +51,8 @@ try:
         compute_eye_aspect_ratio,
         json_serialize_helper,
         draw_pipeline_result_hud,
+        create_pipeline_result_dashboard,
+        create_side_by_side_result,
         remove_vietnamese_accents
     )
 except (ImportError, ValueError):
@@ -89,6 +91,8 @@ except (ImportError, ValueError):
         compute_eye_aspect_ratio,
         json_serialize_helper,
         draw_pipeline_result_hud,
+        create_pipeline_result_dashboard,
+        create_side_by_side_result,
         remove_vietnamese_accents
     )
 
@@ -567,52 +571,69 @@ class EKYCPipelineServer:
                 if c_img.size > 0:
                     cv2.imwrite(os.path.join(all_faces_dir, f"face_{idx_f}.jpg"), c_img)
 
-            # 1A: 1_pipeline_result.jpg (kèm HUD)
-            res_img = frame.copy()
+            # 1: Ảnh khuôn mặt sạch đã annotate (Bounding box, landmarks tinh tế, không có bảng HUD che)
+            clean_img = frame.copy()
             for f_it in faces:
                 bx1, by1, bx2, by2 = f_it["bbox"]
                 is_p = (primary_face and f_it["bbox"] == primary_face["bbox"])
                 box_c = (0, 255, 0) if is_p else (200, 200, 200)
-                cv2.rectangle(res_img, (bx1, by1), (bx2, by2), box_c, 2 if is_p else 1)
+                cv2.rectangle(clean_img, (bx1, by1), (bx2, by2), box_c, 2 if is_p else 1)
+                lbl_tag = "PRIMARY FACE" if is_p else "EXTRA FACE"
+                cv2.putText(clean_img, lbl_tag, (bx1, max(18, by1 - 6)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, box_c, 1, cv2.LINE_AA)
 
             if landmarks:
-                res_img = draw_landmarks(res_img, landmarks)
+                clean_img = draw_landmarks(clean_img, landmarks)
 
             if spoof_detections:
                 for sd in spoof_detections:
                     sx1, sy1, sx2, sy2 = sd["bbox"]
                     scol = (0, 255, 0) if sd["is_real"] else (0, 0, 255)
-                    cv2.rectangle(res_img, (sx1, sy1), (sx2, sy2), scol, 2)
-                    cv2.putText(res_img, f"{sd['label']} {sd['confidence']*100:.1f}%",
-                                (sx1, max(25, sy1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.65, scol, 2)
+                    cv2.rectangle(clean_img, (sx1, sy1), (sx2, sy2), scol, 2)
+                    cv2.putText(clean_img, f"{sd['label']} {sd['confidence']*100:.1f}%",
+                                (sx1, max(25, sy1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.60, scol, 2)
 
-            hud_img = draw_pipeline_result_hud(
-                res_img,
-                img_id,
-                primary_face,
-                num_faces,
-                pose_dict,
-                pose_valid,
-                best_spoof,
-                primary_spoof_iou,
-                blink_passed,
-                blink_count,
-                head_movement_passed,
-                head_action_name,
-                final_pass,
-                reasons
-            )
-            cv2.imwrite(os.path.join(sess_out_dir, "1_pipeline_result.jpg"), hud_img)
-
-            # 1B: 1_pipeline_result_clean.jpg
-            clean_img = res_img.copy()
             verdict_badge = "eKYC: APPROVED" if final_pass else "eKYC: REJECTED"
             badge_col = (0, 255, 0) if final_pass else (0, 0, 255)
-            cv2.rectangle(clean_img, (w_f - 240, 15), (w_f - 15, 55), (15, 15, 20), -1)
-            cv2.rectangle(clean_img, (w_f - 240, 15), (w_f - 15, 55), badge_col, 2)
-            cv2.putText(clean_img, verdict_badge, (w_f - 225, 42),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.62, badge_col, 2)
+            badge_w = 210
+            cv2.rectangle(clean_img, (w_f - badge_w - 15, 12), (w_f - 15, 48), (15, 18, 24), -1)
+            cv2.rectangle(clean_img, (w_f - badge_w - 15, 12), (w_f - 15, 48), badge_col, 2)
+            cv2.putText(clean_img, verdict_badge, (w_f - badge_w - 2, 36),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, badge_col, 2, cv2.LINE_AA)
+
+            # 2: Tạo Canvas bảng thông số Dashboard độc lập (Window 2)
+            dashboard_img = create_pipeline_result_dashboard(
+                img_idx=img_id,
+                face_info=primary_face,
+                num_faces=num_faces,
+                pose_info=pose_dict,
+                pose_valid=pose_valid,
+                anti_spoof_info=best_spoof,
+                spoof_iou=primary_spoof_iou,
+                blink_passed=blink_passed,
+                blink_count=blink_count,
+                head_movement_passed=head_movement_passed,
+                head_action_name=head_action_name,
+                final_pass=final_pass,
+                reasons=reasons,
+                face_crop=face_crop_224,
+                target_height=h_f
+            )
+
+            # 3: Tạo ảnh ghép 2 Window song song cạnh nhau (Side-by-Side)
+            side_by_side_img = create_side_by_side_result(clean_img, dashboard_img)
+
+            # File 1A: 1_pipeline_result_clean.jpg (Khuôn mặt rõ ràng, không bị che khuất)
             cv2.imwrite(os.path.join(sess_out_dir, "1_pipeline_result_clean.jpg"), clean_img)
+
+            # File 1B: 1_dashboard_panel.jpg (Bảng thông số độc lập độ phân giải cao)
+            cv2.imwrite(os.path.join(sess_out_dir, "1_dashboard_panel.jpg"), dashboard_img)
+
+            # File 1C: 1_pipeline_side_by_side.jpg (Ghép 2 window cạnh nhau, trực quan)
+            cv2.imwrite(os.path.join(sess_out_dir, "1_pipeline_side_by_side.jpg"), side_by_side_img)
+
+            # File 1: 1_pipeline_result.jpg (Mặc định xuất dạng 2 window song song để không che mặt)
+            cv2.imwrite(os.path.join(sess_out_dir, "1_pipeline_result.jpg"), side_by_side_img)
 
             # 2: 2_face_crop_224.jpg
             if face_crop_224 is not None:

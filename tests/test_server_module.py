@@ -65,9 +65,24 @@ def test_server_pipeline():
     )
     print(" -> Kết quả Final Decision:")
     print(json.dumps(report["final_decision"], ensure_ascii=False, indent=2))
-    print(f"\n[OK] Đã xuất báo cáo và các ảnh HUD vào: {test_out_dir}")
+    print(f"\n[OK] Đã xuất báo cáo và các ảnh kết quả vào: {test_out_dir}")
+    print(f"     + 1_pipeline_result_clean.jpg  (Ảnh mặt sạch, không che)")
+    print(f"     + 1_dashboard_panel.jpg        (Bảng Dashboard độc lập)")
+    print(f"     + 1_pipeline_side_by_side.jpg  (Ghép 2 window cạnh nhau)")
     print("=" * 70)
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Test script for server_module")
+    parser.add_argument("--view", action="store_true", help="Mở 2 cửa sổ trực quan xem kết quả sau khi kiểm thử")
+    args = parser.parse_args()
+
     test_server_pipeline()
+
+    if args.view:
+        sess_dir = os.path.join(PROJECT_ROOT, "output", "test_server_module", "test_0")
+        from tools.view_results import EKYCResultViewer
+        viewer = EKYCResultViewer([sess_dir])
+        viewer.run()
+
