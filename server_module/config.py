@@ -10,16 +10,24 @@ from pathlib import Path
 SERVER_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SERVER_MODULE_DIR)
 
-# Thư mục models nội bộ bên trong server_module
-MODELS_DIR = os.path.join(SERVER_MODULE_DIR, "models")
-if not os.path.exists(MODELS_DIR):
-    # Fallback dự phòng nếu chưa có thư mục con
-    MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
+# Thư mục models nội bộ bên trong server_module và thư mục models gốc
+MODELS_INTERNAL_DIR = os.path.join(SERVER_MODULE_DIR, "models")
+MODELS_ROOT_DIR = os.path.join(PROJECT_ROOT, "models")
+
+def _resolve_model_path(model_filename: str) -> str:
+    """Tìm đường dẫn file model: ưu tiên server_module/models, dự phòng models/."""
+    p1 = os.path.join(MODELS_INTERNAL_DIR, model_filename)
+    if os.path.exists(p1):
+        return p1
+    p2 = os.path.join(MODELS_ROOT_DIR, model_filename)
+    if os.path.exists(p2):
+        return p2
+    return p1
 
 # Đường dẫn các mô hình AI theo chuẩn test_pipeline_full
-FACE_DETECTION_MODEL_PATH = os.path.join(MODELS_DIR, "Face_Detection.pt")
-ANTI_SPOOF_YOLO_MODEL_PATH = os.path.join(MODELS_DIR, "Anti_Spoof_YOLO.pt")
-FACE_LANDMARKER_MODEL_PATH = os.path.join(MODELS_DIR, "face_landmarker.task")
+FACE_DETECTION_MODEL_PATH = _resolve_model_path("Face_Detection.pt")
+ANTI_SPOOF_YOLO_MODEL_PATH = _resolve_model_path("Anti_Spoof_YOLO.pt")
+FACE_LANDMARKER_MODEL_PATH = _resolve_model_path("face_landmarker.task")
 
 # Thư mục lưu kết quả mặc định
 DEFAULT_DATA_RAW_DIR = os.path.join(PROJECT_ROOT, "data_raw")

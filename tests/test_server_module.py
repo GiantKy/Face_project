@@ -6,6 +6,9 @@ Kiểm thử trực tiếp các hàm của server_module trên ảnh mẫu trong
 import os
 import sys
 import json
+import glob
+import numpy as np
+import cv2
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
@@ -20,10 +23,25 @@ def test_server_pipeline():
     print("      KIỂM THỬ E-KYC SERVER MODULE (YOLO ENGINE)")
     print("=" * 70)
 
+    # Đảm bảo thư mục output tồn tại ngay từ đầu
+    test_out_dir = os.path.join(PROJECT_ROOT, "output", "test_server_module")
+    os.makedirs(test_out_dir, exist_ok=True)
+
+    # Tìm ảnh test
     test_img_path = os.path.join(PROJECT_ROOT, "data_raw", "0.jpg")
     if not os.path.exists(test_img_path):
-        print(f"[CẢNH BÁO] Không tìm thấy ảnh test: {test_img_path}")
-        return
+        # Thử tìm ảnh bất kỳ trong data_raw
+        raw_candidates = glob.glob(os.path.join(PROJECT_ROOT, "data_raw", "*.jpg")) + \
+                         glob.glob(os.path.join(PROJECT_ROOT, "data_raw", "*.png"))
+        if raw_candidates:
+            test_img_path = raw_candidates[0]
+        else:
+            # Tạo ảnh test synthetic nếu data_raw hoàn toàn trống
+            print("[INFO] data_raw trống, đang tạo ảnh test mẫu...")
+            os.makedirs(os.path.join(PROJECT_ROOT, "data_raw"), exist_ok=True)
+            dummy_img = np.full((480, 640, 3), (180, 180, 180), dtype=np.uint8)
+            cv2.circle(dummy_img, (320, 240), 90, (140, 120, 100), -1)
+            cv2.imwrite(test_img_path, dummy_img)
 
     print(f"[TEST 1] Đang nạp ảnh test: {test_img_path}")
     img = load_image(test_img_path)

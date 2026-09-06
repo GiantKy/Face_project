@@ -7,6 +7,10 @@ on:
     branches: [ main, master ]
   workflow_dispatch: # Cho phép kích hoạt kiểm thử thủ công từ giao diện GitHub Actions
 
+# Tắt cảnh báo ép buộc Node 24 cho các action chính thức của GitHub (checkout, setup-python, upload-artifact)
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE20: true
+
 jobs:
   test-server-module:
     name: Test Server Module (Headless)
@@ -38,20 +42,35 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 5. Đảm bảo các file mô hình sẵn sàng trong server_module/models
-      - name: Ensure Model Files
+      # 5. Đảm bảo thư mục output và các file mô hình sẵn sàng
+      - name: Prepare Models and Output Directories
         run: |
+          mkdir -p output/test_server_module
           mkdir -p server_module/models
+          
+          # Đồng bộ các file model giữa models/ và server_module/models/
           if [ -f "models/Face_Detection.pt" ] && [ ! -f "server_module/models/Face_Detection.pt" ]; then
             cp models/Face_Detection.pt server_module/models/
+          elif [ -f "server_module/models/Face_Detection.pt" ] && [ ! -f "models/Face_Detection.pt" ]; then
+            mkdir -p models && cp server_module/models/Face_Detection.pt models/
           fi
+
           if [ -f "models/Anti_Spoof_YOLO.pt" ] && [ ! -f "server_module/models/Anti_Spoof_YOLO.pt" ]; then
             cp models/Anti_Spoof_YOLO.pt server_module/models/
+          elif [ -f "server_module/models/Anti_Spoof_YOLO.pt" ] && [ ! -f "models/Anti_Spoof_YOLO.pt" ]; then
+            mkdir -p models && cp server_module/models/Anti_Spoof_YOLO.pt models/
           fi
+
           if [ -f "models/face_landmarker.task" ] && [ ! -f "server_module/models/face_landmarker.task" ]; then
             cp models/face_landmarker.task server_module/models/
+          elif [ -f "server_module/models/face_landmarker.task" ] && [ ! -f "models/face_landmarker.task" ]; then
+            mkdir -p models && cp server_module/models/face_landmarker.task models/
           fi
+
+          echo "=== Danh sách mô hình trong server_module/models/ ==="
           ls -la server_module/models/
+          echo "=== Danh sách mô hình trong models/ ==="
+          ls -la models/ || true
 
       # 6. Chạy kiểm thử tự động quy trình E-KYC Server
       - name: Run Server Module Tests
@@ -65,4 +84,5 @@ jobs:
         with:
           name: ekyc-server-test-artifacts
           path: output/test_server_module/
+          if-no-files-found: ignore
           retention-days: 7
