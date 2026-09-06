@@ -1,0 +1,52 @@
+# ==============================================================================
+# GitLab CI/CD Pipeline - eKYC Face ID & Anti-Spoofing Server Module
+# ==============================================================================
+
+stages:
+  - test
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  DEBIAN_FRONTEND: noninteractive
+
+# Cache pip packages để tăng tốc các lần chạy sau
+cache:
+  key: "${CI_COMMIT_REF_SLUG}-python311"
+  paths:
+    - .cache/pip
+    - venv/
+
+default:
+  image: python:3.11-slim
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - mkdir -p server_module/models
+    - |
+      if [ -f "models/Face_Detection.pt" ] && [ ! -f "server_module/models/Face_Detection.pt" ]; then
+        cp models/Face_Detection.pt server_module/models/
+      fi
+      if [ -f "models/Anti_Spoof_YOLO.pt" ] && [ ! -f "server_module/models/Anti_Spoof_YOLO.pt" ]; then
+        cp models/Anti_Spoof_YOLO.pt server_module/models/
+      fi
+      if [ -f "models/face_landmarker.task" ] && [ ! -f "server_module/models/face_landmarker.task" ]; then
+        cp models/face_landmarker.task server_module/models/
+      fi
+    - ls -la server_module/models/
+
+test_server_module:
+  stage: test
+  script:
+    - echo "=== BẮT ĐẦU KIỂM THỬ E-KYC SERVER MODULE ==="
+    - python tests/test_server_module.py
+  artifacts:
+    name: "ekyc-server-test-artifacts-$CI_COMMIT_SHORT_SHA"
+    when: always
+    paths:
+      - output/test_server_module/
+    expire_in: 7 days
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "web"' # Cho phép bấm Run pipeline thủ công trên GitLab UI

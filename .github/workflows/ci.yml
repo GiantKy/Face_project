@@ -1,0 +1,68 @@
+name: eKYC Server Module CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: # Cho phép kích hoạt kiểm thử thủ công từ giao diện GitHub Actions
+
+jobs:
+  test-server-module:
+    name: Test Server Module (Headless)
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout mã nguồn
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # 2. Thiết lập môi trường Python 3.11
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # 3. Cài đặt thư viện đồ họa hệ thống cho OpenCV trên Linux headless
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
+
+      # 4. Cài đặt các gói Python dependencies
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 5. Đảm bảo các file mô hình sẵn sàng trong server_module/models
+      - name: Ensure Model Files
+        run: |
+          mkdir -p server_module/models
+          if [ -f "models/Face_Detection.pt" ] && [ ! -f "server_module/models/Face_Detection.pt" ]; then
+            cp models/Face_Detection.pt server_module/models/
+          fi
+          if [ -f "models/Anti_Spoof_YOLO.pt" ] && [ ! -f "server_module/models/Anti_Spoof_YOLO.pt" ]; then
+            cp models/Anti_Spoof_YOLO.pt server_module/models/
+          fi
+          if [ -f "models/face_landmarker.task" ] && [ ! -f "server_module/models/face_landmarker.task" ]; then
+            cp models/face_landmarker.task server_module/models/
+          fi
+          ls -la server_module/models/
+
+      # 6. Chạy kiểm thử tự động quy trình E-KYC Server
+      - name: Run Server Module Tests
+        run: |
+          python tests/test_server_module.py
+
+      # 7. Lưu trữ ảnh kết quả và báo cáo JSON làm Artifact
+      - name: Upload Test Output Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ekyc-server-test-artifacts
+          path: output/test_server_module/
+          retention-days: 7

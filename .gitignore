@@ -42,6 +42,13 @@ dist/
 *.ckpt
 *.task
 
+# Allow production models required for CI/CD server_module testing
+!server_module/models/*.pt
+!server_module/models/*.task
+!models/Face_Detection.pt
+!models/Anti_Spoof_YOLO.pt
+!models/face_landmarker.task
+
 # =============================================================================
 # Datasets, Captured Photos & Output Folders
 # =============================================================================
