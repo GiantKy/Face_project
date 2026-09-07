@@ -97,42 +97,51 @@ def parse_predictions(response, img_w, img_h):
 
 
 def draw_detection_results(image, detections, fps=None):
-    """Vẽ bounding box và thông số lên ảnh"""
+    """Vẽ bounding box và thông số lên ảnh theo phong cách trực quan của test_anti_spoof.py"""
     vis = image.copy()
     h, w = vis.shape[:2]
 
     for d in detections:
         x1, y1, x2, y2 = d["bbox"]
         is_real = d["is_real"]
-        color = (0, 255, 127) if is_real else (0, 0, 255)  # Xanh nếu Thật, Đỏ nếu Giả
+        # Màu sắc: Xanh lá (REAL) / Đỏ (FAKE / SPOOF)
+        color = (0, 255, 0) if is_real else (0, 0, 255)
         label_text = f"{d['label']} {d['confidence']*100:.1f}%"
 
-        # Vẽ khung viền
+        # 1. Bounding box
         cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
 
-        # Vẽ nhãn phía trên box
-        (tw, th), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-        bg_y1 = max(0, y1 - th - 10)
-        bg_y2 = y1
-        cv2.rectangle(vis, (x1, bg_y1), (x1 + tw + 10, bg_y2), (20, 20, 25), -1)
-        cv2.rectangle(vis, (x1, bg_y1), (x1 + tw + 10, bg_y2), color, 1)
-        cv2.putText(vis, label_text, (x1 + 5, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2, cv2.LINE_AA)
+        # 2. Corner brackets tạo hiệu ứng nhận diện công nghệ cao
+        corner_len = min(20, (x2 - x1) // 4, (y2 - y1) // 4)
+        cv2.line(vis, (x1, y1), (x1 + corner_len, y1), color, 3)
+        cv2.line(vis, (x1, y1), (x1, y1 + corner_len), color, 3)
+        cv2.line(vis, (x2, y1), (x2 - corner_len, y1), color, 3)
+        cv2.line(vis, (x2, y1), (x2, y1 + corner_len), color, 3)
+        cv2.line(vis, (x1, y2), (x1 + corner_len, y2), color, 3)
+        cv2.line(vis, (x1, y2), (x1, y2 - corner_len), color, 3)
+        cv2.line(vis, (x2, y2), (x2 - corner_len, y2), color, 3)
+        cv2.line(vis, (x2, y2), (x2, y2 - corner_len), color, 3)
 
-    # Vẽ thông tin tiêu đề góc trên bên trái
-    overlay = vis.copy()
-    cv2.rectangle(overlay, (10, 10), (min(w - 10, 480), 75), (15, 18, 24), -1)
-    cv2.addWeighted(overlay, 0.85, vis, 0.15, 0, vis)
-    cv2.rectangle(vis, (10, 10), (min(w - 10, 480), 75), (60, 70, 90), 1)
+        # 3. Solid Badge phía trên Bounding Box (chuẩn test_anti_spoof.py)
+        (tw, th), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+        badge_y1 = max(0, y1 - th - 12)
+        badge_y2 = y1
+        badge_x2 = min(w, x1 + tw + 14)
+        cv2.rectangle(vis, (x1, badge_y1), (badge_x2, badge_y2), color, -1)
+        cv2.putText(vis, label_text, (x1 + 7, badge_y2 - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
 
-    cv2.putText(vis, "ROBOFLOW ANTI-SPOOF (LOCAL INFERENCE)", (20, 34),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
-    info_str = f"Model: {MODEL_ID} | Detections: {len(detections)}"
-    cv2.putText(vis, info_str, (20, 58),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.40, (200, 210, 220), 1, cv2.LINE_AA)
-
+    # 4. Hiển thị FPS và thông tin góc trên bên trái (chuẩn test_anti_spoof.py)
     if fps is not None:
-        cv2.putText(vis, f"FPS: {fps:.1f}", (w - 110, 35),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(vis, f"FPS: {fps:.1f}", (15, 35),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2, cv2.LINE_AA)
+        status_txt = f"Model: Roboflow ({MODEL_ID.split('/')[0]}) | Faces: {len(detections)}"
+        cv2.putText(vis, status_txt, (15, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1, cv2.LINE_AA)
+
+    # 5. Thanh hướng dẫn phím tắt dưới cùng
+    cv2.putText(vis, "[ESC] / [q]: Thoat  |  [s]: Luu anh snapshot", (15, h - 15),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1, cv2.LINE_AA)
 
     return vis
 
@@ -239,8 +248,8 @@ def test_on_webcam(model, cam_id=0):
 
 def main():
     parser = argparse.ArgumentParser(description="Test Anti-Spoofing Roboflow Local (Solution 2A)")
-    parser.add_argument("--image", type=str, default="", help="Đường dẫn file ảnh để kiểm tra (VD: data_raw/0.jpg)")
-    parser.add_argument("--cam", type=int, default=None, help="Camera device index để kiểm tra thời gian thực (VD: 0)")
+    parser.add_argument("--image", type=str, default=None, help="Đường dẫn file ảnh để kiểm tra (VD: data_raw/0.jpg). Nếu không chỉ định, mặc định chạy Live Webcam.")
+    parser.add_argument("--cam", "--camera", type=int, default=0, help="Camera device index để kiểm tra thời gian thực (mặc định: 0)")
     args = parser.parse_args()
 
     print("\n" + "=" * 70)
@@ -260,28 +269,14 @@ def main():
         print(f"[ERROR] Không thể nạp mô hình Roboflow: {e}")
         return
 
-    # Xác định chế độ test: Webcam hay Ảnh
-    if args.cam is not None:
-        test_on_webcam(model, cam_id=args.cam)
+    # Nếu truyền cờ --image cụ thể -> Test ảnh tĩnh
+    if args.image:
+        test_on_image(model, args.image)
     else:
-        # Nếu truyền ảnh hoặc mặc định kiểm tra data_raw/0.jpg
-        img_target = args.image
-        if not img_target:
-            default_img = os.path.join(DATA_RAW_DIR, "0.jpg")
-            if os.path.exists(default_img):
-                img_target = default_img
-            else:
-                # Tìm ảnh bất kỳ trong data_raw/
-                jpgs = [f for f in os.listdir(DATA_RAW_DIR) if f.lower().endswith((".jpg", ".png"))]
-                if jpgs:
-                    img_target = os.path.join(DATA_RAW_DIR, jpgs[0])
-
-        if img_target and os.path.exists(img_target):
-            test_on_image(model, img_target)
-        else:
-            print("[INFO] Không tìm thấy ảnh trong data_raw/ để test mặc định.")
-            print("[INFO] Đang chuyển sang mở Webcam ID 0 để test...")
-            test_on_webcam(model, cam_id=0)
+        # MẶC ĐỊNH: Chạy Live Webcam trực tiếp giống file test_anti_spoof.py
+        print("[INFO] Khởi động chế độ Live Webcam thời gian thực (mặc định)...")
+        print(f"[INFO] Kết nối Camera ID: {args.cam}")
+        test_on_webcam(model, cam_id=args.cam)
 
 
 if __name__ == "__main__":
