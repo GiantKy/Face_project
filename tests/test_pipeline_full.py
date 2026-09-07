@@ -66,6 +66,7 @@ from src.pose_validation import PoseValidator
 from src.pose_validation.draw_pose import draw_pose_info
 from src.face_alignment_crop import FaceAligner
 from src.head_movement import HeadMovementDetector, HeadAction, ChallengeState
+from src.illumination import check_illumination_quality, enhance_low_light
 from server_module.utils import (
     create_pipeline_result_dashboard,
     create_side_by_side_result
@@ -442,6 +443,8 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
     consecutive_center_frames = 0
     is_aligned_good = False
     capture_blocked_frames = 0
+    is_light_ok = True
+    mean_lum = 100.0
 
     # Dữ liệu của phiên hiện tại
     current_img_idx = get_next_image_index(DATA_RAW_DIR)
@@ -480,7 +483,7 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
         nonlocal face_crop_static, aligned_img_static, best_spoof_static
         nonlocal blink_counter, blink_state, blink_passed, head_movement_passed, current_head_action, head_action_prompt
         nonlocal final_pass, reasons, final_display_img, final_record, consecutive_center_frames, quick_snapshot_mode
-        nonlocal is_aligned_good, capture_blocked_frames
+        nonlocal is_aligned_good, capture_blocked_frames, is_light_ok, mean_lum
 
         current_img_idx = get_next_image_index(DATA_RAW_DIR)
         stage = PipelineStage.PREVIEW_ALIGN
@@ -513,6 +516,8 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
         consecutive_center_frames = 0
         is_aligned_good = False
         capture_blocked_frames = 0
+        is_light_ok = True
+        mean_lum = 100.0
 
         print(f"\n[PHIÊN MỚI] Sẵn sàng chụp ảnh ID tiếp theo: {current_img_idx}.jpg")
 
@@ -587,14 +592,25 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                 else:
                     face_in_oval = True
 
-            # Đánh giá toàn diện: Có mặt trong oval + Góc nhìn 3D chuẩn
-            is_aligned_good = (landmarks_live is not None and face_in_oval and pose_valid_live)
+            # Kiểm tra chất lượng ánh sáng khuôn mặt trong khung oval
+            face_bbox_live = [int(face_min_x), int(face_min_y), int(face_max_x), int(face_max_y)] if (landmarks_live and len(landmarks_live) >= 468) else None
+            light_res = check_illumination_quality(frame, bbox=face_bbox_live, dark_threshold=60.0)
+            is_light_ok = light_res["is_acceptable"]
+            mean_lum = light_res["mean_luminance"]
+
+            # Đánh giá toàn diện: Có mặt trong oval + Góc nhìn 3D chuẩn + ĐỦ ÁNH SÁNG
+            is_aligned_good = (landmarks_live is not None and face_in_oval and pose_valid_live and is_light_ok)
 
             # Xác định màu sắc khung oval & thông báo trạng thái
             if landmarks_live is None:
                 guide_color = (200, 200, 200)
                 align_msg = "VUI LONG DUA KHUON MAT VAO KHUNG OVAL"
                 align_col = (220, 220, 220)
+                consecutive_center_frames = max(0, consecutive_center_frames - 1)
+            elif not is_light_ok:
+                guide_color = (0, 140, 255)  # Màu cam đậm cảnh báo thiếu sáng
+                align_msg = f"ANH SANG YEU (L:{mean_lum:.0f}/60) - VUI LONG BAT DEN HOAC TIEN VE PHIA SANG!"
+                align_col = (0, 140, 255)
                 consecutive_center_frames = max(0, consecutive_center_frames - 1)
             elif is_aligned_good:
                 guide_color = (0, 255, 127)
@@ -626,10 +642,13 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                 align_col = (0, 200, 255)
                 consecutive_center_frames = max(0, consecutive_center_frames - 1)
 
-            # Cảnh báo khi người dùng nhấn phím chụp mà chưa đưa mặt vào oval
+            # Cảnh báo khi người dùng nhấn phím chụp mà bị khóa
             if capture_blocked_frames > 0:
                 capture_blocked_frames -= 1
-                align_msg = "CHUA DUA MAT VAO OVAL - KHONG THE NHAN CHUP!"
+                if not is_light_ok:
+                    align_msg = f"ANH SANG YEU (L:{mean_lum:.0f}/60) - KHOA CHUP! VUI LONG BAT DEN."
+                else:
+                    align_msg = "CHUA DUA MAT VAO OVAL - KHONG THE NHAN CHUP!"
                 align_col = (0, 0, 255)
                 guide_color = (0, 0, 255)
 
@@ -647,7 +666,7 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
             draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.85)
             cv2.putText(display, f"E-KYC PIPELINE 4: CANH CHINH KHUON MAT (ID: {current_img_idx}.jpg)", (28, 28),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
-            mode_str = f"Auto-Capture: {'BAT (Tu dong chup sau 2s)' if auto_capture_mode else 'TAT (Nhan phim SPACE de chup)'}"
+            mode_str = f"Auto-Capture: {'BAT' if auto_capture_mode else 'TAT'} | Sang (Luminance): {mean_lum:.0f}/255"
             cv2.putText(display, mode_str, (28, 46),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.38, (180, 180, 180), 1, cv2.LINE_AA)
 
@@ -660,6 +679,9 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
             if is_aligned_good:
                 shortcut_hint = "[SPACE]/[c]: SAN SANG CHUP | [s]: Luu ngay | [a]: Auto | [r]: Reset | [q]: Thoat"
                 shortcut_col = (0, 255, 127)
+            elif not is_light_ok:
+                shortcut_hint = f"[KHOA CHUP: THIEU SANG L:{mean_lum:.0f}/60] Vui long bat den de mo khoa chup"
+                shortcut_col = (0, 140, 255)
             else:
                 shortcut_hint = "[SPACE]/[c]: KHOA CHUP (Canh mat vao oval de mo khoa) | [a]: Auto | [q]: Thoat"
                 shortcut_col = (150, 150, 150)
@@ -794,7 +816,13 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                 cv2.imwrite(out_align_p, aligned_img_static)
 
             # 7. Quét Anti-Spoofing Model trên TOÀN BỘ ẢNH GỐC + Khớp IoU với Primary Face
-            input_spoof = captured_frame
+            captured_light = check_illumination_quality(captured_frame, bbox=primary_face["bbox"] if primary_face else None)
+            if captured_light["mean_luminance"] < 80.0:
+                input_spoof = enhance_low_light(captured_frame)
+                print(f"[Anti-Spoof Preprocess] Độ sáng L={captured_light['mean_luminance']:.1f}. Đã tự động áp dụng CLAHE tăng cường vi vân da mặt.")
+            else:
+                input_spoof = captured_frame
+
             raw_spoof_res = anti_spoof_detector.predict(input_spoof, conf_threshold=0.25)
             # Lọc chỉ giữ khung có tỉ lệ cao nhất khi các khung trùng đè lên nhau (ẩn khung tỉ lệ thấp hơn)
             spoof_res = filter_highest_confidence_boxes(raw_spoof_res, iou_thresh=0.25)
@@ -1170,7 +1198,10 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
             if stage == PipelineStage.PREVIEW_ALIGN:
                 if not is_aligned_good:
                     capture_blocked_frames = 40
-                    print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng trước.")
+                    if not is_light_ok:
+                        print(f"\n[CHẶN CHỤP] Ánh sáng quá yếu (Luminance={mean_lum:.1f} < 60.0)! Vui lòng bật đèn hoặc di chuyển ra nơi đủ sáng.")
+                    else:
+                        print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng trước.")
                 else:
                     captured_frame = frame.copy()
                     quick_snapshot_mode = True
@@ -1186,7 +1217,10 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
         elif (key == 32 or key == ord('c') or key_trigger == ord(' ')) and stage == PipelineStage.PREVIEW_ALIGN:
             if not is_aligned_good:
                 capture_blocked_frames = 40
-                print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng trước.")
+                if not is_light_ok:
+                    print(f"\n[CHẶN CHỤP] Ánh sáng quá yếu (Luminance={mean_lum:.1f} < 60.0)! Vui lòng bật đèn hoặc di chuyển ra nơi đủ sáng.")
+                else:
+                    print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng trước.")
             else:
                 captured_frame = frame.copy()
                 quick_snapshot_mode = False
