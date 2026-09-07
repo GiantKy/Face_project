@@ -64,3 +64,13 @@ backup/tests/output/
 *.png
 *.bmp
 *.webp
+
+# =============================================================================
+# Tokens, Secrets & Credentials (NEVER COMMIT OR UPLOAD)
+# =============================================================================
+gitlab_token.md
+*token*.md
+*token*.txt
+*.token
+*.secret
+*.key
