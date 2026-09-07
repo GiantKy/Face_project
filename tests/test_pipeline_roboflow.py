@@ -65,9 +65,7 @@ if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
     except Exception:
-# Tắt các cảnh báo phụ từ inference
-os.environ["CORE_MODEL_GAZE_ENABLED"] = "False"
-os.environ["CORE_MODEL_SAM_ENABLED"] = "False"
+        pass
 
 # Thiết lập đường dẫn import tới Face-Project/
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
