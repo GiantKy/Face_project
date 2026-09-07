@@ -93,6 +93,32 @@ def calculate_iou(boxA, boxB):
     return iou
 
 
+def filter_highest_confidence_boxes(detections, iou_thresh=0.25):
+    """
+    Lọc các khung nhận diện bị trùng lặp hoặc đè lên nhau (IoU > iou_thresh).
+    Chỉ giữ lại khung có tỉ lệ confidence cao nhất (ví dụ REAL 60.2% thay vì SPOOF 38.6%),
+    ẩn hoàn toàn các khung có tỉ lệ thấp hơn.
+    """
+    if not detections:
+        return []
+
+    # Sắp xếp giảm dần theo confidence (tỉ lệ cao nhất lên đầu)
+    sorted_dets = sorted(detections, key=lambda d: d.get("confidence", 0.0), reverse=True)
+    kept = []
+
+    for d in sorted_dets:
+        # Nếu đã có box nào trong kept trùng vị trí (IoU > iou_thresh) thì bỏ qua (ẩn box thấp hơn)
+        is_overlapping = False
+        for k in kept:
+            if calculate_iou(d["bbox"], k["bbox"]) > iou_thresh:
+                is_overlapping = True
+                break
+        if not is_overlapping:
+            kept.append(d)
+
+    return kept
+
+
 def calc_dist(p1, p2):
     """Tính khoảng cách Euclidean giữa 2 điểm (x, y)"""
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
@@ -220,6 +246,45 @@ def draw_ui_card(image, x, y, w, h, bg_color=(15, 15, 20), alpha=0.85):
     cv2.rectangle(overlay, (x, y), (x + w, y + h), bg_color, -1)
     cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
     cv2.rectangle(image, (x, y), (x + w, y + h), (100, 100, 100), 1)
+
+
+def draw_oval_face_guide(image, center, axes, is_aligned=False, is_detected=False, color=(0, 255, 127)):
+    """
+    Vẽ khung oval bán nguyệt/elip ngay giữa màn hình để người dùng đưa khuôn mặt vào trước khi chụp.
+    - Làm mờ nhòe (Gaussian Blur bokeh) và giảm sáng toàn bộ các vùng bên ngoài oval để tập trung sự chú ý vào khuôn mặt.
+    - Vẽ viền oval phản hồi động theo trạng thái khuôn mặt kèm 4 vạch căn chỉnh công nghệ cao (biometric ticks).
+    """
+    h, w = image.shape[:2]
+    cx, cy = center
+    ax, ay = axes
+
+    # 1. Tạo mask oval
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.ellipse(mask, (cx, cy), (ax, ay), 0, 0, 360, 255, -1)
+    outside_mask = (mask == 0)
+
+    # Làm mờ nhòe các vùng bên ngoài khung oval bằng Gaussian Blur
+    blurred = cv2.GaussianBlur(image, (35, 35), 0)
+    # Kết hợp làm mờ và giảm độ sáng (60% độ sáng) cho các vùng ngoài oval
+    image[outside_mask] = (blurred[outside_mask] * 0.60).astype(np.uint8)
+
+    # 2. Vẽ viền ngoài mỏng tạo hiệu ứng phát sáng (glow effect)
+    glow_color = (int(color[0] * 0.35), int(color[1] * 0.35), int(color[2] * 0.35))
+    cv2.ellipse(image, (cx, cy), (ax + 3, ay + 3), 0, 0, 360, glow_color, 1, cv2.LINE_AA)
+    cv2.ellipse(image, (cx, cy), (max(10, ax - 3), max(10, ay - 3)), 0, 0, 360, glow_color, 1, cv2.LINE_AA)
+
+    # 3. Vẽ đường viền oval chính
+    thickness = 3 if is_aligned else 2
+    cv2.ellipse(image, (cx, cy), (ax, ay), 0, 0, 360, color, thickness, cv2.LINE_AA)
+
+    # 4. Vẽ 4 vạch căn chỉnh thước đo (Biometric ticks) ở 4 cực trên, dưới, trái, phải
+    tick_len = 16
+    cv2.line(image, (cx, cy - ay - tick_len), (cx, cy - ay + 6), color, 2, cv2.LINE_AA)
+    cv2.line(image, (cx, cy + ay - 6), (cx, cy + ay + tick_len), color, 2, cv2.LINE_AA)
+    cv2.line(image, (cx - ax - tick_len, cy), (cx - ax + 6, cy), color, 2, cv2.LINE_AA)
+    cv2.line(image, (cx + ax - 6, cy), (cx + ax + tick_len, cy), color, 2, cv2.LINE_AA)
+
+    return image
 
 
 def draw_pipeline4_result_hud(
@@ -375,6 +440,8 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
     auto_capture_mode = False
     quick_snapshot_mode = False
     consecutive_center_frames = 0
+    is_aligned_good = False
+    capture_blocked_frames = 0
 
     # Dữ liệu của phiên hiện tại
     current_img_idx = get_next_image_index(DATA_RAW_DIR)
@@ -413,6 +480,7 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
         nonlocal face_crop_static, aligned_img_static, best_spoof_static
         nonlocal blink_counter, blink_state, blink_passed, head_movement_passed, current_head_action, head_action_prompt
         nonlocal final_pass, reasons, final_display_img, final_record, consecutive_center_frames, quick_snapshot_mode
+        nonlocal is_aligned_good, capture_blocked_frames
 
         current_img_idx = get_next_image_index(DATA_RAW_DIR)
         stage = PipelineStage.PREVIEW_ALIGN
@@ -443,6 +511,8 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
         final_display_img = None
         final_record = None
         consecutive_center_frames = 0
+        is_aligned_good = False
+        capture_blocked_frames = 0
 
         print(f"\n[PHIÊN MỚI] Sẵn sàng chụp ảnh ID tiếp theo: {current_img_idx}.jpg")
 
@@ -459,52 +529,146 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
         # GIAI ĐOẠN 1: PREVIEW & CHỤP ẢNH
         # =====================================================================
         if stage == PipelineStage.PREVIEW_ALIGN:
-            # Phát hiện vị trí mặt và góc nhìn tạm thời trên webcam
+            # 1. Cấu hình khung oval cố định ngay giữa màn hình (chiều cao dài hơn)
+            oval_cx = w // 2
+            oval_cy = int(h * 0.505)
+            oval_ay = int(h * 0.38)          # Tăng chiều cao oval dài hơn (38% h)
+            oval_ax = int(oval_ay * 0.65)     # Chiều ngang cân đối tỷ lệ khuôn mặt
+            oval_center = (oval_cx, oval_cy)
+            oval_axes = (oval_ax, oval_ay)
+
+            # 2. Phát hiện vị trí mặt và góc nhìn tạm thời trên webcam
             landmarks_live = landmark_detector.detect(frame)
             pose_valid_live = False
             pose_dict_live = None
 
-            if landmarks_live:
+            face_in_oval = False
+            is_too_far = False
+            is_too_close = False
+            is_off_center = False
+            off_center_hint = ""
+
+            if landmarks_live and len(landmarks_live) >= 468:
                 pose_valid_live, _, pose_dict_live = pose_validator.validate(landmarks_live, get_landmark_point)
                 display = draw_landmarks(display, landmarks_live)
 
-            # Khung banner hướng dẫn chụp ảnh
-            draw_ui_card(display, 20, 20, w - 40, 115, bg_color=(15, 15, 25), alpha=0.85)
-            cv2.putText(display, f"E-KYC PIPELINE 4: CHUAN BI CHUP ANH (ID: {current_img_idx}.jpg)", (35, 48),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 230, 255), 2)
-
-            face_size_h = 0
-            is_too_far = False
-            if landmarks_live and len(landmarks_live) >= 468:
+                # Tính tâm và kích thước khuôn mặt từ landmarks
+                xs = [p[0] for p in landmarks_live]
                 ys = [p[1] for p in landmarks_live]
-                face_size_h = max(ys) - min(ys)
-                # Nếu chiều cao khuôn mặt < 170 pixel thì mặt quá nhỏ / ngồi quá xa
-                if face_size_h < 170:
-                    is_too_far = True
+                face_min_x, face_max_x = min(xs), max(xs)
+                face_min_y, face_max_y = min(ys), max(ys)
+                face_cx = (face_min_x + face_max_x) / 2.0
+                face_cy = (face_min_y + face_max_y) / 2.0
+                face_w = face_max_x - face_min_x
+                face_h = face_max_y - face_min_y
 
-            is_aligned_good = (landmarks_live is not None and pose_valid_live and not is_too_far)
-            if is_aligned_good:
-                align_msg = "Goc mat CHUAN! Nhan [SPACE] hoac [c] de chup anh"
-                align_col = (0, 255, 0)
+                # Kiểm tra độ lệch tâm so với khung oval
+                dx_norm = abs(face_cx - oval_cx) / float(oval_ax)
+                dy_norm = abs(face_cy - oval_cy) / float(oval_ay)
+
+                # Kiểm tra kích thước khuôn mặt so với khung oval
+                oval_total_h = 2 * oval_ay
+                face_h_ratio = face_h / float(oval_total_h)
+
+                if face_h_ratio < 0.46 or face_h < 150:
+                    is_too_far = True
+                elif face_h_ratio > 1.15 or face_w > oval_ax * 2.2:
+                    is_too_close = True
+                elif dx_norm > 0.32 or dy_norm > 0.32:
+                    is_off_center = True
+                    if face_cx < oval_cx - oval_ax * 0.25:
+                        off_center_hint = "Di chuyen mat sang PHAI vao giua oval"
+                    elif face_cx > oval_cx + oval_ax * 0.25:
+                        off_center_hint = "Di chuyen mat sang TRAI vao giua oval"
+                    elif face_cy < oval_cy - oval_ay * 0.25:
+                        off_center_hint = "Di chuyen mat xuong DUOI vao giua oval"
+                    else:
+                        off_center_hint = "Di chuyen mat len TREN vao giua oval"
+                else:
+                    face_in_oval = True
+
+            # Đánh giá toàn diện: Có mặt trong oval + Góc nhìn 3D chuẩn
+            is_aligned_good = (landmarks_live is not None and face_in_oval and pose_valid_live)
+
+            # Xác định màu sắc khung oval & thông báo trạng thái
+            if landmarks_live is None:
+                guide_color = (200, 200, 200)
+                align_msg = "VUI LONG DUA KHUON MAT VAO KHUNG OVAL"
+                align_col = (220, 220, 220)
+                consecutive_center_frames = max(0, consecutive_center_frames - 1)
+            elif is_aligned_good:
+                guide_color = (0, 255, 127)
                 consecutive_center_frames += 1
+                if auto_capture_mode:
+                    pct = min(100, int(consecutive_center_frames / 25 * 100))
+                    align_msg = f"MAT CHUAN TRONG KHUNG OVAL! DANG CHUP... ({pct}%)"
+                else:
+                    align_msg = "KHUON MAT CHUAN! NHAN [SPACE] HOAC [c] DE CHUP"
+                align_col = (0, 255, 127)
             elif is_too_far:
-                align_msg = "Vui long tien lai GAN CAMERA hon (Khuon mat qua nho)..."
+                guide_color = (0, 165, 255)
+                align_msg = "VUI LONG TIEN LAI GAN CAMERA HON (Khuon mat qua nho)..."
                 align_col = (0, 165, 255)
                 consecutive_center_frames = max(0, consecutive_center_frames - 1)
+            elif is_too_close:
+                guide_color = (0, 165, 255)
+                align_msg = "VUI LONG LUI RA XA CAMERA HON (Khuon mat qua to)..."
+                align_col = (0, 165, 255)
+                consecutive_center_frames = max(0, consecutive_center_frames - 1)
+            elif is_off_center:
+                guide_color = (0, 200, 255)
+                align_msg = off_center_hint if off_center_hint else "CAN CHINH MAT VAO CHINH GIUA KHUNG OVAL..."
+                align_col = (0, 200, 255)
+                consecutive_center_frames = max(0, consecutive_center_frames - 1)
             else:
-                align_msg = "Vui long nhin thang, giu mat chinh giua khung hinh..."
+                guide_color = (0, 200, 255)
+                align_msg = "VUI LONG NHIN THANG VAO CAMERA (Giu dau thang)..."
                 align_col = (0, 200, 255)
                 consecutive_center_frames = max(0, consecutive_center_frames - 1)
 
-            cv2.putText(display, align_msg, (35, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, align_col, 2)
+            # Cảnh báo khi người dùng nhấn phím chụp mà chưa đưa mặt vào oval
+            if capture_blocked_frames > 0:
+                capture_blocked_frames -= 1
+                align_msg = "CHUA DUA MAT VAO OVAL - KHONG THE NHAN CHUP!"
+                align_col = (0, 0, 255)
+                guide_color = (0, 0, 255)
 
-            mode_str = f"Che do Auto-Capture: {'BAT (Chup sau 2s)' if auto_capture_mode else 'TAT (Nhan SPACE de chup)'}"
-            cv2.putText(display, mode_str, (35, 110),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.46, (180, 180, 180), 1)
+            # 3. Vẽ khung oval hướng dẫn ra màn hình
+            display = draw_oval_face_guide(
+                display,
+                center=oval_center,
+                axes=oval_axes,
+                is_aligned=is_aligned_good,
+                is_detected=(landmarks_live is not None),
+                color=guide_color
+            )
 
-            # Tự động chụp nếu bật auto_capture_mode và giữ mặt chuẩn 25 frames
-            if auto_capture_mode and consecutive_center_frames >= 25:
+            # 4. Banner tiêu đề trên cùng (gọn gàng, không che khuất khung oval)
+            draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.85)
+            cv2.putText(display, f"E-KYC PIPELINE 4: CANH CHINH KHUON MAT (ID: {current_img_idx}.jpg)", (28, 28),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
+            mode_str = f"Auto-Capture: {'BAT (Tu dong chup sau 2s)' if auto_capture_mode else 'TAT (Nhan phim SPACE de chup)'}"
+            cv2.putText(display, mode_str, (28, 46),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (180, 180, 180), 1, cv2.LINE_AA)
+
+            # 5. Banner thông báo hướng dẫn & phím tắt dưới cùng
+            bot_y = h - 56
+            draw_ui_card(display, 15, bot_y, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
+            cv2.putText(display, align_msg, (28, bot_y + 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.48, align_col, 2, cv2.LINE_AA)
+
+            if is_aligned_good:
+                shortcut_hint = "[SPACE]/[c]: SAN SANG CHUP | [s]: Luu ngay | [a]: Auto | [r]: Reset | [q]: Thoat"
+                shortcut_col = (0, 255, 127)
+            else:
+                shortcut_hint = "[SPACE]/[c]: KHOA CHUP (Canh mat vao oval de mo khoa) | [a]: Auto | [q]: Thoat"
+                shortcut_col = (150, 150, 150)
+
+            cv2.putText(display, shortcut_hint,
+                        (28, bot_y + 40), cv2.FONT_HERSHEY_SIMPLEX, 0.38, shortcut_col, 1, cv2.LINE_AA)
+
+            # Tự động chụp nếu bật auto_capture_mode và giữ mặt chuẩn 25 frames trong oval
+            if auto_capture_mode and consecutive_center_frames >= 25 and is_aligned_good:
                 trigger_capture = True
             else:
                 trigger_capture = False
@@ -631,17 +795,22 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
 
             # 7. Quét Anti-Spoofing Model trên TOÀN BỘ ẢNH GỐC + Khớp IoU với Primary Face
             input_spoof = captured_frame
-            spoof_res = anti_spoof_detector.predict(input_spoof, conf_threshold=0.25)
-            print(f"[6. Anti-Spoofing Full Frame] Tìm thấy {len(spoof_res)} vùng nhận diện trên ảnh gốc.")
+            raw_spoof_res = anti_spoof_detector.predict(input_spoof, conf_threshold=0.25)
+            # Lọc chỉ giữ khung có tỉ lệ cao nhất khi các khung trùng đè lên nhau (ẩn khung tỉ lệ thấp hơn)
+            spoof_res = filter_highest_confidence_boxes(raw_spoof_res, iou_thresh=0.25)
+            print(f"[6. Anti-Spoofing Full Frame] Tìm thấy {len(raw_spoof_res)} vùng -> Lọc còn {len(spoof_res)} khung có tỉ lệ cao nhất.")
 
             best_spoof_static = None
             primary_spoof_iou = 0.0
             if primary_face and spoof_res:
-                for sd in spoof_res:
-                    iou = calculate_iou(primary_face["bbox"], sd["bbox"])
-                    if iou > primary_spoof_iou:
-                        primary_spoof_iou = iou
-                        best_spoof_static = sd
+                # Khớp các box anti-spoof với Primary Face (ưu tiên tỉ lệ confidence cao nhất)
+                matching_spoofs = [sd for sd in spoof_res if calculate_iou(primary_face["bbox"], sd["bbox"]) > 0.15]
+                if matching_spoofs:
+                    best_spoof_static = max(matching_spoofs, key=lambda x: x["confidence"])
+                    primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof_static["bbox"])
+                else:
+                    best_spoof_static = max(spoof_res, key=lambda x: x["confidence"])
+                    primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof_static["bbox"])
 
             # Fallback nếu không trùng bbox nhưng có kết quả anti-spoof
             if best_spoof_static is None and spoof_res:
@@ -791,20 +960,11 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                 # 2. Vẽ Dashboard kết quả lên ảnh chụp gốc
                 res_img = captured_frame.copy()
 
-                # Vẽ tất cả các khuôn mặt tìm thấy
-                for f_it in faces:
-                    bx1, by1, bx2, by2 = f_it["bbox"]
-                    is_p = (primary_face and f_it["bbox"] == primary_face["bbox"])
-                    box_c = (0, 255, 0) if is_p else (200, 200, 200)
-                    box_thick = 2 if is_p else 1
-                    cv2.rectangle(res_img, (bx1, by1), (bx2, by2), box_c, box_thick)
-                    lbl_tag = "PRIMARY FACE" if is_p else "EXTRA FACE"
-                    cv2.putText(res_img, lbl_tag, (bx1, max(15, by1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, box_c, 1)
-
                 if landmarks_static:
                     res_img = draw_landmarks(res_img, landmarks_static)
 
-                # Vẽ các box Anti-Spoof từ ảnh gốc
+                # Vẽ các box Anti-Spoof (đã lọc chỉ giữ khung có tỉ lệ cao nhất, ẩn khung tỉ lệ thấp hơn)
+                drawn_spoof_bboxes = []
                 if spoof_res:
                     for sd in spoof_res:
                         sx1, sy1, sx2, sy2 = sd["bbox"]
@@ -812,6 +972,21 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                         cv2.rectangle(res_img, (sx1, sy1), (sx2, sy2), s_col, 2)
                         cv2.putText(res_img, f"{sd['label']} {sd['confidence']*100:.1f}%",
                                     (sx1, max(25, sy1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.65, s_col, 2)
+                        drawn_spoof_bboxes.append(sd["bbox"])
+
+                # Vẽ khuôn mặt: Ẩn khung Primary Face nếu đã có khung Anti-Spoof bao quanh (chỉ giữ 1 khung tỉ lệ cao nhất)
+                for f_it in faces:
+                    bx1, by1, bx2, by2 = f_it["bbox"]
+                    is_p = (primary_face and f_it["bbox"] == primary_face["bbox"])
+                    has_spoof_box = any(calculate_iou(f_it["bbox"], sb) > 0.20 for sb in drawn_spoof_bboxes)
+                    if is_p and has_spoof_box:
+                        # Đã có khung Anti-Spoof với tỉ lệ cao nhất -> Ẩn khung Primary Face trùng lặp
+                        continue
+                    box_c = (0, 255, 0) if is_p else (200, 200, 200)
+                    box_thick = 2 if is_p else 1
+                    cv2.rectangle(res_img, (bx1, by1), (bx2, by2), box_c, box_thick)
+                    lbl_tag = "PRIMARY FACE" if is_p else "EXTRA FACE"
+                    cv2.putText(res_img, lbl_tag, (bx1, max(15, by1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, box_c, 1)
 
                 final_display_img = draw_pipeline4_result_hud(
                     res_img,
@@ -993,10 +1168,14 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
         # Phím 's': Chụp ảnh nhanh (Snapshot Mode) và lưu kết quả ngay lập tức
         elif (key == ord('s') or key == ord('S')):
             if stage == PipelineStage.PREVIEW_ALIGN:
-                captured_frame = frame.copy()
-                quick_snapshot_mode = True
-                stage = PipelineStage.RUN_AI_STATIC
-                print(f"\n[QUICK SAVE] Đã kích hoạt Chụp nhanh & Lưu ngay cho ID: {current_img_idx}!")
+                if not is_aligned_good:
+                    capture_blocked_frames = 40
+                    print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng trước.")
+                else:
+                    captured_frame = frame.copy()
+                    quick_snapshot_mode = True
+                    stage = PipelineStage.RUN_AI_STATIC
+                    print(f"\n[QUICK SAVE] Đã kích hoạt Chụp nhanh & Lưu ngay cho ID: {current_img_idx}!")
             elif stage in (PipelineStage.LIVE_BLINK, PipelineStage.LIVE_HEAD_MOVEMENT):
                 print("\n[QUICK SAVE] Bỏ qua các bước Liveness tiếp theo và Lưu kết quả ngay lập tức!")
                 blink_passed = True
@@ -1005,10 +1184,14 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
 
         # Phím SPACE hoặc 'c': Chụp ảnh và chạy Full quy trình eKYC
         elif (key == 32 or key == ord('c') or key_trigger == ord(' ')) and stage == PipelineStage.PREVIEW_ALIGN:
-            captured_frame = frame.copy()
-            quick_snapshot_mode = False
-            stage = PipelineStage.RUN_AI_STATIC
-            print(f"\n[TRIGGER] Đã kích hoạt chụp ảnh Full Quy trình cho ID: {current_img_idx}!")
+            if not is_aligned_good:
+                capture_blocked_frames = 40
+                print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng trước.")
+            else:
+                captured_frame = frame.copy()
+                quick_snapshot_mode = False
+                stage = PipelineStage.RUN_AI_STATIC
+                print(f"\n[TRIGGER] Đã kích hoạt chụp ảnh Full Quy trình cho ID: {current_img_idx}!")
 
     cap.release()
     cv2.destroyAllWindows()

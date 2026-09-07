@@ -4,31 +4,41 @@
 Full E-KYC Pipeline: Dual-Model Official Anti-Spoof Ensemble + Active Liveness
 =============================================================================
 Quy trình thực hiện toàn diện (End-to-End eKYC Verification Pipeline):
-  1. Face Detection:
-     - Phát hiện khuôn mặt bằng YOLOv8 (models/Face_Detection.pt).
-     - Kiểm tra điều kiện đơn nhân (Single person check).
-  2. Face Mesh & 3D Pose Estimation:
-     - Trích xuất 468/478 facial landmarks (MediaPipe).
-     - Ước tính góc quay đầu 3D (Yaw, Pitch, Roll) và kiểm tra mặt nhìn thẳng.
-  3. Face Alignment & Standard Crop:
-     - Chuẩn hóa góc quay 2D Affine Alignment và crop khuôn mặt chuẩn 224x224.
-  4. Dual-Model Anti-Spoofing Ensemble (Silent-Face-Anti-Spoofing):
-     - Nạp 2 mô hình chính thức từ thư mục models/:
+  1. Mở Webcam: Hiển thị giao diện xem trước & khung oval bán nguyệt căn chỉnh khuôn mặt.
+     - Vùng bên ngoài khung oval được làm mờ (Gaussian Blur) và giảm sáng (Bokeh effect).
+     - Khóa chụp ảnh (Capture Lock): Nếu khuôn mặt chưa đưa vào đúng khung oval hoặc
+       chưa nhìn thẳng, hệ thống sẽ chặn không cho chụp và hiện cảnh báo.
+  2. Chụp ảnh (Phím SPACE / 'c' hoặc Tự động khi mặt chuẩn trong oval):
+     - Lưu ảnh gốc vào data_raw/<id>.jpg (đánh số tăng dần tiếp theo).
+  3. Chạy AI Models trên ảnh vừa chụp:
+     - Face Detection (YOLOv8) -> Landmarks (MediaPipe) -> Pose 3D -> Face Align & Crop 224x224.
+     - Dual-Model Anti-Spoofing Ensemble (Silent-Face-Anti-Spoofing):
        + Model 1: 2.7_80x80_MiniFASNetV2.pth     (Scale 2.7x)
        + Model 2: 4_0_0_80x80_MiniFASNetV1SE.pth (Scale 4.0x)
-     - Trích xuất 2 vùng crop (2.7x và 4.0x) trên ảnh gốc và tính xác suất Ensemble trung bình.
-     - Phân loại chi tiết 3 Classes: Real (Thật), 2D Paper Spoof, 3D Screen Spoof.
-  5. Active Liveness (Tương tác thời gian thực trên Live Webcam):
-     - Blink Detection: Đo chỉ số Eye Aspect Ratio (EAR) khi người dùng chớp mắt.
-     - Head Movement Challenge: Thử thách chuyển động đầu ngẫu nhiên (Quay trái/phải).
-  6. Tổng hợp dữ liệu & Đưa ra quyết định cuối cùng (Final eKYC Decision):
-     - Xuất các ảnh kết quả và file báo cáo chi tiết JSON/CSV vào thư mục output/<id>/.
+       + Trích xuất 2 vùng crop (2.7x và 4.0x) và tính xác suất Ensemble trung bình.
+       + Phân loại chi tiết 3 Classes: Real (Thật), 2D Paper Spoof, 3D Screen Spoof.
+  4. Bắt đầu Active Liveness trên luồng Live Webcam:
+     - Blink Detection: Yêu cầu người dùng chớp mắt (đo EAR).
+     - Head Movement Challenge: Thử thách quay đầu ngẫu nhiên (Trái/Phải).
+  5. Tổng hợp toàn bộ dữ liệu & Đưa ra quyết định cuối cùng (Final eKYC Decision).
+  6. Hiển thị giao diện kết quả:
+     - Chỉ hiển thị 1 khung nhận diện có tỉ lệ cao nhất (ẩn các khung tỉ lệ thấp hơn / trùng lặp).
+     - Giao diện song song (Side-by-Side): Ảnh khuôn mặt bên trái + Dashboard thông số bên phải,
+       hoàn toàn không che khuất khuôn mặt.
+  7. Lưu toàn bộ kết quả vào output/pipeline_ensemble/<id>/ gồm:
+     - 1_pipeline_result.jpg (Ảnh song song Side-by-Side)
+     - 1_pipeline_result_clean.jpg (Ảnh khuôn mặt sạch)
+     - 1_dashboard_panel.jpg (Bảng Dashboard độc lập)
+     - 2_face_crop_224.jpg
+     - 3_aligned_full.jpg
+     - 4_report.json
+     - Cập nhật batch_summary_ensemble.csv.
 
 Phím điều khiển:
-  - SPACE / 'c' : Chụp ảnh tĩnh và kích hoạt tiến trình eKYC
-  - 'a'         : Bật / Tắt chế độ tự động chụp khi khuôn mặt đạt chuẩn (Auto-Capture)
-  - 's'         : Lưu ngay ảnh hiện tại (Quick Snapshot)
-  - 'r'         : Khởi động lại phiên eKYC mới
+  - SPACE / 'c' : Chụp ảnh và bắt đầu quy trình eKYC (yêu cầu mặt trong oval)
+  - 's'         : CHỤP NHANH & LƯU NGAY (Bỏ qua Active Liveness, yêu cầu mặt trong oval)
+  - 'a'         : Bật / Tắt chế độ tự động chụp khi khuôn mặt đạt chuẩn trong oval
+  - 'r'         : Khởi tạo lại phiên eKYC mới (tiếp tục ảnh mới)
   - 'q' / ESC   : Thoát chương trình
 =============================================================================
 """
@@ -49,6 +59,7 @@ import json
 import csv
 import glob
 import argparse
+import unicodedata
 from enum import Enum
 from pathlib import Path
 from typing import Optional, Union, Tuple, Dict, Any, List
@@ -66,6 +77,7 @@ if BASE_DIR not in sys.path:
 from src.face_detection import FaceDetector
 from src.landmark_detection import LandmarkDetector
 from src.landmark_detection.draw_landmarks import draw_landmarks
+from src.landmark_detection.utils import get_landmark_point
 from src.pose_validation import PoseValidator
 from src.pose_validation.draw_pose import draw_pose_info
 from src.face_alignment_crop import FaceAligner
@@ -75,6 +87,7 @@ from src.anti_spoof.minifasnet_official import (
     OfficialImageCropper,
     find_official_ensemble_models
 )
+from server_module.utils import create_side_by_side_result
 
 DATA_RAW_DIR = os.path.join(BASE_DIR, "data_raw")
 OUTPUT_DIR = os.path.join(CURRENT_DIR, "output", "pipeline_ensemble")
@@ -83,8 +96,56 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 # =============================================================================
-# 1. HELPER FUNCTIONS: EAR & FILE INDEX MANAGEMENT
+# 1. HELPER FUNCTIONS: FONT, EAR & FILE INDEX MANAGEMENT
 # =============================================================================
+def remove_vietnamese_accents(text: str) -> str:
+    """Chuyển đổi văn bản tiếng Việt có dấu thành không dấu để OpenCV cv2.putText hiển thị đẹp, không bị lỗi phông"""
+    if not text:
+        return ""
+    text = str(text)
+    text = text.replace("đ", "d").replace("Đ", "D")
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join([c for c in nfkd if not unicodedata.combining(c)])
+
+
+def calculate_iou(boxA, boxB):
+    """Tính Intersection over Union (IoU) giữa 2 bounding box [x1, y1, x2, y2]"""
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+    boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+    boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+
+    iou = interArea / float(boxAArea + boxBArea - interArea + 1e-6)
+    return iou
+
+
+def filter_highest_confidence_boxes(detections, iou_thresh=0.25):
+    """
+    Lọc các khung nhận diện bị trùng lặp hoặc đè lên nhau (IoU > iou_thresh).
+    Chỉ giữ lại khung có tỉ lệ confidence cao nhất, ẩn hoàn toàn các khung có tỉ lệ thấp hơn.
+    """
+    if not detections:
+        return []
+
+    sorted_dets = sorted(detections, key=lambda d: d.get("confidence", 0.0), reverse=True)
+    kept = []
+
+    for d in sorted_dets:
+        is_overlapping = False
+        for k in kept:
+            if calculate_iou(d["bbox"], k["bbox"]) > iou_thresh:
+                is_overlapping = True
+                break
+        if not is_overlapping:
+            kept.append(d)
+
+    return kept
+
+
 def calc_dist(p1, p2):
     """Tính khoảng cách Euclidean giữa 2 điểm (x, y)"""
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
@@ -108,213 +169,340 @@ def compute_eye_aspect_ratio(landmarks):
 
 
 def get_next_image_index(data_dir=DATA_RAW_DIR):
-    """Tìm số thứ tự tăng dần tiếp theo cho ảnh trong thư mục data_raw/"""
-    existing_files = glob.glob(os.path.join(data_dir, "*.jpg")) + glob.glob(os.path.join(data_dir, "*.png"))
-    indices = []
-    for f in existing_files:
-        stem = Path(f).stem
-        if stem.isdigit():
-            indices.append(int(stem))
-    return max(indices) + 1 if indices else 1
+    """Tìm số thứ tự tiếp theo cho ảnh mới trong thư mục data_raw"""
+    os.makedirs(data_dir, exist_ok=True)
+    existing_files = glob.glob(os.path.join(data_dir, "*.*"))
+    max_idx = -1
+
+    for file_path in existing_files:
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        if base_name.isdigit():
+            idx = int(base_name)
+            if idx > max_idx:
+                max_idx = idx
+
+    return max_idx + 1
 
 
 def json_serialize_helper(obj):
-    """Helper chuyển đổi kiểu dữ liệu numpy sang json chuẩn"""
-    if isinstance(obj, (np.integer, np.int64, np.int32)):
-        return int(obj)
-    elif isinstance(obj, (np.floating, np.float64, np.float32)):
-        return float(obj)
-    elif isinstance(obj, (np.ndarray,)):
-        return obj.tolist()
-    elif isinstance(obj, (bool, np.bool_)):
+    """Chuyển đổi các kiểu dữ liệu numpy sang Python native types cho JSON"""
+    if isinstance(obj, (np.bool_, bool)):
         return bool(obj)
+    if isinstance(obj, (np.integer, int)):
+        return int(obj)
+    if isinstance(obj, (np.floating, float)):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
     return str(obj)
 
 
 # =============================================================================
-# 2. GIAO DIỆN HUD & DASHBOARD ĐỒ HỌA
+# 2. GIAO DIỆN HUD & KHUNG OVAL FACE GUIDE (MATCHING PIPELINE FULL)
 # =============================================================================
 def draw_ui_card(image, x, y, w, h, bg_color=(15, 15, 20), alpha=0.85):
     """Vẽ khung card bán trong suốt làm nền HUD"""
-    sub_img = image[y:y+h, x:x+w]
-    if sub_img.size == 0:
-        return
-    rect = np.full_like(sub_img, bg_color, dtype=np.uint8)
-    res = cv2.addWeighted(sub_img, 1.0 - alpha, rect, alpha, 1.0)
-    image[y:y+h, x:x+w] = res
-    cv2.rectangle(image, (x, y), (x + w, y + h), (90, 90, 90), 1)
+    overlay = image.copy()
+    cv2.rectangle(overlay, (x, y), (x + w, y + h), bg_color, -1)
+    cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+    cv2.rectangle(image, (x, y), (x + w, y + h), (100, 100, 100), 1)
 
 
-def draw_pipeline_ensemble_hud(
-    res_img: np.ndarray,
-    img_idx: int,
-    primary_face: dict,
-    num_faces: int,
-    pose_dict: dict,
-    pose_valid: bool,
-    spoof_info: dict,
-    blink_passed: bool,
-    blink_counter: int,
-    head_movement_passed: bool,
-    current_head_action: str,
-    final_pass: bool,
-    reasons: list
+def draw_oval_face_guide(image, center, axes, is_aligned=False, is_detected=False, color=(0, 255, 127)):
+    """
+    Vẽ khung oval bán nguyệt/elip ngay giữa màn hình để người dùng đưa khuôn mặt vào trước khi chụp.
+    - Làm mờ nhòe (Gaussian Blur bokeh) và giảm sáng toàn bộ các vùng bên ngoài oval để tập trung sự chú ý vào khuôn mặt.
+    - Vẽ viền oval phản hồi động theo trạng thái khuôn mặt kèm 4 vạch căn chỉnh công nghệ cao (biometric ticks).
+    """
+    h, w = image.shape[:2]
+    cx, cy = center
+    ax, ay = axes
+
+    # 1. Tạo mask oval
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.ellipse(mask, (cx, cy), (ax, ay), 0, 0, 360, 255, -1)
+    outside_mask = (mask == 0)
+
+    # Làm mờ nhòe các vùng bên ngoài khung oval bằng Gaussian Blur
+    blurred = cv2.GaussianBlur(image, (35, 35), 0)
+    # Kết hợp làm mờ và giảm độ sáng (60% độ sáng) cho các vùng ngoài oval
+    image[outside_mask] = (blurred[outside_mask] * 0.60).astype(np.uint8)
+
+    # 2. Vẽ viền ngoài mỏng tạo hiệu ứng phát sáng (glow effect)
+    glow_color = (int(color[0] * 0.35), int(color[1] * 0.35), int(color[2] * 0.35))
+    cv2.ellipse(image, (cx, cy), (ax + 3, ay + 3), 0, 0, 360, glow_color, 1, cv2.LINE_AA)
+    cv2.ellipse(image, (cx, cy), (max(10, ax - 3), max(10, ay - 3)), 0, 0, 360, glow_color, 1, cv2.LINE_AA)
+
+    # 3. Vẽ đường viền oval chính
+    thickness = 3 if is_aligned else 2
+    cv2.ellipse(image, (cx, cy), (ax, ay), 0, 0, 360, color, thickness, cv2.LINE_AA)
+
+    # 4. Vẽ 4 vạch căn chỉnh thước đo (Biometric ticks) ở 4 cực trên, dưới, trái, phải
+    tick_len = 16
+    cv2.line(image, (cx, cy - ay - tick_len), (cx, cy - ay + 6), color, 2, cv2.LINE_AA)
+    cv2.line(image, (cx, cy + ay - 6), (cx, cy + ay + tick_len), color, 2, cv2.LINE_AA)
+    cv2.line(image, (cx - ax - tick_len, cy), (cx - ax + 6, cy), color, 2, cv2.LINE_AA)
+    cv2.line(image, (cx + ax - 6, cy), (cx + ax + tick_len, cy), color, 2, cv2.LINE_AA)
+
+    return image
+
+
+def create_ensemble_pipeline_dashboard(
+    img_idx: Any,
+    face_info: Optional[Dict[str, Any]] = None,
+    num_faces: int = 1,
+    pose_info: Optional[Dict[str, Any]] = None,
+    pose_valid: bool = True,
+    spoof_info: Optional[Dict[str, Any]] = None,
+    blink_passed: bool = True,
+    blink_count: int = 0,
+    head_movement_passed: bool = True,
+    head_action_name: str = "NONE",
+    final_pass: bool = True,
+    reasons: Optional[List[str]] = None,
+    face_crop: Optional[np.ndarray] = None,
+    target_height: Optional[int] = None,
+    width: int = 560
 ) -> np.ndarray:
     """
-    Vẽ Bảng Dashboard tổng kết eKYC hoàn chỉnh lên ảnh chụp tĩnh
+    Tạo bảng Dashboard độc lập chuyên nghiệp cho Dual-Model Anti-Spoofing Ensemble.
+    Dark Slate Theme cao cấp, đồng bộ chuẩn giao diện với Pipeline Full.
     """
-    h, w = res_img.shape[:2]
-    canvas = res_img.copy()
+    clean_reasons = [remove_vietnamese_accents(r) for r in reasons] if (not final_pass and reasons) else []
+    num_reasons = len(clean_reasons)
+    extra_h = max(0, num_reasons * 24)
 
-    panel_w = 420
-    panel_h = min(h - 20, 520)
-    px = w - panel_w - 15
-    py = 10
+    min_h = 520 + extra_h
+    h = max(min_h, target_height) if target_height else min_h
+    w = max(500, width)
 
-    draw_ui_card(canvas, px, py, panel_w, panel_h, bg_color=(12, 14, 18), alpha=0.88)
+    # Nền Dark Slate cao cấp
+    canvas = np.full((h, w, 3), (20, 22, 28), dtype=np.uint8)
 
-    # 1. Header
-    title = f"eKYC ENSEMBLE REPORT #{img_idx}"
-    cv2.putText(canvas, title, (px + 15, py + 28), cv2.FONT_HERSHEY_DUPLEX, 0.65, (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.line(canvas, (px + 10, py + 38), (px + panel_w - 10, py + 38), (0, 255, 127), 2)
+    # 1. Header Card
+    hdr_h = 70
+    cv2.rectangle(canvas, (10, 10), (w - 10, hdr_h), (32, 36, 48), -1)
+    cv2.rectangle(canvas, (10, 10), (w - 10, hdr_h), (60, 70, 90), 1)
 
-    font = cv2.FONT_HERSHEY_DUPLEX
-    f_scale = 0.42
-    cy = py + 62
-    step_y = 26
+    cv2.putText(canvas, "E-KYC VERIFICATION DASHBOARD", (24, 38),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 230, 255), 2, cv2.LINE_AA)
+    session_str = f"Session ID: {img_idx} | Mode: Dual-Model Ensemble"
+    cv2.putText(canvas, session_str, (24, 58),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.40, (170, 180, 195), 1, cv2.LINE_AA)
 
-    # 2. Face Detection
-    c_face = (primary_face is not None)
-    c_single = (num_faces == 1)
-    f_col = (0, 255, 127) if (c_face and c_single) else (0, 0, 255)
-    f_conf = primary_face['confidence'] * 100.0 if primary_face else 0.0
-    cv2.putText(canvas, f"1. Face Detect : {num_faces} face(s) | Conf: {f_conf:.1f}%", (px + 15, cy), font, f_scale, f_col, 1, cv2.LINE_AA)
-    cy += step_y
+    # Thumbnail khuôn mặt chuẩn hóa ở góc phải Header
+    if face_crop is not None and face_crop.size > 0:
+        try:
+            th_size = 50
+            thumb = cv2.resize(face_crop, (th_size, th_size))
+            tx1 = w - 10 - th_size - 8
+            ty1 = 12
+            cv2.rectangle(canvas, (tx1 - 2, ty1 - 2), (tx1 + th_size + 2, ty1 + th_size + 2), (0, 230, 255), 1)
+            canvas[ty1:ty1 + th_size, tx1:tx1 + th_size] = thumb
+        except Exception:
+            pass
 
-    # 3. 3D Pose
-    if pose_dict:
-        y_val, p_val, r_val = pose_dict['yaw'], pose_dict['pitch'], pose_dict['roll']
-        p_col = (0, 255, 127) if pose_valid else (0, 165, 255)
-        p_txt = f"2. Pose 3D     : Y:{y_val:+.1f}  P:{p_val:+.1f}  R:{r_val:+.1f}"
+    cur_y = hdr_h + 12
+
+    # Helper vẽ từng thẻ nội dung
+    def _draw_card(title: str, lines: List[Tuple[str, Tuple[int, int, int], float]], card_h: int):
+        nonlocal cur_y
+        cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + card_h), (27, 30, 40), -1)
+        cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + card_h), (50, 58, 75), 1)
+        # Accent bar bên trái
+        cv2.rectangle(canvas, (10, cur_y), (14, cur_y + card_h), (0, 200, 240), -1)
+
+        cv2.putText(canvas, title, (24, cur_y + 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.46, (220, 225, 235), 1, cv2.LINE_AA)
+
+        line_y = cur_y + 40
+        for text, col, font_scale in lines:
+            cv2.putText(canvas, text, (24, line_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, col, 1, cv2.LINE_AA)
+            line_y += 20
+        cur_y += card_h + 8
+
+    # Section 1: Face Detection
+    if face_info:
+        conf = face_info.get("confidence", 0.0)
+        if num_faces == 1:
+            f_lines = [
+                (f"Status: PASS  |  Faces: 1 detected  |  Confidence: {conf*100:.1f}%", (80, 220, 80), 0.42)
+            ]
+        else:
+            f_lines = [
+                (f"Status: WARNING | MULTI-FACE ({num_faces} faces detected)", (0, 165, 255), 0.42)
+            ]
     else:
-        p_col = (128, 128, 128)
-        p_txt = "2. Pose 3D     : N/A"
-    cv2.putText(canvas, p_txt, (px + 15, cy), font, f_scale, p_col, 1, cv2.LINE_AA)
-    cy += step_y
+        f_lines = [("Status: FAIL  |  NO FACE DETECTED", (70, 70, 240), 0.42)]
+    _draw_card("1. FACE DETECTION", f_lines, card_h=52)
 
-    # 4. Anti-Spoof Ensemble
+    # Section 2: Head Pose 3D
+    if pose_info:
+        yaw = pose_info.get("yaw", 0.0)
+        pitch = pose_info.get("pitch", 0.0)
+        roll = pose_info.get("roll", 0.0)
+        p_stat = "PASS (Chuan huong thang)" if pose_valid else "FAIL (Goc quay vuot nguong)"
+        p_col = (80, 220, 80) if pose_valid else (70, 70, 240)
+        p_lines = [
+            (f"Angles: Yaw: {yaw:+.1f} deg  |  Pitch: {pitch:+.1f} deg  |  Roll: {roll:+.1f} deg", (200, 210, 220), 0.41),
+            (f"Status: {p_stat}", p_col, 0.42)
+        ]
+    else:
+        p_lines = [("Status: UNKNOWN (Khong duoc tinh toan)", (70, 70, 240), 0.42)]
+    _draw_card("2. 3D HEAD POSE ESTIMATION", p_lines, card_h=68)
+
+    # Section 3: Dual-Model Anti-Spoofing Ensemble
     if spoof_info:
-        as_real = spoof_info["is_real"]
-        as_lbl = spoof_info["label"]
-        r_score = spoof_info["real_score"] * 100.0
+        as_real = spoof_info.get("is_real", False)
+        as_lbl = spoof_info.get("label", "UNKNOWN")
+        r_score = spoof_info.get("real_score", 0.0) * 100.0
         cs = spoof_info.get("class_scores", {})
         p2 = cs.get("spoof_2d", 0.0) * 100.0
         p3 = cs.get("spoof_3d", 0.0) * 100.0
         m1_r = spoof_info.get("model1_scores", {}).get("real", 0.0) * 100.0
         m2_r = spoof_info.get("model2_scores", {}).get("real", 0.0) * 100.0
 
-        as_col = (0, 255, 127) if as_real else (0, 0, 255)
-        cv2.putText(canvas, f"3. Anti-Spoof  : {as_lbl} (Real: {r_score:.1f}%)", (px + 15, cy), font, f_scale, as_col, 1, cv2.LINE_AA)
-        cy += step_y
-        cv2.putText(canvas, f"   - 2D Paper : {p2:4.1f}%  |  3D Screen : {p3:4.1f}%", (px + 15, cy), font, 0.38, (180, 180, 180), 1, cv2.LINE_AA)
-        cy += step_y - 4
-        cv2.putText(canvas, f"   - M1(2.7x) : {m1_r:4.1f}%  |  M2(4.0x)  : {m2_r:4.1f}%", (px + 15, cy), font, 0.38, (140, 200, 255), 1, cv2.LINE_AA)
+        as_col = (80, 220, 80) if as_real else (70, 70, 240)
+        as_lines = [
+            (f"Model Verdict: {as_lbl} (Real: {r_score:.1f}%) | Dual-Model Ensemble", as_col, 0.44),
+            (f"M1 (2.7x MiniFASNetV2): {m1_r:.1f}%  |  M2 (4.0x MiniFASNetV1SE): {m2_r:.1f}%", (140, 210, 255), 0.40),
+            (f"Classification: 2D Paper: {p2:.1f}%  |  3D Screen: {p3:.1f}%", (190, 200, 210), 0.40)
+        ]
+
+        # Card height 108 để chứa cả thanh tỉ lệ
+        card_h = 108
+        cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + card_h), (27, 30, 40), -1)
+        cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + card_h), (50, 58, 75), 1)
+        cv2.rectangle(canvas, (10, cur_y), (14, cur_y + card_h), (0, 200, 240), -1)
+
+        cv2.putText(canvas, "3. ANTI-SPOOFING (DUAL-MODEL ENSEMBLE)", (24, cur_y + 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.46, (220, 225, 235), 1, cv2.LINE_AA)
+
+        line_y = cur_y + 40
+        for text, col, font_scale in as_lines:
+            cv2.putText(canvas, text, (24, line_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, col, 1, cv2.LINE_AA)
+            line_y += 19
+
+        # Thanh tỉ lệ Real vs Fake
+        bar_w = w - 60
+        bar_h = 8
+        bar_x = 24
+        bar_y = cur_y + 94
+        cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (45, 48, 60), -1)
+        real_fill = int(bar_w * (r_score / 100.0))
+        if real_fill > 0:
+            cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + real_fill, bar_y + bar_h), (80, 220, 80), -1)
+        if bar_w - real_fill > 0:
+            cv2.rectangle(canvas, (bar_x + real_fill, bar_y), (bar_x + bar_w, bar_y + bar_h), (70, 70, 240), -1)
+
+        cur_y += card_h + 8
     else:
-        cv2.putText(canvas, "3. Anti-Spoof  : NO DATA", (px + 15, cy), font, f_scale, (128, 128, 128), 1, cv2.LINE_AA)
-    cy += step_y
+        as_lines = [("Status: NO ANTI-SPOOF DATA", (0, 180, 255), 0.42)]
+        _draw_card("3. ANTI-SPOOFING (DUAL-MODEL ENSEMBLE)", as_lines, card_h=52)
 
-    # 5. Active Liveness: Blink & Head Movement
-    b_col = (0, 255, 127) if blink_passed else (0, 0, 255)
-    cv2.putText(canvas, f"4. Blink Active: {'PASSED' if blink_passed else 'FAILED'} (Blinks: {blink_counter})", (px + 15, cy), font, f_scale, b_col, 1, cv2.LINE_AA)
-    cy += step_y
+    # Section 4: Active Liveness (Blink & Head Action)
+    b_stat = f"PASS ({blink_count} blinks)" if blink_passed else f"FAIL ({blink_count} blinks)"
+    b_col = (80, 220, 80) if blink_passed else (70, 70, 240)
+    h_act = str(head_action_name).upper()
+    h_stat = f"PASS [{h_act}]" if head_movement_passed else f"FAIL [{h_act}]"
+    h_col = (80, 220, 80) if head_movement_passed else (70, 70, 240)
+    l_lines = [
+        (f"Eye Blink Liveness      : {b_stat}", b_col, 0.42),
+        (f"Head Movement Liveness  : {h_stat}", h_col, 0.42)
+    ]
+    _draw_card("4. ACTIVE LIVENESS VALIDATION", l_lines, card_h=68)
 
-    h_col = (0, 255, 127) if head_movement_passed else (0, 0, 255)
-    cv2.putText(canvas, f"5. Head Action : {'PASSED' if head_movement_passed else 'FAILED'} ({current_head_action})", (px + 15, cy), font, f_scale, h_col, 1, cv2.LINE_AA)
-    cy += step_y + 6
+    # Section 5: Final Decision Card
+    dec_h = 60 + extra_h
+    dec_bg = (24, 38, 24) if final_pass else (38, 24, 24)
+    dec_border = (80, 220, 80) if final_pass else (70, 70, 240)
+    cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + dec_h), dec_bg, -1)
+    cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + dec_h), dec_border, 2)
 
-    # 6. Final Verdict Box
-    cv2.line(canvas, (px + 10, cy), (px + panel_w - 10, cy), (100, 100, 100), 1)
-    cy += 16
+    verdict_text = "FINAL VERDICT: APPROVED (HOP LE)" if final_pass else "FINAL VERDICT: REJECTED (TU CHOI)"
+    cv2.putText(canvas, verdict_text, (24, cur_y + 28),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.60, dec_border, 2, cv2.LINE_AA)
 
-    verdict_text = "eKYC APPROVED [THÀNH CÔNG]" if final_pass else "eKYC REJECTED [TỪ CHỐI]"
-    v_col = (0, 255, 127) if final_pass else (0, 0, 255)
+    if not final_pass and clean_reasons:
+        cv2.putText(canvas, "Ly do tu choi / Reject Reasons:", (24, cur_y + 48),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.41, (0, 210, 255), 1, cv2.LINE_AA)
+        r_start_y = cur_y + 68
+        for idx_r, r_t in enumerate(clean_reasons[:5]):
+            if len(r_t) > 62:
+                r_t = r_t[:59] + "..."
+            cv2.putText(canvas, f"  * {r_t}", (24, r_start_y + idx_r * 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.39, (160, 215, 255), 1, cv2.LINE_AA)
 
-    cv2.rectangle(canvas, (px + 15, cy), (px + panel_w - 15, cy + 40), (25, 25, 30), cv2.FILLED)
-    cv2.rectangle(canvas, (px + 15, cy), (px + panel_w - 15, cy + 40), v_col, 2)
-    cv2.putText(canvas, verdict_text, (px + 28, cy + 26), font, 0.52, v_col, 1, cv2.LINE_AA)
-    cy += 55
-
-    # Lý do nếu từ chối
-    if not final_pass and reasons:
-        cv2.putText(canvas, "Lý do từ chối:", (px + 15, cy), font, 0.38, (0, 165, 255), 1, cv2.LINE_AA)
-        cy += 18
-        for r in reasons[:3]:
-            cv2.putText(canvas, f"• {r}", (px + 20, cy), font, 0.36, (220, 220, 220), 1, cv2.LINE_AA)
-            cy += 16
+    # Footer note
+    cv2.putText(canvas, "Press [r]: Tiep tuc chup anh tiep theo | [q]: Thoat", (24, h - 12),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.35, (100, 110, 130), 1, cv2.LINE_AA)
 
     return canvas
 
 
 # =============================================================================
-# 3. PIPELINE STAGES & CONTROLLER
+# 3. PIPELINE ENSEMBLE WORKFLOW STATE MACHINE
 # =============================================================================
 class PipelineStage(Enum):
-    PREVIEW_ALIGN = 1       # Giai đoạn 1: Mở Webcam canh chỉnh khuôn mặt
-    RUN_AI_STATIC = 2       # Giai đoạn 2: Chạy Face -> Landmark -> Pose -> Crop -> Dual-Model Anti-Spoof trên ảnh chụp
-    LIVE_BLINK = 3          # Giai đoạn 3: Active Liveness chớp mắt
-    LIVE_HEAD_MOVEMENT = 4  # Giai đoạn 4: Active Liveness quay đầu theo thử thách
-    FINAL_DECISION = 5      # Giai đoạn 5: Tổng hợp quyết định & Xuất báo cáo
-    SHOW_RESULT = 6         # Giai đoạn 6: Hiển thị kết quả hoàn tất
+    PREVIEW_ALIGN = 1       # Giai đoạn 1: Mở webcam, canh góc mặt & chờ chụp ảnh trong oval
+    RUN_AI_STATIC = 2       # Giai đoạn 2: Chạy Face -> Landmark -> Pose -> Crop 224 -> Ensemble Anti-Spoof
+    LIVE_BLINK = 3          # Giai đoạn 3: Active Liveness - Thử thách chớp mắt
+    LIVE_HEAD_MOVEMENT = 4  # Giai đoạn 4: Active Liveness - Thử thách quay đầu
+    FINAL_DECISION = 5      # Giai đoạn 5: Tổng hợp toàn bộ & lưu vào output/pipeline_ensemble/<id>/
 
 
-def run_pipeline_ensemble(
-    camera_id: int = 0,
-    quick_snapshot_mode: bool = False,
-    skip_liveness: bool = False,
-    auto_capture_default: bool = False
-):
-    print("\n" + "=" * 85)
-    print(" 🌟 KHỞI ĐỘNG HỆ THỐNG FULL E-KYC DUAL-MODEL ENSEMBLE PIPELINE")
-    print("=" * 85)
+def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
+    print("\n" + "=" * 80)
+    print("      FULL E-KYC PIPELINE (DUAL-MODEL OFFICIAL ANTI-SPOOF ENSEMBLE)")
+    print("=" * 80)
+    print(f"  * Thư mục lưu ảnh gốc : {DATA_RAW_DIR}")
+    print(f"  * Thư mục lưu kết quả : {OUTPUT_DIR}")
+    print("  * Mô hình Anti-Spoof  : Dual-Model MiniFASNet Ensemble (2.7x + 4.0x)")
+    print("  * Điều khiển:")
+    print("      [SPACE] hoặc [c]  : Chụp ảnh và chạy Full Quy trình (AI + Live Liveness)")
+    print("      [s]               : CHỤP NHANH & LƯU NGAY (Chạy AI Model -> Lưu kết quả ngay)")
+    print("      [a]               : Bật/Tắt chế độ tự động chụp khi mặt chuẩn trong oval")
+    print("      [r]               : Khởi tạo lại phiên eKYC mới")
+    print("      [q] hoặc [ESC]    : Thoát")
+    print("=" * 80 + "\n")
 
-    # 1. Khởi tạo các AI Module
-    print("[1/5] Khởi tạo Face Detection (YOLOv8)...")
-    face_detector = FaceDetector()
+    os.makedirs(DATA_RAW_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    print("[2/5] Khởi tạo Landmark Detection (MediaPipe FaceMesh)...")
+    # 1. Khởi tạo Models
+    print("[INFO] Đang khởi tạo các AI Models...")
+    detector = FaceDetector()
     landmark_detector = LandmarkDetector()
-
-    print("[3/5] Khởi tạo Pose Validator 3D...")
     pose_validator = PoseValidator()
-
-    print("[4/5] Khởi tạo Face Alignment & Standard Cropper...")
-    face_aligner = FaceAligner()
-
-    print("[5/5] Khởi tạo Dual-Model Official Anti-Spoofing Ensemble...")
+    aligner = FaceAligner()
     anti_spoof_ensemble = AntiSpoofOfficialEnsemble()
+    head_movement_detector = HeadMovementDetector(yaw_threshold=16.0, pitch_threshold=12.0, timeout=7.0)
+    print("[OK] Đã khởi tạo hoàn tất toàn bộ Models!\n")
 
-    head_movement_detector = HeadMovementDetector()
-
-    # Mở Camera
-    print(f"\n[INFO] Đang mở Camera #{camera_id}...")
-    cap = cv2.VideoCapture(camera_id)
+    cap = cv2.VideoCapture(cam_id)
     if not cap.isOpened():
-        print(f"[ERROR] Không thể kết nối tới Camera #{camera_id}!")
+        print(f"[ERROR] Không thể mở Camera ID {cam_id}!")
         return
 
-    # Biến trạng thái toàn cục
+    # Trạng thái luồng
     stage = PipelineStage.PREVIEW_ALIGN
-    auto_capture = auto_capture_default
-    current_img_idx = get_next_image_index()
-    stable_frames = 0
-    REQUIRED_STABLE = 15
+    auto_capture_mode = False
+    quick_snapshot_mode = False
+    consecutive_center_frames = 0
+    is_aligned_good = False
+    capture_blocked_frames = 0
 
+    # Dữ liệu của phiên hiện tại
+    current_img_idx = get_next_image_index(DATA_RAW_DIR)
     captured_frame = None
     captured_img_path = None
     captured_result_dir = None
 
-    # Biến lưu kết quả Static AI
+    # Dữ liệu tĩnh từ ảnh chụp
     primary_face = None
+    faces = []
     num_faces = 0
     all_face_crops_info = []
     landmarks_static = None
@@ -322,30 +510,41 @@ def run_pipeline_ensemble(
     pose_valid_static = False
     face_crop_static = None
     aligned_img_static = None
-    spoof_info_static = None
+    best_spoof_static = None
 
-    # Biến Active Liveness
+    # Dữ liệu động từ Live Active Liveness
     blink_counter = 0
     blink_state = False
     blink_passed = False
+
     head_movement_passed = False
-    current_head_action = HeadAction.TURN_LEFT
-    challenge_start_time = 0
+    current_head_action = HeadAction.NONE
+    head_action_prompt = ""
 
     final_pass = False
     reasons = []
+    final_display_img = None
+    final_record = None
 
-    def reset_for_next_session():
-        nonlocal stage, current_img_idx, stable_frames, captured_frame
-        nonlocal primary_face, num_faces, all_face_crops_info, landmarks_static
-        nonlocal pose_dict_static, pose_valid_static, face_crop_static, aligned_img_static, spoof_info_static
-        nonlocal blink_counter, blink_state, blink_passed, head_movement_passed
-        nonlocal current_head_action, final_pass, reasons
+    prev_fps_time = time.time()
 
-        current_img_idx = get_next_image_index()
-        stable_frames = 0
+    def start_new_session():
+        nonlocal stage, current_img_idx, captured_frame, captured_img_path, captured_result_dir
+        nonlocal primary_face, faces, num_faces, all_face_crops_info, landmarks_static, pose_dict_static, pose_valid_static
+        nonlocal face_crop_static, aligned_img_static, best_spoof_static
+        nonlocal blink_counter, blink_state, blink_passed, head_movement_passed, current_head_action, head_action_prompt
+        nonlocal final_pass, reasons, final_display_img, final_record, consecutive_center_frames, quick_snapshot_mode
+        nonlocal is_aligned_good, capture_blocked_frames
+
+        current_img_idx = get_next_image_index(DATA_RAW_DIR)
+        stage = PipelineStage.PREVIEW_ALIGN
         captured_frame = None
+        captured_img_path = None
+        captured_result_dir = None
+        quick_snapshot_mode = False
+
         primary_face = None
+        faces = []
         num_faces = 0
         all_face_crops_info = []
         landmarks_static = None
@@ -353,375 +552,702 @@ def run_pipeline_ensemble(
         pose_valid_static = False
         face_crop_static = None
         aligned_img_static = None
-        spoof_info_static = None
+        best_spoof_static = None
+
         blink_counter = 0
         blink_state = False
         blink_passed = False
-        head_movement_passed = False
-        final_pass = False
-        reasons = []
-        stage = PipelineStage.PREVIEW_ALIGN
-        print(f"\n[INFO] Đã sẵn sàng cho phiên eKYC mới: ID #{current_img_idx}")
 
-    print("\n" + "=" * 80)
-    print(" SẴN SÀNG! ĐANG HIỂN THỊ CAMERA XEM TRƯỚC...")
-    print(" Phím tắt:")
-    print("   - [SPACE] / [C] : Chụp ảnh bắt đầu eKYC")
-    print("   - [A]           : Bật/Tắt Auto-Capture khi mặt chuẩn")
-    print("   - [S]           : Lưu nhanh kết quả (Quick Save)")
-    print("   - [R]           : Khởi động lại phiên mới")
-    print("   - [Q] / [ESC]   : Thoát")
-    print("=" * 80 + "\n")
+        head_movement_passed = False
+        current_head_action = HeadAction.NONE
+        head_action_prompt = ""
+        head_movement_detector.reset()
+
+        final_pass = False
+        reasons.clear()
+        final_display_img = None
+        final_record = None
+        consecutive_center_frames = 0
+        is_aligned_good = False
+        capture_blocked_frames = 0
+
+        print(f"\n[PHIÊN MỚI] Sẵn sàng chụp ảnh ID tiếp theo: {current_img_idx}.jpg")
 
     while True:
         ret, frame = cap.read()
         if not ret:
-            print("[WARN] Mất kết nối webcam.")
             break
 
+        frame = cv2.flip(frame, 1)
         h, w = frame.shape[:2]
         display = frame.copy()
 
         # =====================================================================
-        # GIAI ĐOẠN 1: PREVIEW & CANH CHỈNH KHUÔN MẶT
+        # GIAI ĐOẠN 1: PREVIEW & CANH CHỈNH KHUÔN MẶT TRONG KHUNG OVAL
         # =====================================================================
         if stage == PipelineStage.PREVIEW_ALIGN:
-            faces = face_detector.detect(frame)
-            num_faces = len(faces)
-            landmarks = landmark_detector.detect(frame)
+            # 1. Cấu hình khung oval cố định ngay giữa màn hình (chiều cao dài hơn)
+            oval_cx = w // 2
+            oval_cy = int(h * 0.505)
+            oval_ay = int(h * 0.38)          # Tăng chiều cao oval dài hơn (38% h)
+            oval_ax = int(oval_ay * 0.65)     # Chiều ngang cân đối tỷ lệ khuôn mặt
+            oval_center = (oval_cx, oval_cy)
+            oval_axes = (oval_ax, oval_ay)
 
-            pose_res = pose_validator.validate_pose(frame, landmarks) if landmarks else None
-            is_pose_ok = pose_res["is_valid"] if pose_res else False
+            # 2. Phát hiện vị trí mặt và góc nhìn tạm thời trên webcam
+            landmarks_live = landmark_detector.detect(frame)
+            pose_valid_live = False
+            pose_dict_live = None
 
-            # Vẽ khung elip hướng dẫn
-            guide_color = (0, 255, 127) if (num_faces == 1 and is_pose_ok) else (100, 100, 255)
-            cv2.ellipse(display, (w // 2, h // 2), (w // 6, h // 4), 0, 0, 360, guide_color, 2)
+            face_in_oval = False
+            is_too_far = False
+            is_too_close = False
+            is_off_center = False
+            off_center_hint = ""
 
-            for f in faces:
-                bx1, by1, bx2, by2 = f["bbox"]
-                cv2.rectangle(display, (bx1, by1), (bx2, by2), guide_color, 2)
+            if landmarks_live and len(landmarks_live) >= 468:
+                pose_valid_live, _, pose_dict_live = pose_validator.validate(landmarks_live, get_landmark_point)
+                display = draw_landmarks(display, landmarks_live)
 
-            if landmarks:
-                display = draw_landmarks(display, landmarks)
+                # Tính tâm và kích thước khuôn mặt từ landmarks
+                xs = [p[0] for p in landmarks_live]
+                ys = [p[1] for p in landmarks_live]
+                face_min_x, face_max_x = min(xs), max(xs)
+                face_min_y, face_max_y = min(ys), max(ys)
+                face_cx = (face_min_x + face_max_x) / 2.0
+                face_cy = (face_min_y + face_max_y) / 2.0
+                face_w = face_max_x - face_min_x
+                face_h = face_max_y - face_min_y
 
-            # Auto Capture logic
-            if auto_capture and (num_faces == 1) and is_pose_ok:
-                stable_frames += 1
-                if stable_frames >= REQUIRED_STABLE:
-                    print(f"\n[AUTO CAPTURE] Khuôn mặt ổn định! Đang chụp ảnh #{current_img_idx}...")
-                    captured_frame = frame.copy()
-                    stage = PipelineStage.RUN_AI_STATIC
+                # Kiểm tra độ lệch tâm so với khung oval
+                dx_norm = abs(face_cx - oval_cx) / float(oval_ax)
+                dy_norm = abs(face_cy - oval_cy) / float(oval_ay)
+
+                # Kiểm tra kích thước khuôn mặt so với khung oval
+                oval_total_h = 2 * oval_ay
+                face_h_ratio = face_h / float(oval_total_h)
+
+                if face_h_ratio < 0.46 or face_h < 150:
+                    is_too_far = True
+                elif face_h_ratio > 1.15 or face_w > oval_ax * 2.2:
+                    is_too_close = True
+                elif dx_norm > 0.32 or dy_norm > 0.32:
+                    is_off_center = True
+                    if face_cx < oval_cx - oval_ax * 0.25:
+                        off_center_hint = "Di chuyen mat sang PHAI vao giua oval"
+                    elif face_cx > oval_cx + oval_ax * 0.25:
+                        off_center_hint = "Di chuyen mat sang TRAI vao giua oval"
+                    elif face_cy < oval_cy - oval_ay * 0.25:
+                        off_center_hint = "Di chuyen mat xuong DUOI vao giua oval"
+                    else:
+                        off_center_hint = "Di chuyen mat len TREN vao giua oval"
+                else:
+                    face_in_oval = True
+
+            # Đánh giá toàn diện: Có mặt trong oval + Góc nhìn 3D chuẩn
+            is_aligned_good = (landmarks_live is not None and face_in_oval and pose_valid_live)
+
+            # Xác định màu sắc khung oval & thông báo trạng thái
+            if landmarks_live is None:
+                guide_color = (200, 200, 200)
+                align_msg = "VUI LONG DUA KHUON MAT VAO KHUNG OVAL"
+                align_col = (220, 220, 220)
+                consecutive_center_frames = max(0, consecutive_center_frames - 1)
+            elif is_aligned_good:
+                guide_color = (0, 255, 127)
+                consecutive_center_frames += 1
+                if auto_capture_mode:
+                    pct = min(100, int(consecutive_center_frames / 25 * 100))
+                    align_msg = f"MAT CHUAN TRONG KHUNG OVAL! DANG CHUP... ({pct}%)"
+                else:
+                    align_msg = "KHUON MAT CHUAN! NHAN [SPACE] HOAC [c] DE CHUP"
+                align_col = (0, 255, 127)
+            elif is_too_far:
+                guide_color = (0, 165, 255)
+                align_msg = "VUI LONG TIEN LAI GAN CAMERA HON (Khuon mat qua nho)..."
+                align_col = (0, 165, 255)
+                consecutive_center_frames = max(0, consecutive_center_frames - 1)
+            elif is_too_close:
+                guide_color = (0, 165, 255)
+                align_msg = "VUI LONG LUI RA XA CAMERA HON (Khuon mat qua to)..."
+                align_col = (0, 165, 255)
+                consecutive_center_frames = max(0, consecutive_center_frames - 1)
+            elif is_off_center:
+                guide_color = (0, 200, 255)
+                align_msg = off_center_hint if off_center_hint else "CAN CHINH MAT VAO CHINH GIUA KHUNG OVAL..."
+                align_col = (0, 200, 255)
+                consecutive_center_frames = max(0, consecutive_center_frames - 1)
             else:
-                stable_frames = 0
+                guide_color = (0, 200, 255)
+                align_msg = "VUI LONG NHIN THANG VAO CAMERA (Giu dau thang)..."
+                align_col = (0, 200, 255)
+                consecutive_center_frames = max(0, consecutive_center_frames - 1)
 
-            # Banner hướng dẫn trên cùng
-            draw_ui_card(display, 10, 10, w - 20, 50, bg_color=(15, 15, 20), alpha=0.8)
-            info_txt = f"[{current_img_idx}] Giu mat thang huong vao khung elip | Faces: {num_faces} | Auto: {'ON' if auto_capture else 'OFF'}"
-            cv2.putText(display, info_txt, (25, 42), cv2.FONT_HERSHEY_DUPLEX, 0.52, (255, 255, 255), 1, cv2.LINE_AA)
+            # Cảnh báo khi người dùng nhấn phím chụp mà chưa đưa mặt vào oval
+            if capture_blocked_frames > 0:
+                capture_blocked_frames -= 1
+                align_msg = "CHUA DUA MAT VAO OVAL - KHONG THE NHAN CHUP!"
+                align_col = (0, 0, 255)
+                guide_color = (0, 0, 255)
+
+            # 3. Vẽ khung oval hướng dẫn ra màn hình
+            display = draw_oval_face_guide(
+                display,
+                center=oval_center,
+                axes=oval_axes,
+                is_aligned=is_aligned_good,
+                is_detected=(landmarks_live is not None),
+                color=guide_color
+            )
+
+            # 4. Banner tiêu đề trên cùng (gọn gàng, không che khuất khung oval)
+            draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.85)
+            cv2.putText(display, f"E-KYC ENSEMBLE: CANH CHINH KHUON MAT (ID: {current_img_idx}.jpg)", (28, 28),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
+            mode_str = f"Auto-Capture: {'BAT (Tu dong chup sau 2s)' if auto_capture_mode else 'TAT (Nhan phim SPACE de chup)'}"
+            cv2.putText(display, mode_str, (28, 46),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (180, 180, 180), 1, cv2.LINE_AA)
+
+            # 5. Banner thông báo hướng dẫn & phím tắt dưới cùng
+            bot_y = h - 56
+            draw_ui_card(display, 15, bot_y, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
+            cv2.putText(display, align_msg, (28, bot_y + 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.48, align_col, 2, cv2.LINE_AA)
+
+            if is_aligned_good:
+                shortcut_hint = "[SPACE]/[c]: SAN SANG CHUP | [s]: Luu ngay | [a]: Auto | [r]: Reset | [q]: Thoat"
+                shortcut_col = (0, 255, 127)
+            else:
+                shortcut_hint = "[SPACE]/[c]: KHOA CHUP (Canh mat vao oval de mo khoa) | [a]: Auto | [q]: Thoat"
+                shortcut_col = (150, 150, 150)
+
+            cv2.putText(display, shortcut_hint,
+                        (28, bot_y + 40), cv2.FONT_HERSHEY_SIMPLEX, 0.38, shortcut_col, 1, cv2.LINE_AA)
+
+            # Tự động chụp nếu bật auto_capture_mode và giữ mặt chuẩn 25 frames trong oval
+            if auto_capture_mode and consecutive_center_frames >= 25 and is_aligned_good:
+                trigger_capture = True
+            else:
+                trigger_capture = False
+
+            if trigger_capture:
+                key_trigger = ord(' ')
+            else:
+                key_trigger = None
 
         # =====================================================================
-        # GIAI ĐOẠN 2: CHẠY STATIC AI MODEL TRÊN ẢNH CHỤP
+        # GIAI ĐOẠN 2: CHẠY AI MODEL TRÊN ẢNH CHỤP ĐẾN BƯỚC ANTI-SPOOF
         # =====================================================================
         elif stage == PipelineStage.RUN_AI_STATIC:
-            print("\n" + "=" * 70)
-            print(f" 📸 BẮT ĐẦU PHÂN TÍCH ẢNH TĨNH #{current_img_idx}")
-            print("=" * 70)
+            draw_ui_card(display, 20, 20, w - 40, 90, bg_color=(15, 15, 25), alpha=0.9)
+            cv2.putText(display, f"DANG CHAY AI MODEL TREN ANH ID {current_img_idx}.jpg...", (35, 55),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 230, 255), 2)
+            cv2.putText(display, "Tien trinh: Face Detect -> Landmark -> Pose 3D -> Crop 224 -> Dual-Model Ensemble", (35, 85),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)
+            cv2.imshow("Full E-KYC Pipeline (Dual-Model Ensemble)", display)
+            cv2.waitKey(1)
 
-            captured_result_dir = os.path.join(OUTPUT_DIR, str(current_img_idx))
-            os.makedirs(captured_result_dir, exist_ok=True)
+            # 1. Lưu ảnh gốc vào data_raw/<id>.jpg
             captured_img_path = os.path.join(DATA_RAW_DIR, f"{current_img_idx}.jpg")
             cv2.imwrite(captured_img_path, captured_frame)
-            print(f"[1. Lưu ảnh gốc] -> {captured_img_path}")
+            print(f"\n[1. CHỤP ẢNH GỐC] Đã lưu ảnh vào: {captured_img_path}")
 
-            # 1. Face Detection trên ảnh chụp
-            faces = face_detector.detect(captured_frame)
+            # 2. Tạo thư mục output/pipeline_ensemble/<id>/ và thư mục con all_faces_cropped/
+            captured_result_dir = os.path.join(OUTPUT_DIR, str(current_img_idx))
+            os.makedirs(captured_result_dir, exist_ok=True)
+            all_faces_dir = os.path.join(captured_result_dir, "all_faces_cropped")
+            os.makedirs(all_faces_dir, exist_ok=True)
+
+            # 3. Chạy Face Detection: Tìm & Crop TẤT CẢ các khuôn mặt trong ảnh
+            faces = detector.detect(captured_frame)
             num_faces = len(faces)
-            print(f"[2. Face Detection] Phát hiện: {num_faces} khuôn mặt.")
+            print(f"[2. Face Detection] Tìm thấy {num_faces} khuôn mặt trong khung hình.")
 
+            all_face_crops_info = []
+            h_f, w_f = captured_frame.shape[:2]
+
+            for idx_f, f_item in enumerate(faces, 1):
+                fx1, fy1, fx2, fy2 = f_item["bbox"]
+                fx1_c = max(0, min(w_f - 1, fx1))
+                fy1_c = max(0, min(h_f - 1, fy1))
+                fx2_c = max(0, min(w_f, fx2))
+                fy2_c = max(0, min(h_f, fy2))
+
+                crop_f = captured_frame[fy1_c:fy2_c, fx1_c:fx2_c]
+                if crop_f.size > 0:
+                    crop_filename = f"face_{idx_f}.jpg"
+                    crop_save_path = os.path.join(all_faces_dir, crop_filename)
+                    cv2.imwrite(crop_save_path, crop_f)
+                    all_face_crops_info.append({
+                        "face_index": idx_f,
+                        "bbox": [fx1, fy1, fx2, fy2],
+                        "confidence": round(float(f_item["confidence"]), 4),
+                        "crop_file": crop_filename
+                    })
+
+            # Chọn Khuôn mặt chính (Primary Face: To nhất và gần trung tâm màn hình nhất)
             primary_face = None
             if faces:
-                # Chọn khuôn mặt có diện tích lớn nhất làm Primary Face
-                primary_face = max(faces, key=lambda f: (f["bbox"][2] - f["bbox"][0]) * (f["bbox"][3] - f["bbox"][1]))
+                def get_face_priority(f):
+                    bx1, by1, bx2, by2 = f["bbox"]
+                    area = (bx2 - bx1) * (by2 - by1)
+                    cx, cy = (bx1 + bx2) / 2.0, (by1 + by2) / 2.0
+                    dist_center = math.hypot(cx - w_f / 2.0, cy - h_f / 2.0)
+                    return area - (dist_center * 10)
 
-            # 2. Landmark Detection
+                primary_face = max(faces, key=get_face_priority)
+                print(f"  -> Đã chọn Primary Face: BBox={primary_face['bbox']} (Conf: {primary_face['confidence']:.2f})")
+                if num_faces > 1:
+                    print(f"  [CẢNH BÁO] Phát hiện {num_faces} người trong ảnh! Đã crop lưu tất cả {num_faces} mặt vào all_faces_cropped/")
+
+            # 4. Chạy Landmarks
             landmarks_static = landmark_detector.detect(captured_frame)
+            print(f"[3. Landmarks] Trích xuất được {len(landmarks_static) if landmarks_static else 0} điểm.")
 
-            # 3. 3D Pose Estimation
+            # 5. Chạy Pose 3D
+            pose_valid_static = False
+            pose_dict_static = None
             if landmarks_static:
-                p_res = pose_validator.validate_pose(captured_frame, landmarks_static)
-                pose_dict_static = p_res.get("pose", None)
-                pose_valid_static = p_res.get("is_valid", False)
-                print(f"[3. Pose Estimation] Yaw:{pose_dict_static['yaw']:.1f} Pitch:{pose_dict_static['pitch']:.1f} Roll:{pose_dict_static['roll']:.1f} -> Valid: {pose_valid_static}")
+                pose_valid_static, _, pose_dict_static = pose_validator.validate(landmarks_static, get_landmark_point)
+                if pose_dict_static:
+                    print(f"[4. Head Pose 3D] Y={pose_dict_static['yaw']:+.1f}° | P={pose_dict_static['pitch']:+.1f}° | R={pose_dict_static['roll']:+.1f}° -> {'PASS' if pose_valid_static else 'FAIL'}")
 
-            # 4. Face Alignment & Standard Crop 224x224
+            # 6. Cắt khuôn mặt chính thẳng đứng tự nhiên từ Bounding Box của YOLO trên ảnh gốc
+            aligned_img_static = None
+            face_crop_static = None
+
+            if primary_face is not None:
+                face_crop_static = aligner.crop_face(
+                    captured_frame,
+                    bbox=primary_face["bbox"],
+                    padding=25,
+                    output_size=(224, 224),
+                    mode="bbox"
+                )
+                print(f"[5. Face Crop] Cắt ảnh chuẩn thẳng đứng tự nhiên từ YOLO BBox (224x224).")
+            elif landmarks_static:
+                face_crop_static = aligner.crop_face(
+                    captured_frame,
+                    landmarks=landmarks_static,
+                    padding=25,
+                    output_size=(224, 224)
+                )
+
+            # Căn chỉnh xoay 2 mắt nếu cần ảnh aligned đối soát
+            if landmarks_static:
+                aligned_img_static = aligner.align_face(captured_frame, landmarks_static)
+
+            if aligned_img_static is None:
+                aligned_img_static = captured_frame.copy()
+
+            # LƯU NGAY LẬP TỨC CÁC FILE CROP & ALIGNED
+            if face_crop_static is not None:
+                out_crop_p = os.path.join(captured_result_dir, "2_face_crop_224.jpg")
+                cv2.imwrite(out_crop_p, face_crop_static)
+
+            if aligned_img_static is not None:
+                out_align_p = os.path.join(captured_result_dir, "3_aligned_full.jpg")
+                cv2.imwrite(out_align_p, aligned_img_static)
+
+            # 7. Chạy Dual-Model Anti-Spoofing Ensemble trên Primary Face
+            best_spoof_static = None
             if primary_face:
-                aligned_img_static = face_aligner.align_face(captured_frame, landmarks_static, bbox=primary_face["bbox"])
-                face_crop_static = face_aligner.crop_face(captured_frame, landmarks_static, bbox=primary_face["bbox"], output_size=(224, 224))
-                print("[4. Face Alignment] Chuẩn hóa và cắt khuôn mặt 224x224 thành công.")
+                print("[6. Anti-Spoof Ensemble] Đang phân tích Dual-Model MiniFASNet (2.7x + 4.0x)...")
+                ens_pred = anti_spoof_ensemble.predict_face(captured_frame, primary_face["bbox"])
+                best_spoof_static = {
+                    "bbox": primary_face["bbox"],
+                    "is_real": ens_pred["is_real"],
+                    "label": ens_pred["label"],
+                    "confidence": ens_pred["confidence"],
+                    "real_score": ens_pred["real_score"],
+                    "fake_score": ens_pred["fake_score"],
+                    "class_scores": ens_pred["class_scores"],
+                    "model1_scores": ens_pred["model1_scores"],
+                    "model2_scores": ens_pred["model2_scores"],
+                    "raw_class": "real" if ens_pred["is_real"] else "spoof"
+                }
 
-            # 5. Dual-Model Anti-Spoofing Ensemble
-            if primary_face:
-                print("[5. Anti-Spoof Ensemble] Đang chạy Dual-Model MiniFASNet (2.7x + 4.0x)...")
-                spoof_info_static = anti_spoof_ensemble.predict_face(captured_frame, primary_face["bbox"])
-
-                r_pct = spoof_info_static["real_score"] * 100.0
-                p2_pct = spoof_info_static["class_scores"]["spoof_2d"] * 100.0
-                p3_pct = spoof_info_static["class_scores"]["spoof_3d"] * 100.0
-                print(f"  -> Kết quả Ensemble: {spoof_info_static['label']} | Real: {r_pct:.1f}% | 2D: {p2_pct:.1f}% | 3D: {p3_pct:.1f}%")
-
-            # Lưu ảnh crop MiniFASNet
-            if spoof_info_static:
-                c27 = spoof_info_static.get("crop_27", None)
-                c40 = spoof_info_static.get("crop_40", None)
+                # Lưu ảnh crop 2.7x và 4.0x
+                c27 = ens_pred.get("crop_27", None)
+                c40 = ens_pred.get("crop_40", None)
                 if c27 is not None:
                     cv2.imwrite(os.path.join(captured_result_dir, "4_crop_2.7x_minifasnet.jpg"), c27)
                 if c40 is not None:
                     cv2.imwrite(os.path.join(captured_result_dir, "5_crop_4.0x_minifasnet.jpg"), c40)
 
+                r_pct = best_spoof_static["real_score"] * 100.0
+                p2_pct = best_spoof_static["class_scores"]["spoof_2d"] * 100.0
+                p3_pct = best_spoof_static["class_scores"]["spoof_3d"] * 100.0
+                m1_r = best_spoof_static["model1_scores"]["real"] * 100.0
+                m2_r = best_spoof_static["model2_scores"]["real"] * 100.0
+                print(f"  -> Kết quả Ensemble: {best_spoof_static['label']} (Real: {r_pct:.1f}%) | 2D: {p2_pct:.1f}% | 3D: {p3_pct:.1f}%")
+                print(f"     M1(2.7x): Real {m1_r:.1f}% | M2(4.0x): Real {m2_r:.1f}%")
+
+            # Nếu chạy chế độ chụp nhanh (Snapshot) hoặc bỏ qua liveness -> Chuyển ngay đến FINAL_DECISION
             if quick_snapshot_mode or skip_liveness:
-                print("\n[INFO] Chế độ Quick Snapshot / Skip Liveness -> Bỏ qua Active Liveness.")
+                print("\n[INFO] Chế độ Quick Save / Skip Liveness -> Chuyển ngay đến Lưu Kết quả Final...")
                 blink_passed = True
                 head_movement_passed = True
                 stage = PipelineStage.FINAL_DECISION
             else:
-                print("\n[INFO] Chuyển sang giai đoạn Active Liveness (Blink & Head Challenge)...")
+                # Chuyển sang giai đoạn Active Liveness trên Webcam
+                print("\n[INFO] Chuyển sang giai đoạn Live Active Liveness (Blink & Head Movement)...")
+                print("  (Mẹo: Nhấn phím 's' bất cứ lúc nào để lưu kết quả ngay lập tức)")
                 stage = PipelineStage.LIVE_BLINK
                 blink_counter = 0
                 blink_state = False
                 blink_passed = False
 
         # =====================================================================
-        # GIAI ĐOẠN 3: ACTIVE LIVENESS - BLINK DETECTION
+        # GIAI ĐOẠN 3: ACTIVE LIVENESS - BLINK DETECTION (LIVE WEBCAM)
         # =====================================================================
         elif stage == PipelineStage.LIVE_BLINK:
             landmarks_live = landmark_detector.detect(frame)
-            _, _, ear_avg = compute_eye_aspect_ratio(landmarks_live) if landmarks_live else (0.0, 0.0, 0.0)
+            ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks_live) if landmarks_live else (0.0, 0.0, 0.0)
 
             if landmarks_live:
                 display = draw_landmarks(display, landmarks_live)
 
             # Thuật toán đếm chớp mắt
-            if 0.05 < ear_avg < 0.18:
+            if ear_avg > 0.05 and ear_avg < 0.18:
                 if not blink_state:
                     blink_state = True
             elif ear_avg >= 0.22:
                 if blink_state:
                     blink_counter += 1
                     blink_state = False
-                    print(f"  [Blink Detected] Lần chớp mắt: {blink_counter}/1")
 
             if blink_counter >= 1:
                 blink_passed = True
-                print("[ACTIVE LIVENESS] ✅ Chớp mắt thành công! Chuyển sang thử thách quay đầu...")
+                print(f"[LIVENESS 1: BLINK] ĐÃ XÁC NHẬN CHỚP MẮT ({blink_counter} lần) -> PASS!")
+                # Chuyển sang thử thách cử động đầu
                 stage = PipelineStage.LIVE_HEAD_MOVEMENT
                 current_head_action = head_movement_detector.start_challenge()
-                challenge_start_time = time.time()
+                head_action_prompt = head_movement_detector.get_prompt()
+                print(f"[LIVENESS 2: HEAD MOVEMENT] Thử thách: {current_head_action.value} -> {head_action_prompt}")
 
-            # HUD hướng dẫn chớp mắt
-            draw_ui_card(display, 20, 20, w - 40, 75, bg_color=(15, 25, 45), alpha=0.9)
-            cv2.putText(display, "BƯỚC 1/2: ACTIVE LIVENESS - XÁC THỰC CHỚP MẮT", (35, 48), cv2.FONT_HERSHEY_DUPLEX, 0.55, (0, 255, 255), 1, cv2.LINE_AA)
-            cv2.putText(display, f"Vui long chop mat tu nhien | EAR: {ear_avg:.2f} | Da chop: {blink_counter}/1", (35, 78), cv2.FONT_HERSHEY_DUPLEX, 0.48, (255, 255, 255), 1, cv2.LINE_AA)
+            # Vẽ HUD Blink
+            draw_ui_card(display, 20, 20, w - 40, 110, bg_color=(20, 20, 25), alpha=0.85)
+            cv2.putText(display, f"E-KYC BUOC 1/2: THU THACH CHOP MAT (ID: {current_img_idx})", (35, 48),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 230, 255), 2)
+            cv2.putText(display, f"VUI LONG CHOP MAT (EAR: {ear_avg:.2f} | Blinks: {blink_counter}/1)", (35, 80),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
+            b_prog = 1.0 if blink_counter >= 1 else (0.5 if blink_state else 0.0)
+            bar_w = w - 110
+            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (50, 50, 50), -1)
+            if b_prog > 0:
+                cv2.rectangle(display, (35, 95), (35 + int(bar_w * b_prog), 107), (0, 255, 0), -1)
+            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (120, 120, 120), 1)
 
         # =====================================================================
-        # GIAI ĐOẠN 4: ACTIVE LIVENESS - HEAD MOVEMENT CHALLENGE
+        # GIAI ĐOẠN 4: ACTIVE LIVENESS - HEAD MOVEMENT CHALLENGE (LIVE WEBCAM)
         # =====================================================================
         elif stage == PipelineStage.LIVE_HEAD_MOVEMENT:
             landmarks_live = landmark_detector.detect(frame)
+            pose_dict_live = None
             if landmarks_live:
+                _, _, pose_dict_live = pose_validator.validate(landmarks_live, get_landmark_point)
                 display = draw_landmarks(display, landmarks_live)
-                p_info = pose_validator.validate_pose(frame, landmarks_live)
-                c_res = head_movement_detector.update(p_info.get("pose", {}))
 
-                if c_res.get("passed", False):
-                    head_movement_passed = True
-                    print(f"[ACTIVE LIVENESS] ✅ Hoàn thành thử thách quay đầu: {current_head_action.value}!")
-                    stage = PipelineStage.FINAL_DECISION
+            hm_status = head_movement_detector.update(pose_dict_live)
+            prompt_str = hm_status.get("prompt", "")
+            time_left = hm_status.get("time_left", 0.0)
+            progress_val = hm_status.get("progress", 0.0)
 
-            draw_ui_card(display, 20, 20, w - 40, 75, bg_color=(15, 45, 25), alpha=0.9)
-            cv2.putText(display, f"BƯỚC 2/2: ACTIVE LIVENESS - THỬ THÁCH QUAY ĐẦU", (35, 48), cv2.FONT_HERSHEY_DUPLEX, 0.55, (0, 255, 127), 1, cv2.LINE_AA)
-            action_name = current_head_action.value if hasattr(current_head_action, 'value') else str(current_head_action)
-            cv2.putText(display, f"YEU CAU: {action_name.upper()}", (35, 78), cv2.FONT_HERSHEY_DUPLEX, 0.52, (255, 255, 255), 1, cv2.LINE_AA)
+            if hm_status["passed"]:
+                head_movement_passed = True
+                print(f"[LIVENESS 2: HEAD MOVEMENT] ĐÃ HOÀN THÀNH CỬ ĐỘNG ĐẦU [{current_head_action.value}] -> PASS!")
+                stage = PipelineStage.FINAL_DECISION
+
+            elif hm_status["state"] == "FAILED":
+                head_movement_passed = False
+                print(f"[LIVENESS 2: HEAD MOVEMENT] HẾT THỜI GIAN THỰC HIỆN -> FAIL!")
+                stage = PipelineStage.FINAL_DECISION
+
+            # Vẽ HUD Head Movement
+            draw_ui_card(display, 20, 20, w - 40, 110, bg_color=(20, 20, 25), alpha=0.85)
+            cv2.putText(display, f"E-KYC BUOC 2/2: THU THACH CU DONG DAU (ID: {current_img_idx})", (35, 48),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 230, 255), 2)
+
+            hm_color = (0, 255, 0) if hm_status["passed"] else (0, 255, 255)
+            cv2.putText(display, f"{prompt_str.upper()} ({time_left:.1f}s)", (35, 80),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.58, hm_color, 2)
+
+            bar_w = w - 110
+            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (50, 50, 50), -1)
+            fill_w = int(bar_w * progress_val)
+            if fill_w > 0:
+                cv2.rectangle(display, (35, 95), (35 + fill_w, 107), (0, 255, 0), -1)
+            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (120, 120, 120), 1)
 
         # =====================================================================
-        # GIAI ĐOẠN 5: TỔNG HỢP & XUẤT BÁO CÁO FINAL eKYC
+        # GIAI ĐOẠN 5: TỔNG HỢP KẾT QUẢ & LƯU VÀO OUTPUT/PIPELINE_ENSEMBLE/<ID>/
         # =====================================================================
         elif stage == PipelineStage.FINAL_DECISION:
-            print("\n" + "=" * 70)
-            print(f" 📋 TỔNG HỢP VÀ ĐÁNH GIÁ KẾT QUẢ eKYC #{current_img_idx}")
-            print("=" * 70)
+            if final_record is None:
+                # 1. Đánh giá Final Decision
+                c_face = (primary_face is not None)
+                c_single = (num_faces == 1)
+                c_pose = bool(pose_valid_static)
+                c_spoof = bool(best_spoof_static["is_real"]) if best_spoof_static else False
+                c_blink = bool(blink_passed)
+                c_head = bool(head_movement_passed)
 
-            reasons = []
-            c_face = (primary_face is not None)
-            c_single = (num_faces == 1)
-            c_pose = bool(pose_valid_static)
-            c_spoof = bool(spoof_info_static["is_real"]) if spoof_info_static else False
-            c_blink = bool(blink_passed)
-            c_head = bool(head_movement_passed)
+                reasons.clear()
+                if not c_face:
+                    reasons.append("Không tìm thấy khuôn mặt trong ảnh")
+                elif not c_single:
+                    reasons.append(f"Phát hiện {num_faces} người trong khung hình (Yêu cầu 1 người duy nhất)")
 
-            if not c_face:
-                reasons.append("Không phát hiện khuôn mặt trong ảnh")
-            if not c_single:
-                reasons.append(f"Phát hiện {num_faces} khuôn mặt (Yêu cầu duy nhất 1 người)")
-            if not c_pose:
-                reasons.append("Góc quay mặt chưa đạt chuẩn nhìn thẳng")
-            if not c_spoof:
-                reasons.append("Phát hiện giả mạo qua Dual-Model Anti-Spoofing Ensemble")
-            if not c_blink:
-                reasons.append("Chưa hoàn thành xác thực chớp mắt")
-            if not c_head:
-                reasons.append("Chưa hoàn thành thử thách cử động đầu")
+                if not c_pose:
+                    reasons.append("Góc mặt ảnh chụp bị nghiêng/lệch")
 
-            final_pass = (c_face and c_single and c_pose and c_spoof and c_blink and c_head)
+                if not c_spoof:
+                    reasons.append("Phát hiện giả mạo qua Dual-Model Anti-Spoofing Ensemble")
 
-            # 1. Vẽ Dashboard HUD lên ảnh kết quả
-            res_img = captured_frame.copy()
-            if primary_face:
-                bx1, by1, bx2, by2 = primary_face["bbox"]
-                b_color = (0, 255, 127) if final_pass else (0, 0, 255)
-                cv2.rectangle(res_img, (bx1, by1), (bx2, by2), b_color, 2)
+                if not c_blink:
+                    reasons.append("Chưa hoàn thành chớp mắt (Blink)")
+                if not c_head:
+                    reasons.append("Chưa hoàn thành cử động đầu (Head Movement)")
 
-            if landmarks_static:
-                res_img = draw_landmarks(res_img, landmarks_static)
+                final_pass = (c_face and c_single and c_pose and c_spoof and c_blink and c_head)
 
-            final_display_img = draw_pipeline_ensemble_hud(
-                res_img,
-                current_img_idx,
-                primary_face,
-                num_faces,
-                pose_dict_static,
-                pose_valid_static,
-                spoof_info_static,
-                blink_passed,
-                blink_counter,
-                head_movement_passed,
-                current_head_action.value if hasattr(current_head_action, 'value') else str(current_head_action),
-                final_pass,
-                reasons
-            )
+                # 2. Chuẩn bị ảnh kết quả trực quan
+                res_img = captured_frame.copy()
 
-            # 2. Lưu các file kết quả vào output/pipeline_ensemble/<id>/
-            out_res_p = os.path.join(captured_result_dir, "1_pipeline_result.jpg")
-            cv2.imwrite(out_res_p, final_display_img)
+                if landmarks_static:
+                    res_img = draw_landmarks(res_img, landmarks_static)
 
-            if face_crop_static is not None:
-                cv2.imwrite(os.path.join(captured_result_dir, "2_face_crop_224.jpg"), face_crop_static)
+                # CHỈ HIỂN THỊ 1 KHUNG NHẬN DIỆN CÓ TỈ LỆ CAO NHẤT (Ẩn khung trùng lặp/tỉ lệ thấp hơn)
+                if primary_face and best_spoof_static:
+                    bx1, by1, bx2, by2 = primary_face["bbox"]
+                    is_real = best_spoof_static["is_real"]
+                    b_color = (0, 255, 0) if is_real else (0, 0, 255)
+                    cv2.rectangle(res_img, (bx1, by1), (bx2, by2), b_color, 2)
+                    label_str = f"{best_spoof_static['label']} {best_spoof_static['confidence']*100:.1f}%"
+                    cv2.putText(res_img, label_str, (bx1, max(25, by1 - 10)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.65, b_color, 2)
 
-            if aligned_img_static is not None:
-                cv2.imwrite(os.path.join(captured_result_dir, "3_aligned_full.jpg"), aligned_img_static)
+                # Với các mặt phụ khác nếu có (Multi-Face warning), vẽ khung màu xám mờ
+                if num_faces > 1:
+                    for f_it in faces:
+                        if primary_face and f_it["bbox"] == primary_face["bbox"]:
+                            continue
+                        fx1, fy1, fx2, fy2 = f_it["bbox"]
+                        cv2.rectangle(res_img, (fx1, fy1), (fx2, fy2), (180, 180, 180), 1)
+                        cv2.putText(res_img, "EXTRA FACE", (fx1, max(15, fy1 - 5)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
 
-            # 3. Xuất file báo cáo JSON
-            report_data = {
-                "session_id": current_img_idx,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "raw_image": captured_img_path,
-                "face_detection": {
-                    "face_detected": c_face,
-                    "num_faces": num_faces,
-                    "single_person_passed": c_single,
-                    "bbox": primary_face["bbox"] if primary_face else None,
-                    "confidence": float(primary_face["confidence"]) if primary_face else 0.0
-                },
-                "pose_validation": {
-                    "is_valid": c_pose,
-                    "angles": pose_dict_static
-                },
-                "anti_spoof_ensemble": {
-                    "is_real": c_spoof,
-                    "label": spoof_info_static["label"] if spoof_info_static else "NONE",
-                    "confidence": spoof_info_static["confidence"] if spoof_info_static else 0.0,
-                    "real_score": spoof_info_static["real_score"] if spoof_info_static else 0.0,
-                    "class_scores": spoof_info_static.get("class_scores", {}) if spoof_info_static else {},
-                    "model1_2.7x": spoof_info_static.get("model1_scores", {}) if spoof_info_static else {},
-                    "model2_4.0x": spoof_info_static.get("model2_scores", {}) if spoof_info_static else {},
-                },
-                "active_liveness": {
-                    "blink_passed": c_blink,
-                    "blink_count": blink_counter,
-                    "head_movement_passed": c_head,
-                    "head_action": current_head_action.value if hasattr(current_head_action, 'value') else str(current_head_action),
-                },
-                "final_verdict": "APPROVED" if final_pass else "REJECTED",
-                "reasons": reasons
-            }
+                # Tạo bảng Dashboard thông số độc lập (Window 2)
+                dashboard_img = create_ensemble_pipeline_dashboard(
+                    img_idx=current_img_idx,
+                    face_info=primary_face,
+                    num_faces=num_faces,
+                    pose_info=pose_dict_static,
+                    pose_valid=pose_valid_static,
+                    spoof_info=best_spoof_static,
+                    blink_passed=blink_passed,
+                    blink_count=blink_counter,
+                    head_movement_passed=head_movement_passed,
+                    head_action_name=current_head_action.value if hasattr(current_head_action, "value") else str(current_head_action),
+                    final_pass=final_pass,
+                    reasons=reasons,
+                    face_crop=face_crop_static,
+                    target_height=h
+                )
 
-            out_json_p = os.path.join(captured_result_dir, "6_report.json")
-            with open(out_json_p, "w", encoding="utf-8") as f:
-                json.dump(report_data, f, ensure_ascii=False, indent=2, default=json_serialize_helper)
+                # Ảnh kết quả sạch (Window 1)
+                clean_img = res_img.copy()
+                verdict_badge = "eKYC: APPROVED" if final_pass else "eKYC: REJECTED"
+                badge_col = (0, 255, 0) if final_pass else (0, 0, 255)
+                cv2.rectangle(clean_img, (w - 240, 15), (w - 15, 55), (15, 15, 20), -1)
+                cv2.rectangle(clean_img, (w - 240, 15), (w - 15, 55), badge_col, 2)
+                cv2.putText(clean_img, verdict_badge, (w - 225, 42),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.62, badge_col, 2)
 
-            # Cập nhật CSV Summary
-            summary_csv = os.path.join(OUTPUT_DIR, "batch_summary.csv")
-            file_exists = os.path.exists(summary_csv)
-            with open(summary_csv, "a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                if not file_exists:
-                    writer.writerow(["ID", "Timestamp", "Verdict", "Num_Faces", "Pose_Valid", "AntiSpoof_Label", "Real_Pct", "2D_Spoof_Pct", "3D_Spoof_Pct", "Blink", "Head_Movement", "Reasons"])
-                writer.writerow([
-                    current_img_idx,
-                    report_data["timestamp"],
-                    report_data["final_verdict"],
-                    num_faces,
-                    c_pose,
-                    spoof_info_static["label"] if spoof_info_static else "NONE",
-                    f"{spoof_info_static['real_score']*100:.1f}%" if spoof_info_static else "0.0%",
-                    f"{spoof_info_static['class_scores']['spoof_2d']*100:.1f}%" if spoof_info_static else "0.0%",
-                    f"{spoof_info_static['class_scores']['spoof_3d']*100:.1f}%" if spoof_info_static else "0.0%",
-                    c_blink,
-                    c_head,
-                    "; ".join(reasons)
-                ])
+                # Ghép 2 Window song song cạnh nhau không bao giờ che mặt
+                side_by_side_img = create_side_by_side_result(clean_img, dashboard_img)
 
-            print(f"[KẾT QUẢ CUỐI CÙNG] -> {report_data['final_verdict']}")
-            print(f"[INFO] Toàn bộ báo cáo đã được lưu vào: {captured_result_dir}")
-            stage = PipelineStage.SHOW_RESULT
+                # 3. Lưu các file vào thư mục output/pipeline_ensemble/<id>/
+                # File 1A: 1_pipeline_result_clean.jpg (Ảnh khuôn mặt sạch)
+                out_clean_path = os.path.join(captured_result_dir, "1_pipeline_result_clean.jpg")
+                cv2.imwrite(out_clean_path, clean_img)
 
-        # =====================================================================
-        # GIAI ĐOẠN 6: HIỂN THỊ KẾT QUẢ
-        # =====================================================================
-        elif stage == PipelineStage.SHOW_RESULT:
+                # File 1B: 1_dashboard_panel.jpg (Bảng thông số Dashboard độc lập)
+                out_dash_path = os.path.join(captured_result_dir, "1_dashboard_panel.jpg")
+                cv2.imwrite(out_dash_path, dashboard_img)
+
+                # File 1C: 1_pipeline_side_by_side.jpg (Ghép 2 window cạnh nhau)
+                out_sbs_path = os.path.join(captured_result_dir, "1_pipeline_side_by_side.jpg")
+                cv2.imwrite(out_sbs_path, side_by_side_img)
+
+                # File 1: 1_pipeline_result.jpg (Mặc định xuất ảnh song song Side-by-Side)
+                out_res_path = os.path.join(captured_result_dir, "1_pipeline_result.jpg")
+                cv2.imwrite(out_res_path, side_by_side_img)
+
+                final_display_img = side_by_side_img
+
+                # File 2: 2_face_crop_224.jpg (Khuôn mặt chính đã align chuẩn hóa 224x224)
+                if face_crop_static is not None:
+                    out_crop_path = os.path.join(captured_result_dir, "2_face_crop_224.jpg")
+                    cv2.imwrite(out_crop_path, face_crop_static)
+
+                # File 3: 3_aligned_full.jpg
+                if aligned_img_static is not None:
+                    out_align_path = os.path.join(captured_result_dir, "3_aligned_full.jpg")
+                    cv2.imwrite(out_align_path, aligned_img_static)
+
+                # File 4: 4_report.json
+                final_record = {
+                    "image_id": current_img_idx,
+                    "image_name": f"{current_img_idx}.jpg",
+                    "raw_image_path": captured_img_path,
+                    "output_folder": captured_result_dir,
+                    "model_type": "Dual-Model Official Anti-Spoof Ensemble (2.7x + 4.0x)",
+                    "face_detection": {
+                        "face_detected": primary_face is not None,
+                        "num_faces_detected": num_faces,
+                        "single_person_passed": (num_faces == 1),
+                        "primary_face_bbox": primary_face["bbox"] if primary_face else None,
+                        "primary_face_confidence": round(primary_face["confidence"], 4) if primary_face else 0.0,
+                        "all_faces_cropped_folder": all_faces_dir,
+                        "all_faces": all_face_crops_info
+                    },
+                    "pose_validation": {
+                        "is_valid": bool(pose_valid_static),
+                        "yaw": round(pose_dict_static["yaw"], 2) if pose_dict_static else 0.0,
+                        "pitch": round(pose_dict_static["pitch"], 2) if pose_dict_static else 0.0,
+                        "roll": round(pose_dict_static["roll"], 2) if pose_dict_static else 0.0,
+                    },
+                    "anti_spoof_ensemble": {
+                        "label": best_spoof_static["label"] if best_spoof_static else "NONE",
+                        "is_real": bool(best_spoof_static["is_real"]) if best_spoof_static else False,
+                        "confidence": round(best_spoof_static["confidence"], 4) if best_spoof_static else 0.0,
+                        "real_score": round(best_spoof_static["real_score"], 4) if best_spoof_static else 0.0,
+                        "fake_score": round(best_spoof_static["fake_score"], 4) if best_spoof_static else 0.0,
+                        "class_scores": best_spoof_static.get("class_scores", {}) if best_spoof_static else {},
+                        "model1_scores": best_spoof_static.get("model1_scores", {}) if best_spoof_static else {},
+                        "model2_scores": best_spoof_static.get("model2_scores", {}) if best_spoof_static else {},
+                    },
+                    "active_liveness": {
+                        "blink_passed": bool(blink_passed),
+                        "blink_count": int(blink_counter),
+                        "head_movement_passed": bool(head_movement_passed),
+                        "head_action": current_head_action.value if hasattr(current_head_action, "value") else str(current_head_action),
+                    },
+                    "final_verdict": "APPROVED" if final_pass else "REJECTED",
+                    "reasons": reasons
+                }
+
+                out_json_path = os.path.join(captured_result_dir, "4_report.json")
+                with open(out_json_path, "w", encoding="utf-8") as f:
+                    json.dump(final_record, f, ensure_ascii=False, indent=2, default=json_serialize_helper)
+
+                # 4. Cập nhật Báo cáo tổng kết batch_summary_ensemble.csv
+                batch_csv_path = os.path.join(OUTPUT_DIR, "batch_summary_ensemble.csv")
+                file_exists = os.path.exists(batch_csv_path)
+                with open(batch_csv_path, "a", newline="", encoding="utf-8-sig") as f:
+                    writer = csv.writer(f)
+                    if not file_exists:
+                        writer.writerow([
+                            "Image ID", "Verdict", "Num Faces", "Ensemble Label", "Real Score", "2D Spoof", "3D Spoof",
+                            "Pose Valid", "Blink", "Head Movement", "Reasons", "Output Folder"
+                        ])
+                    r_sc = f"{best_spoof_static['real_score']*100:.1f}%" if best_spoof_static else "0.0%"
+                    s2_sc = f"{best_spoof_static['class_scores']['spoof_2d']*100:.1f}%" if best_spoof_static else "0.0%"
+                    s3_sc = f"{best_spoof_static['class_scores']['spoof_3d']*100:.1f}%" if best_spoof_static else "0.0%"
+                    writer.writerow([
+                        f"{current_img_idx}.jpg",
+                        final_record["final_verdict"],
+                        num_faces,
+                        final_record["anti_spoof_ensemble"]["label"],
+                        r_sc,
+                        s2_sc,
+                        s3_sc,
+                        "PASS" if final_record["pose_validation"]["is_valid"] else "FAIL",
+                        "PASS" if blink_passed else "FAIL",
+                        f"PASS ({final_record['active_liveness']['head_action']})" if head_movement_passed else f"FAIL ({final_record['active_liveness']['head_action']})",
+                        "; ".join(reasons) if reasons else "None",
+                        captured_result_dir
+                    ])
+
+                print("\n" + "=" * 65)
+                print(f"  [HOÀN TẤT eKYC ENSEMBLE ID: {current_img_idx}] Kết quả: {final_record['final_verdict']}")
+                print(f"  * Ảnh gốc đã lưu      : {captured_img_path}")
+                print(f"  * Thư mục kết quả     : {captured_result_dir}")
+                print(f"  * Chi tiết 4_report   : {out_json_path}")
+                print("=" * 65 + "\n")
+
             display = final_display_img.copy()
+            disp_h, disp_w = display.shape[:2]
+            draw_ui_card(display, 20, disp_h - 70, disp_w - 40, 50, bg_color=(15, 15, 20), alpha=0.85)
+            cv2.putText(display, "[r]: Tiep tuc chup anh tiep theo | [q]: Thoat", (35, disp_h - 38),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 230, 255), 2)
 
-        cv2.imshow("Full E-KYC Dual-Model Ensemble Pipeline", display)
+        # Vẽ thanh trạng thái FPS ở góc phải trên
+        curr_time = time.time()
+        fps = 1.0 / (curr_time - prev_fps_time) if curr_time > prev_fps_time else 0.0
+        prev_fps_time = curr_time
+        cv2.putText(display, f"FPS: {fps:.1f}", (w - 120, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+
+        cv2.imshow("Full E-KYC Pipeline (Dual-Model Ensemble)", display)
+
+        # Xử lý phím bấm
         key = cv2.waitKey(1) & 0xFF
-
-        if key in (27, ord('q'), ord('Q')):
+        if key == 27 or key == ord('q') or key == ord('Q'):
             break
-        elif key in (ord('c'), ord('C'), 32):  # SPACE / 'c'
+
+        elif key == ord('r') or key == ord('R'):
+            start_new_session()
+
+        elif (key == ord('a') or key == ord('A')) and stage == PipelineStage.PREVIEW_ALIGN:
+            auto_capture_mode = not auto_capture_mode
+            print(f"[INFO] Chế độ Auto-Capture: {'BẬT' if auto_capture_mode else 'TẮT'}")
+
+        # Phím 's': Chụp ảnh nhanh (Snapshot Mode) và lưu kết quả ngay lập tức
+        elif (key == ord('s') or key == ord('S')):
             if stage == PipelineStage.PREVIEW_ALIGN:
-                print(f"\n[MANUAL CAPTURE] Đã chụp ảnh #{current_img_idx}!")
-                captured_frame = frame.copy()
-                stage = PipelineStage.RUN_AI_STATIC
-        elif key in (ord('a'), ord('A')):
-            auto_capture = not auto_capture
-            print(f"[INFO] Chế độ Auto Capture: {'BẬT (ON)' if auto_capture else 'TẮT (OFF)'}")
-        elif key in (ord('s'), ord('S')):
-            if stage in (PipelineStage.LIVE_BLINK, PipelineStage.LIVE_HEAD_MOVEMENT):
-                print("[INFO] Quick Snapshot -> Chuyển ngay tới Final Decision...")
+                if not is_aligned_good:
+                    capture_blocked_frames = 40
+                    print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng trước.")
+                else:
+                    captured_frame = frame.copy()
+                    quick_snapshot_mode = True
+                    stage = PipelineStage.RUN_AI_STATIC
+                    print(f"\n[QUICK SAVE] Đã kích hoạt Chụp nhanh & Lưu ngay cho ID: {current_img_idx}!")
+            elif stage in (PipelineStage.LIVE_BLINK, PipelineStage.LIVE_HEAD_MOVEMENT):
+                print("\n[QUICK SAVE] Bỏ qua các bước Liveness tiếp theo và Lưu kết quả ngay lập tức!")
                 blink_passed = True
                 head_movement_passed = True
                 stage = PipelineStage.FINAL_DECISION
-        elif key in (ord('r'), ord('R')):
-            reset_for_next_session()
+
+        # Phím SPACE hoặc 'c': Chụp ảnh và chạy Full quy trình eKYC
+        elif (key == 32 or key == ord('c') or key == ord('C') or key_trigger == ord(' ')) and stage == PipelineStage.PREVIEW_ALIGN:
+            if not is_aligned_good:
+                capture_blocked_frames = 40
+                print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng trước.")
+            else:
+                captured_frame = frame.copy()
+                quick_snapshot_mode = False
+                stage = PipelineStage.RUN_AI_STATIC
+                print(f"\n[TRIGGER] Đã kích hoạt chụp ảnh Full Quy trình cho ID: {current_img_idx}!")
 
     cap.release()
     cv2.destroyAllWindows()
-    print("\n[INFO] Đã kết thúc chương trình eKYC Pipeline.")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Full eKYC Dual-Model Ensemble Pipeline")
-    parser.add_argument("--camera", type=int, default=0, help="Chỉ số Camera Webcam (mặc định 0)")
-    parser.add_argument("--quick", action="store_true", help="Chế độ Quick Snapshot (bỏ qua Active Liveness)")
-    parser.add_argument("--skip-liveness", action="store_true", help="Bỏ qua bước chớp mắt và quay đầu")
-    parser.add_argument("--auto", action="store_true", help="Bật Auto Capture khi mặt chuẩn")
-    args = parser.parse_args()
-
-    run_pipeline_ensemble(
-        camera_id=args.camera,
-        quick_snapshot_mode=args.quick,
-        skip_liveness=args.skip_liveness,
-        auto_capture_default=args.auto
-    )
+    print("[INFO] Đã đóng chương trình Pipeline Ensemble an toàn.")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Full E-KYC Pipeline (Dual-Model Official Anti-Spoof Ensemble)")
+    parser.add_argument("--cam", "--camera", type=int, default=0, help="Camera device index (mặc định 0)")
+    parser.add_argument("--static", "--skip-liveness", "--quick", action="store_true", help="Chế độ chụp và lưu AI nhanh, bỏ qua thử thách Liveness")
+    args = parser.parse_args()
+
+    try:
+        main_pipeline_ensemble(
+            cam_id=args.cam,
+            skip_liveness=getattr(args, 'static', False)
+        )
+    except KeyboardInterrupt:
+        print("\n[INFO] Đã dừng pipeline theo yêu cầu của người dùng.")
