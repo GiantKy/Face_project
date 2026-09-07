@@ -48,6 +48,8 @@ dist/
 !models/Face_Detection.pt
 !models/Anti_Spoof_YOLO.pt
 !models/face_landmarker.task
+!models/roboflow/**/weights.onnx
+*.db
 
 # =============================================================================
 # Datasets, Captured Photos & Output Folders

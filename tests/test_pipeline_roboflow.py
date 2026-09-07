@@ -65,11 +65,9 @@ if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
         sys.stderr.reconfigure(encoding="utf-8")
     except Exception:
-        pass
-
-import cv2
-import numpy as np
-from inference import get_model
+# Tắt các cảnh báo phụ từ inference
+os.environ["CORE_MODEL_GAZE_ENABLED"] = "False"
+os.environ["CORE_MODEL_SAM_ENABLED"] = "False"
 
 # Thiết lập đường dẫn import tới Face-Project/
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -77,6 +75,14 @@ BASE_DIR = os.path.dirname(CURRENT_DIR)
 
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
+
+# Trỏ cache của Roboflow về thư mục models/roboflow của repo (đảm bảo chạy offline 100%)
+ROBOFLOW_CACHE_DIR = os.path.join(BASE_DIR, "models", "roboflow")
+os.environ["MODEL_CACHE_DIR"] = ROBOFLOW_CACHE_DIR
+
+import cv2
+import numpy as np
+from inference import get_model
 
 from src.face_detection import FaceDetector
 from src.landmark_detection import LandmarkDetector

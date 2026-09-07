@@ -41,16 +41,20 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-import cv2
-import numpy as np
-from inference import get_model
-
 # Cấu hình đường dẫn
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(CURRENT_DIR)
 DATA_RAW_DIR = os.path.join(BASE_DIR, "data_raw")
 OUTPUT_DIR = os.path.join(CURRENT_DIR, "output", "roboflow_test")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Trỏ cache của Roboflow về thư mục models/roboflow của repo (đảm bảo chạy offline 100%)
+ROBOFLOW_CACHE_DIR = os.path.join(BASE_DIR, "models", "roboflow")
+os.environ["MODEL_CACHE_DIR"] = ROBOFLOW_CACHE_DIR
+
+import cv2
+import numpy as np
+from inference import get_model
 
 MODEL_ID = "face-spoof-detection-liika-qopyy/1"
 API_KEY = "LiYT7osRW01duX3ao91S"
