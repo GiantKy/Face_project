@@ -254,6 +254,48 @@ def draw_oval_face_guide(image, center, axes, is_aligned=False, is_detected=Fals
     return image
 
 
+def is_point_in_oval(pt: Tuple[float, float], center: Tuple[int, int], axes: Tuple[int, int], tolerance: float = 1.0) -> bool:
+    """Kiểm tra tọa độ (x, y) có nằm bên trong khung oval hay không."""
+    cx, cy = center
+    ax, ay = axes
+    if ax <= 0 or ay <= 0:
+        return False
+    norm_x = (float(pt[0]) - cx) / float(ax * tolerance)
+    norm_y = (float(pt[1]) - cy) / float(ay * tolerance)
+    return (norm_x ** 2 + norm_y ** 2) <= 1.0
+
+
+def is_face_in_oval(bbox: Union[List[int], Tuple[int, ...]], center: Tuple[int, int], axes: Tuple[int, int], tolerance: float = 1.08) -> bool:
+    """
+    Kiểm tra xem bounding box của khuôn mặt có nằm trong khung oval hay không.
+    Tính toán dựa trên tâm của khuôn mặt (face center).
+    """
+    x1, y1, x2, y2 = bbox
+    face_cx = (x1 + x2) / 2.0
+    face_cy = (y1 + y2) / 2.0
+    return is_point_in_oval((face_cx, face_cy), center, axes, tolerance=tolerance)
+
+
+def get_oval_masked_frame(frame: np.ndarray, center: Tuple[int, int], axes: Tuple[int, int], blur_ksize: int = 45, dim_factor: float = 0.35) -> np.ndarray:
+    """
+    Tạo bản sao frame với vùng bên ngoài khung oval bị làm mờ mạnh (Gaussian Blur) và giảm sáng.
+    Giúp MediaPipe và các thuật toán phát hiện chỉ tập trung vào người bên trong oval,
+    hoàn toàn bỏ qua những người bên ngoài khung oval.
+    """
+    h, w = frame.shape[:2]
+    cx, cy = center
+    ax, ay = axes
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.ellipse(mask, (cx, cy), (ax, ay), 0, 0, 360, 255, -1)
+    outside_mask = (mask == 0)
+
+    masked = frame.copy()
+    ksize = blur_ksize if blur_ksize % 2 == 1 else blur_ksize + 1
+    blurred = cv2.GaussianBlur(masked, (ksize, ksize), 0)
+    masked[outside_mask] = (blurred[outside_mask] * dim_factor).astype(np.uint8)
+    return masked
+
+
 def create_roboflow_pipeline_dashboard(
     img_idx: Any,
     face_info: Optional[Dict[str, Any]] = None,
@@ -629,18 +671,28 @@ def main_pipeline_roboflow(cam_id=0, skip_liveness=False):
         h, w = frame.shape[:2]
         display = frame.copy()
 
+        # Cấu hình khung oval cố định ngay giữa màn hình cho TOÀN BỘ các giai đoạn
+        oval_cx = w // 2
+        oval_cy = int(h * 0.505)
+        oval_ay = int(h * 0.38)          # Tăng chiều cao oval dài hơn (38% h)
+        oval_ax = int(oval_ay * 0.65)     # Chiều ngang cân đối tỷ lệ khuôn mặt
+        oval_center = (oval_cx, oval_cy)
+        oval_axes = (oval_ax, oval_ay)
+
         # =====================================================================
         # GIAI ĐOẠN 1: PREVIEW & CANH CHỈNH KHUÔN MẶT TRONG KHUNG OVAL
         # =====================================================================
         if stage == PipelineStage.PREVIEW_ALIGN:
-            oval_cx = w // 2
-            oval_cy = int(h * 0.505)
-            oval_ay = int(h * 0.38)
-            oval_ax = int(oval_ay * 0.65)
-            oval_center = (oval_cx, oval_cy)
-            oval_axes = (oval_ax, oval_ay)
+            # Chỉ nhận diện người bên trong khung oval bằng cách làm mờ ngoại vi
+            frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
+            landmarks_live = landmark_detector.detect(frame_for_detect)
+            # Bỏ qua nếu tâm khuôn mặt không nằm trong khung oval
+            if landmarks_live and len(landmarks_live) >= 468:
+                xs = [p[0] for p in landmarks_live]
+                ys = [p[1] for p in landmarks_live]
+                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                    landmarks_live = None
 
-            landmarks_live = landmark_detector.detect(frame)
             pose_valid_live = False
             pose_dict_live = None
 
@@ -810,9 +862,15 @@ def main_pipeline_roboflow(cam_id=0, skip_liveness=False):
             os.makedirs(all_faces_dir, exist_ok=True)
 
             # 3. Chạy Face Detection
-            faces = detector.detect(captured_frame)
+            raw_faces = detector.detect(captured_frame)
+            # CHỈ nhận diện và xác thực người trong khung oval, những người bên ngoài khung oval bỏ qua
+            faces = [f for f in raw_faces if is_face_in_oval(f["bbox"], oval_center, oval_axes)]
+            ignored_faces = [f for f in raw_faces if not is_face_in_oval(f["bbox"], oval_center, oval_axes)]
             num_faces = len(faces)
-            print(f"[2. Face Detection] Tìm thấy {num_faces} khuôn mặt trong khung hình.")
+            print(f"[2. Face Detection] Tổng phát hiện: {len(raw_faces)} khuôn mặt.")
+            print(f"  -> Trong khung oval (xác thực): {num_faces} mặt.")
+            if ignored_faces:
+                print(f"  -> Ngoài khung oval (bỏ qua): {len(ignored_faces)} mặt.")
 
             all_face_crops_info = []
             h_f, w_f = captured_frame.shape[:2]
@@ -836,7 +894,7 @@ def main_pipeline_roboflow(cam_id=0, skip_liveness=False):
                         "crop_file": crop_filename
                     })
 
-            # Chọn Primary Face
+            # Chọn Primary Face (chỉ từ các khuôn mặt trong khung oval)
             primary_face = None
             if faces:
                 def get_face_priority(f):
@@ -849,8 +907,14 @@ def main_pipeline_roboflow(cam_id=0, skip_liveness=False):
                 primary_face = max(faces, key=get_face_priority)
                 print(f"  -> Đã chọn Primary Face: BBox={primary_face['bbox']} (Conf: {primary_face['confidence']:.2f})")
 
-            # 4. Landmarks
-            landmarks_static = landmark_detector.detect(captured_frame)
+            # 4. Landmarks (chỉ quét trong khung oval)
+            captured_masked = get_oval_masked_frame(captured_frame, oval_center, oval_axes)
+            landmarks_static = landmark_detector.detect(captured_masked)
+            if landmarks_static and len(landmarks_static) >= 468:
+                xs = [p[0] for p in landmarks_static]
+                ys = [p[1] for p in landmarks_static]
+                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                    landmarks_static = None
             print(f"[3. Landmarks] Trích xuất được {len(landmarks_static) if landmarks_static else 0} điểm.")
 
             # 5. Pose 3D
@@ -906,6 +970,9 @@ def main_pipeline_roboflow(cam_id=0, skip_liveness=False):
             rf_res = roboflow_model.infer(image=input_spoof)
             raw_spoof_res = parse_roboflow_predictions(rf_res, w_f, h_f)
 
+            # CHỈ giữ lại các nhận diện anti-spoof nằm trong khung oval
+            raw_spoof_res = [sd for sd in raw_spoof_res if is_face_in_oval(sd["bbox"], oval_center, oval_axes)]
+
             # Nếu không tìm thấy bbox trên toàn ảnh nhưng có primary_face, thử infer trên crop
             if not raw_spoof_res and face_crop_static is not None:
                 rf_crop_res = roboflow_model.infer(image=face_crop_static)
@@ -924,7 +991,7 @@ def main_pipeline_roboflow(cam_id=0, skip_liveness=False):
 
             # Lọc chỉ giữ khung có tỉ lệ cao nhất
             spoof_res = filter_highest_confidence_boxes(raw_spoof_res, iou_thresh=0.25)
-            print(f"  -> Tìm thấy {len(raw_spoof_res)} vùng -> Lọc còn {len(spoof_res)} khung có tỉ lệ cao nhất.")
+            print(f"  -> Tìm thấy {len(raw_spoof_res)} vùng -> Lọc còn {len(spoof_res)} khung có tỉ lệ cao nhất trong oval.")
 
             best_spoof_static = None
             primary_spoof_iou = 0.0
@@ -962,11 +1029,16 @@ def main_pipeline_roboflow(cam_id=0, skip_liveness=False):
         # GIAI ĐOẠN 3: ACTIVE LIVENESS - BLINK DETECTION
         # =====================================================================
         elif stage == PipelineStage.LIVE_BLINK:
-            landmarks_live = landmark_detector.detect(frame)
-            ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks_live) if landmarks_live else (0.0, 0.0, 0.0)
+            # Chỉ nhận diện người trong khung oval, bỏ qua người bên ngoài
+            frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
+            landmarks_live = landmark_detector.detect(frame_for_detect)
+            if landmarks_live and len(landmarks_live) >= 468:
+                xs = [p[0] for p in landmarks_live]
+                ys = [p[1] for p in landmarks_live]
+                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                    landmarks_live = None
 
-            if landmarks_live:
-                display = draw_landmarks(display, landmarks_live)
+            ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks_live) if landmarks_live else (0.0, 0.0, 0.0)
 
             if ear_avg > 0.05 and ear_avg < 0.18:
                 if not blink_state:
@@ -984,28 +1056,55 @@ def main_pipeline_roboflow(cam_id=0, skip_liveness=False):
                 head_action_prompt = head_movement_detector.get_prompt()
                 print(f"[LIVENESS 2: HEAD MOVEMENT] Thử thách: {current_head_action.value} -> {head_action_prompt}")
 
-            draw_ui_card(display, 20, 20, w - 40, 110, bg_color=(20, 20, 25), alpha=0.85)
-            cv2.putText(display, f"E-KYC BUOC 1/2: THU THACH CHOP MAT (ID: {current_img_idx})", (35, 48),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 230, 255), 2)
-            cv2.putText(display, f"VUI LONG CHOP MAT (EAR: {ear_avg:.2f} | Blinks: {blink_counter}/1)", (35, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            # KHUNG OVAL GIỮ NGUYÊN NGAY CẢ KHI THỰC HIỆN CÁC THỬ THÁCH
+            blink_col = (0, 255, 127) if (blink_state or blink_counter >= 1) else (0, 230, 255)
+            display = draw_oval_face_guide(
+                display,
+                center=oval_center,
+                axes=oval_axes,
+                is_aligned=True,
+                is_detected=(landmarks_live is not None),
+                color=blink_col
+            )
 
+            if landmarks_live:
+                display = draw_landmarks(display, landmarks_live)
+
+            # Banner trên cùng: Thử thách chớp mắt (bố cục gọn gàng, không che mặt trong oval)
+            draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
+            cv2.putText(display, f"E-KYC BUOC 1/2: THU THACH CHOP MAT (ID: {current_img_idx})", (28, 28),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
+            cv2.putText(display, f"VUI LONG CHOP MAT TU NHIEN | EAR: {ear_avg:.2f} | Blinks: {blink_counter}/1", (28, 46),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 255, 255), 1, cv2.LINE_AA)
+
+            # Banner dưới cùng: Thanh tiến trình
+            bot_y = h - 56
+            draw_ui_card(display, 15, bot_y, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
             b_prog = 1.0 if blink_counter >= 1 else (0.5 if blink_state else 0.0)
-            bar_w = w - 110
-            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (50, 50, 50), -1)
+            bar_w = w - 80
+            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (40, 40, 50), -1)
             if b_prog > 0:
-                cv2.rectangle(display, (35, 95), (35 + int(bar_w * b_prog), 107), (0, 255, 0), -1)
-            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (120, 120, 120), 1)
+                cv2.rectangle(display, (28, bot_y + 16), (28 + int(bar_w * b_prog), bot_y + 32), (0, 255, 127), -1)
+            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (100, 100, 100), 1)
+            prog_label = "DA XAC NHAN CHOP MAT! (100%)" if blink_counter >= 1 else ("DANG CHOP MAT... (50%)" if blink_state else "DANG DOI CHOP MAT... (0%)")
+            cv2.putText(display, prog_label, (35, bot_y + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (255, 255, 255), 1, cv2.LINE_AA)
 
         # =====================================================================
         # GIAI ĐOẠN 4: ACTIVE LIVENESS - HEAD MOVEMENT CHALLENGE
         # =====================================================================
         elif stage == PipelineStage.LIVE_HEAD_MOVEMENT:
-            landmarks_live = landmark_detector.detect(frame)
+            # Chỉ nhận diện người trong khung oval, bỏ qua người bên ngoài
+            frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
+            landmarks_live = landmark_detector.detect(frame_for_detect)
+            if landmarks_live and len(landmarks_live) >= 468:
+                xs = [p[0] for p in landmarks_live]
+                ys = [p[1] for p in landmarks_live]
+                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                    landmarks_live = None
+
             pose_dict_live = None
             if landmarks_live:
                 _, _, pose_dict_live = pose_validator.validate(landmarks_live, get_landmark_point)
-                display = draw_landmarks(display, landmarks_live)
 
             hm_status = head_movement_detector.update(pose_dict_live)
             prompt_str = hm_status.get("prompt", "")
@@ -1022,20 +1121,38 @@ def main_pipeline_roboflow(cam_id=0, skip_liveness=False):
                 print(f"[LIVENESS 2: HEAD MOVEMENT] HẾT THỜI GIAN THỰC HIỆN -> FAIL!")
                 stage = PipelineStage.FINAL_DECISION
 
-            draw_ui_card(display, 20, 20, w - 40, 110, bg_color=(20, 20, 25), alpha=0.85)
-            cv2.putText(display, f"E-KYC BUOC 2/2: THU THACH CU DONG DAU (ID: {current_img_idx})", (35, 48),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 230, 255), 2)
+            # KHUNG OVAL GIỮ NGUYÊN NGAY CẢ KHI THỰC HIỆN CÁC THỬ THÁCH
+            hm_col = (0, 255, 127) if hm_status["passed"] else (0, 230, 255)
+            display = draw_oval_face_guide(
+                display,
+                center=oval_center,
+                axes=oval_axes,
+                is_aligned=True,
+                is_detected=(landmarks_live is not None),
+                color=hm_col
+            )
 
-            hm_color = (0, 255, 0) if hm_status["passed"] else (0, 255, 255)
-            cv2.putText(display, f"{prompt_str.upper()} ({time_left:.1f}s)", (35, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.58, hm_color, 2)
+            if landmarks_live:
+                display = draw_landmarks(display, landmarks_live)
 
-            bar_w = w - 110
-            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (50, 50, 50), -1)
+            # Banner trên cùng: Thử thách cử động đầu (bố cục gọn gàng, không che mặt trong oval)
+            draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
+            cv2.putText(display, f"E-KYC BUOC 2/2: THU THACH CU DONG DAU (ID: {current_img_idx})", (28, 28),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
+            cv2.putText(display, f"{prompt_str.upper()} | Thoi gian: {time_left:.1f}s", (28, 46),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, hm_col, 1, cv2.LINE_AA)
+
+            # Banner dưới cùng: Thanh tiến trình
+            bot_y = h - 56
+            draw_ui_card(display, 15, bot_y, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
+            bar_w = w - 80
+            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (40, 40, 50), -1)
             fill_w = int(bar_w * progress_val)
             if fill_w > 0:
-                cv2.rectangle(display, (35, 95), (35 + fill_w, 107), (0, 255, 0), -1)
-            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (120, 120, 120), 1)
+                cv2.rectangle(display, (28, bot_y + 16), (28 + fill_w, bot_y + 32), (0, 255, 127), -1)
+            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (100, 100, 100), 1)
+            pct_hm = int(progress_val * 100)
+            cv2.putText(display, f"TIEN TRINH QUAY DAU: {pct_hm}%", (35, bot_y + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (255, 255, 255), 1, cv2.LINE_AA)
 
         # =====================================================================
         # GIAI ĐOẠN 5: TỔNG HỢP KẾT QUẢ & LƯU VÀO OUTPUT/PIPELINE_ROBOFLOW/<ID>/

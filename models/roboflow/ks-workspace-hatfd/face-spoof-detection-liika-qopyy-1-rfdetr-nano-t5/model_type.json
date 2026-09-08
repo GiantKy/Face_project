@@ -1,0 +1,5 @@
+{
+    "project_task_type": "object-detection",
+    "model_type": "rfdetr-nano",
+    "model_id": "ks-workspace-hatfd/face-spoof-detection-liika-qopyy-1-rfdetr-nano-t5"
+}

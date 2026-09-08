@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 =============================================================================
-Full E-KYC Pipeline: Dual-Model Official Anti-Spoof Ensemble + Active Liveness
+Full E-KYC Pipeline V2: Roboflow V2 Anti-Spoofing + Active Liveness Verification
 =============================================================================
-Quy trình thực hiện toàn diện (End-to-End eKYC Verification Pipeline):
+Quy trình thực hiện toàn diện (End-to-End eKYC Verification Pipeline V2):
   1. Mở Webcam: Hiển thị giao diện xem trước & khung oval bán nguyệt căn chỉnh khuôn mặt.
      - Vùng bên ngoài khung oval được làm mờ (Gaussian Blur) và giảm sáng (Bokeh effect).
      - Khóa chụp ảnh (Capture Lock): Nếu khuôn mặt chưa đưa vào đúng khung oval hoặc
@@ -12,11 +12,10 @@ Quy trình thực hiện toàn diện (End-to-End eKYC Verification Pipeline):
      - Lưu ảnh gốc vào data_raw/<id>.jpg (đánh số tăng dần tiếp theo).
   3. Chạy AI Models trên ảnh vừa chụp:
      - Face Detection (YOLOv8) -> Landmarks (MediaPipe) -> Pose 3D -> Face Align & Crop 224x224.
-     - Dual-Model Anti-Spoofing Ensemble (Silent-Face-Anti-Spoofing):
-       + Model 1: 2.7_80x80_MiniFASNetV2.pth     (Scale 2.7x)
-       + Model 2: 4_0_0_80x80_MiniFASNetV1SE.pth (Scale 4.0x)
-       + Trích xuất 2 vùng crop (2.7x và 4.0x) và tính xác suất Ensemble trung bình.
-       + Phân loại chi tiết 3 Classes: Real (Thật), 2D Paper Spoof, 3D Screen Spoof.
+     - Roboflow Anti-Spoofing Model V2 (YOLOv11n Object Detection):
+       + Model ID mặc định: anti-spoof-qhqvq-yhn2n/1 (weights.onnx cục bộ trong models/roboflow/)
+       + Chạy offline 100%, không cần Docker, tốc độ cao (~20-30ms).
+       + Tự động quét và phân loại khuôn mặt: Real vs Fake/Spoof Attack.
   4. Bắt đầu Active Liveness trên luồng Live Webcam:
      - Blink Detection: Yêu cầu người dùng chớp mắt (đo EAR).
      - Head Movement Challenge: Thử thách quay đầu ngẫu nhiên (Trái/Phải).
@@ -25,14 +24,14 @@ Quy trình thực hiện toàn diện (End-to-End eKYC Verification Pipeline):
      - Chỉ hiển thị 1 khung nhận diện có tỉ lệ cao nhất (ẩn các khung tỉ lệ thấp hơn / trùng lặp).
      - Giao diện song song (Side-by-Side): Ảnh khuôn mặt bên trái + Dashboard thông số bên phải,
        hoàn toàn không che khuất khuôn mặt.
-  7. Lưu toàn bộ kết quả vào output/pipeline_ensemble/<id>/ gồm:
+  7. Lưu toàn bộ kết quả vào output/pipeline_roboflow_v2/<id>/ gồm:
      - 1_pipeline_result.jpg (Ảnh song song Side-by-Side)
      - 1_pipeline_result_clean.jpg (Ảnh khuôn mặt sạch)
      - 1_dashboard_panel.jpg (Bảng Dashboard độc lập)
      - 2_face_crop_224.jpg
      - 3_aligned_full.jpg
      - 4_report.json
-     - Cập nhật batch_summary_ensemble.csv.
+     - Cập nhật batch_summary_roboflow_v2.csv.
 
 Phím điều khiển:
   - SPACE / 'c' : Chụp ảnh và bắt đầu quy trình eKYC (yêu cầu mặt trong oval)
@@ -45,6 +44,23 @@ Phím điều khiển:
 
 import sys
 import os
+import time
+import math
+import json
+import csv
+import glob
+import argparse
+import unicodedata
+import warnings
+from enum import Enum
+from pathlib import Path
+from typing import Optional, Union, Tuple, Dict, Any, List
+
+# Tắt cảnh báo thư viện
+os.environ["CORE_MODEL_GAZE_ENABLED"] = "False"
+os.environ["CORE_MODEL_SAM_ENABLED"] = "False"
+os.environ["CORE_MODEL_SAM3_ENABLED"] = "False"
+warnings.filterwarnings("ignore")
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
@@ -53,26 +69,21 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-import time
-import math
-import json
-import csv
-import glob
-import argparse
-import unicodedata
-from enum import Enum
-from pathlib import Path
-from typing import Optional, Union, Tuple, Dict, Any, List
-import cv2
-import numpy as np
-import torch
-
 # Thiết lập đường dẫn import tới Face-Project/
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(CURRENT_DIR)
 
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
+
+# Trỏ cache của Roboflow về thư mục models/roboflow của repo (đảm bảo chạy offline 100%)
+ROBOFLOW_CACHE_DIR = os.path.join(BASE_DIR, "models", "roboflow")
+os.environ["MODEL_CACHE_DIR"] = ROBOFLOW_CACHE_DIR
+os.makedirs(ROBOFLOW_CACHE_DIR, exist_ok=True)
+
+import cv2
+import numpy as np
+from inference import get_model
 
 from src.face_detection import FaceDetector
 from src.landmark_detection import LandmarkDetector
@@ -82,18 +93,17 @@ from src.pose_validation import PoseValidator
 from src.pose_validation.draw_pose import draw_pose_info
 from src.face_alignment_crop import FaceAligner
 from src.head_movement import HeadMovementDetector, HeadAction, ChallengeState
-from src.anti_spoof.minifasnet_official import (
-    AntiSpoofOfficialEnsemble,
-    OfficialImageCropper,
-    find_official_ensemble_models
-)
 from src.illumination import check_illumination_quality, enhance_low_light
 from server_module.utils import create_side_by_side_result
 
 DATA_RAW_DIR = os.path.join(BASE_DIR, "data_raw")
-OUTPUT_DIR = os.path.join(CURRENT_DIR, "output", "pipeline_ensemble")
+OUTPUT_DIR = os.path.join(CURRENT_DIR, "output", "pipeline_roboflow_v2")
 os.makedirs(DATA_RAW_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Cấu hình Model V2
+DEFAULT_MODEL_ID = "anti-spoof-qhqvq-yhn2n/1"
+ROBOFLOW_API_KEY = "LiYT7osRW01duX3ao91S"
 
 
 # =============================================================================
@@ -199,7 +209,7 @@ def json_serialize_helper(obj):
 
 
 # =============================================================================
-# 2. GIAO DIỆN HUD & KHUNG OVAL FACE GUIDE (MATCHING PIPELINE FULL)
+# 2. GIAO DIỆN HUD & KHUNG OVAL FACE GUIDE
 # =============================================================================
 def draw_ui_card(image, x, y, w, h, bg_color=(15, 15, 20), alpha=0.85):
     """Vẽ khung card bán trong suốt làm nền HUD"""
@@ -290,13 +300,14 @@ def get_oval_masked_frame(frame: np.ndarray, center: Tuple[int, int], axes: Tupl
     return masked
 
 
-def create_ensemble_pipeline_dashboard(
+def create_roboflow_pipeline_dashboard(
     img_idx: Any,
     face_info: Optional[Dict[str, Any]] = None,
     num_faces: int = 1,
     pose_info: Optional[Dict[str, Any]] = None,
     pose_valid: bool = True,
-    spoof_info: Optional[Dict[str, Any]] = None,
+    anti_spoof_info: Optional[Dict[str, Any]] = None,
+    spoof_iou: float = 0.0,
     blink_passed: bool = True,
     blink_count: int = 0,
     head_movement_passed: bool = True,
@@ -305,17 +316,18 @@ def create_ensemble_pipeline_dashboard(
     reasons: Optional[List[str]] = None,
     face_crop: Optional[np.ndarray] = None,
     target_height: Optional[int] = None,
+    model_id: str = DEFAULT_MODEL_ID,
     width: int = 560
 ) -> np.ndarray:
     """
-    Tạo bảng Dashboard độc lập chuyên nghiệp cho Dual-Model Anti-Spoofing Ensemble.
-    Dark Slate Theme cao cấp, đồng bộ chuẩn giao diện với Pipeline Full.
+    Tạo bảng Dashboard độc lập chuyên nghiệp cho Roboflow V2 Anti-Spoofing Pipeline.
+    Giao diện Dark Slate đồng bộ chuẩn mực với Pipeline Full.
     """
     clean_reasons = [remove_vietnamese_accents(r) for r in reasons] if (not final_pass and reasons) else []
     num_reasons = len(clean_reasons)
     extra_h = max(0, num_reasons * 24)
 
-    min_h = 520 + extra_h
+    min_h = 500 + extra_h
     h = max(min_h, target_height) if target_height else min_h
     w = max(500, width)
 
@@ -327,9 +339,9 @@ def create_ensemble_pipeline_dashboard(
     cv2.rectangle(canvas, (10, 10), (w - 10, hdr_h), (32, 36, 48), -1)
     cv2.rectangle(canvas, (10, 10), (w - 10, hdr_h), (60, 70, 90), 1)
 
-    cv2.putText(canvas, "E-KYC VERIFICATION DASHBOARD", (24, 38),
+    cv2.putText(canvas, "E-KYC VERIFICATION DASHBOARD (V2)", (24, 38),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 230, 255), 2, cv2.LINE_AA)
-    session_str = f"Session ID: {img_idx} | Mode: Dual-Model Ensemble"
+    session_str = f"Session ID: {img_idx} | Engine: Roboflow V2 (YOLOv11n)"
     cv2.putText(canvas, session_str, (24, 58),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.40, (170, 180, 195), 1, cv2.LINE_AA)
 
@@ -395,46 +407,40 @@ def create_ensemble_pipeline_dashboard(
         p_lines = [("Status: UNKNOWN (Khong duoc tinh toan)", (70, 70, 240), 0.42)]
     _draw_card("2. 3D HEAD POSE ESTIMATION", p_lines, card_h=68)
 
-    # Section 3: Dual-Model Anti-Spoofing Ensemble
-    if spoof_info:
-        as_real = spoof_info.get("is_real", False)
-        as_lbl = spoof_info.get("label", "UNKNOWN")
-        r_score = spoof_info.get("real_score", 0.0) * 100.0
-        cs = spoof_info.get("class_scores", {})
-        p2 = cs.get("spoof_2d", 0.0) * 100.0
-        p3 = cs.get("spoof_3d", 0.0) * 100.0
-        m1_r = spoof_info.get("model1_scores", {}).get("real", 0.0) * 100.0
-        m2_r = spoof_info.get("model2_scores", {}).get("real", 0.0) * 100.0
-
-        as_col = (80, 220, 80) if as_real else (70, 70, 240)
+    # Section 3: Anti-Spoofing (Roboflow V2 Engine)
+    if anti_spoof_info:
+        as_lbl = anti_spoof_info.get("label", "UNKNOWN")
+        as_conf = anti_spoof_info.get("confidence", 0.0)
+        is_real = anti_spoof_info.get("is_real", False)
+        as_col = (80, 220, 80) if is_real else (70, 70, 240)
+        iou_str = f"  |  IoU with Face: {spoof_iou:.2f}" if spoof_iou > 0 else ""
         as_lines = [
-            (f"Model Verdict: {as_lbl} (Real: {r_score:.1f}%) | Dual-Model Ensemble", as_col, 0.44),
-            (f"M1 (2.7x MiniFASNetV2): {m1_r:.1f}%  |  M2 (4.0x MiniFASNetV1SE): {m2_r:.1f}%", (140, 210, 255), 0.40),
-            (f"Classification: 2D Paper: {p2:.1f}%  |  3D Screen: {p3:.1f}%", (190, 200, 210), 0.40)
+            (f"Model Verdict: {as_lbl} ({as_conf*100:.1f}%){iou_str}", as_col, 0.44),
+            (f"Classification: {'REAL FACE (Hop le)' if is_real else 'FAKE / SPOOF ATTACK (Phat hien gia mao)'}", as_col, 0.41),
+            (f"Model ID: {model_id} (Roboflow V2)", (160, 180, 200), 0.38)
         ]
 
-        # Card height 108 để chứa cả thanh tỉ lệ
-        card_h = 108
+        card_h = 96
         cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + card_h), (27, 30, 40), -1)
         cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + card_h), (50, 58, 75), 1)
         cv2.rectangle(canvas, (10, cur_y), (14, cur_y + card_h), (0, 200, 240), -1)
 
-        cv2.putText(canvas, "3. ANTI-SPOOFING (DUAL-MODEL ENSEMBLE)", (24, cur_y + 20),
+        cv2.putText(canvas, "3. ANTI-SPOOFING (ROBOFLOW V2 ENGINE)", (24, cur_y + 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.46, (220, 225, 235), 1, cv2.LINE_AA)
 
-        line_y = cur_y + 40
+        line_y = cur_y + 38
         for text, col, font_scale in as_lines:
             cv2.putText(canvas, text, (24, line_y),
                         cv2.FONT_HERSHEY_SIMPLEX, font_scale, col, 1, cv2.LINE_AA)
-            line_y += 19
+            line_y += 18
 
         # Thanh tỉ lệ Real vs Fake
         bar_w = w - 60
         bar_h = 8
         bar_x = 24
-        bar_y = cur_y + 94
+        bar_y = cur_y + 82
         cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (45, 48, 60), -1)
-        real_fill = int(bar_w * (r_score / 100.0))
+        real_fill = int(bar_w * (as_conf if is_real else (1.0 - as_conf)))
         if real_fill > 0:
             cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + real_fill, bar_y + bar_h), (80, 220, 80), -1)
         if bar_w - real_fill > 0:
@@ -443,7 +449,7 @@ def create_ensemble_pipeline_dashboard(
         cur_y += card_h + 8
     else:
         as_lines = [("Status: NO ANTI-SPOOF DATA", (0, 180, 255), 0.42)]
-        _draw_card("3. ANTI-SPOOFING (DUAL-MODEL ENSEMBLE)", as_lines, card_h=52)
+        _draw_card("3. ANTI-SPOOFING (ROBOFLOW V2 ENGINE)", as_lines, card_h=52)
 
     # Section 4: Active Liveness (Blink & Head Action)
     b_stat = f"PASS ({blink_count} blinks)" if blink_passed else f"FAIL ({blink_count} blinks)"
@@ -486,23 +492,87 @@ def create_ensemble_pipeline_dashboard(
 
 
 # =============================================================================
-# 3. PIPELINE ENSEMBLE WORKFLOW STATE MACHINE
+# 3. PIPELINE ROBOFLOW WORKFLOW STATE MACHINE
 # =============================================================================
 class PipelineStage(Enum):
     PREVIEW_ALIGN = 1       # Giai đoạn 1: Mở webcam, canh góc mặt & chờ chụp ảnh trong oval
-    RUN_AI_STATIC = 2       # Giai đoạn 2: Chạy Face -> Landmark -> Pose -> Crop 224 -> Ensemble Anti-Spoof
+    RUN_AI_STATIC = 2       # Giai đoạn 2: Chạy Face -> Landmark -> Pose -> Crop 224 -> Roboflow Anti-Spoof V2
     LIVE_BLINK = 3          # Giai đoạn 3: Active Liveness - Thử thách chớp mắt
     LIVE_HEAD_MOVEMENT = 4  # Giai đoạn 4: Active Liveness - Thử thách quay đầu
-    FINAL_DECISION = 5      # Giai đoạn 5: Tổng hợp toàn bộ & lưu vào output/pipeline_ensemble/<id>/
+    FINAL_DECISION = 5      # Giai đoạn 5: Tổng hợp toàn bộ & lưu vào output/pipeline_roboflow_v2/<id>/
 
 
-def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
+def parse_roboflow_v2_predictions(response, img_w: int, img_h: int):
+    """
+    Trích xuất kết quả nhận diện từ response của mô hình Roboflow V2.
+    Hỗ trợ cả đối tượng Object và Dictionary, tự động chuẩn hóa tọa độ và phân loại real/fake.
+    """
+    dets = []
+    preds = []
+
+    if isinstance(response, list) and len(response) > 0:
+        if hasattr(response[0], "predictions"):
+            preds = response[0].predictions
+        elif isinstance(response[0], dict) and "predictions" in response[0]:
+            p_data = response[0]["predictions"]
+            preds = p_data.get("predictions", []) if isinstance(p_data, dict) else p_data
+    elif hasattr(response, "predictions"):
+        preds = response.predictions
+    elif isinstance(response, dict):
+        p_data = response.get("predictions", {})
+        preds = p_data.get("predictions", []) if isinstance(p_data, dict) else p_data
+
+    for p in preds:
+        if hasattr(p, "x"):
+            cx = float(getattr(p, "x", 0.0))
+            cy = float(getattr(p, "y", 0.0))
+            pw = float(getattr(p, "width", 0.0))
+            ph = float(getattr(p, "height", 0.0))
+            conf = float(getattr(p, "confidence", 0.0))
+            cls_name = str(getattr(p, "class_name", "")).lower()
+        elif isinstance(p, dict):
+            cx = float(p.get("x", 0.0))
+            cy = float(p.get("y", 0.0))
+            pw = float(p.get("width", 0.0))
+            ph = float(p.get("height", 0.0))
+            conf = float(p.get("confidence", p.get("score", 0.0)))
+            cls_name = str(p.get("class", p.get("class_name", ""))).lower()
+        else:
+            continue
+
+        # Chuẩn hóa nếu tọa độ ở dạng tỉ lệ (0.0 - 1.0)
+        if 0.0 <= cx <= 1.0 and 0.0 <= pw <= 1.0 and img_w > 1:
+            cx *= img_w
+            cy *= img_h
+            pw *= img_w
+            ph *= img_h
+
+        x1 = max(0, int(cx - pw / 2.0))
+        y1 = max(0, int(cy - ph / 2.0))
+        x2 = min(img_w, int(cx + pw / 2.0))
+        y2 = min(img_h, int(cy + ph / 2.0))
+
+        is_real = ("real" in cls_name)
+        dets.append({
+            "bbox": [x1, y1, x2, y2],
+            "confidence": conf,
+            "class_name": cls_name,
+            "is_real": is_real,
+            "label": "REAL" if is_real else "SPOOF",
+            "raw_class": cls_name
+        })
+
+    return dets
+
+
+def main_pipeline_roboflow_v2(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_ID):
     print("\n" + "=" * 80)
-    print("      FULL E-KYC PIPELINE (DUAL-MODEL OFFICIAL ANTI-SPOOF ENSEMBLE)")
+    print("      FULL E-KYC PIPELINE V2 (ROBOFLOW V2 ANTI-SPOOFING INFERENCE)")
     print("=" * 80)
     print(f"  * Thư mục lưu ảnh gốc : {DATA_RAW_DIR}")
     print(f"  * Thư mục lưu kết quả : {OUTPUT_DIR}")
-    print("  * Mô hình Anti-Spoof  : Dual-Model MiniFASNet Ensemble (2.7x + 4.0x)")
+    print(f"  * Model Roboflow ID   : {model_id}")
+    print("  * Nền tảng thực thi   : inference.get_model (Local Offline Cache, Không cần Docker)")
     print("  * Điều khiển:")
     print("      [SPACE] hoặc [c]  : Chụp ảnh và chạy Full Quy trình (AI + Live Liveness)")
     print("      [s]               : CHỤP NHANH & LƯU NGAY (Chạy AI Model -> Lưu kết quả ngay)")
@@ -520,8 +590,10 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
     landmark_detector = LandmarkDetector()
     pose_validator = PoseValidator()
     aligner = FaceAligner()
-    anti_spoof_ensemble = AntiSpoofOfficialEnsemble()
     head_movement_detector = HeadMovementDetector(yaw_threshold=16.0, pitch_threshold=12.0, timeout=7.0)
+
+    print(f"[INFO] Đang nạp mô hình Roboflow V2 ({model_id}) vào RAM...")
+    roboflow_model = get_model(model_id=model_id, api_key=ROBOFLOW_API_KEY)
     print("[OK] Đã khởi tạo hoàn tất toàn bộ Models!\n")
 
     cap = cv2.VideoCapture(cam_id)
@@ -539,7 +611,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
     is_light_ok = True
     mean_lum = 100.0
 
-    # Dữ liệu của phiên hiện tại
+    # Dữ liệu phiên hiện tại
     current_img_idx = get_next_image_index(DATA_RAW_DIR)
     captured_frame = None
     captured_img_path = None
@@ -556,37 +628,45 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
     face_crop_static = None
     aligned_img_static = None
     best_spoof_static = None
+    spoof_res = []
+    primary_spoof_iou = 0.0
+    has_any_spoof_in_frame = False
 
-    # Dữ liệu động từ Live Active Liveness
+    # Dữ liệu Active Liveness
+    blink_passed = False
     blink_counter = 0
     blink_state = False
-    blink_passed = False
 
     head_movement_passed = False
     current_head_action = HeadAction.NONE
     head_action_prompt = ""
 
+    # Dữ liệu Final Decision
     final_pass = False
     reasons = []
-    final_display_img = None
     final_record = None
+    final_display_img = None
 
     prev_fps_time = time.time()
 
     def start_new_session():
-        nonlocal stage, current_img_idx, captured_frame, captured_img_path, captured_result_dir
-        nonlocal primary_face, faces, num_faces, all_face_crops_info, landmarks_static, pose_dict_static, pose_valid_static
-        nonlocal face_crop_static, aligned_img_static, best_spoof_static
-        nonlocal blink_counter, blink_state, blink_passed, head_movement_passed, current_head_action, head_action_prompt
-        nonlocal final_pass, reasons, final_display_img, final_record, consecutive_center_frames, quick_snapshot_mode
-        nonlocal is_aligned_good, capture_blocked_frames, is_light_ok, mean_lum
+        nonlocal stage, auto_capture_mode, quick_snapshot_mode, consecutive_center_frames
+        nonlocal is_aligned_good, capture_blocked_frames, current_img_idx, captured_frame
+        nonlocal primary_face, faces, num_faces, all_face_crops_info, landmarks_static
+        nonlocal pose_dict_static, pose_valid_static, face_crop_static, aligned_img_static
+        nonlocal best_spoof_static, spoof_res, primary_spoof_iou, has_any_spoof_in_frame
+        nonlocal blink_passed, blink_counter, blink_state, head_movement_passed
+        nonlocal current_head_action, head_action_prompt, final_pass, reasons, final_record, final_display_img
+
+        stage = PipelineStage.PREVIEW_ALIGN
+        auto_capture_mode = False
+        quick_snapshot_mode = False
+        consecutive_center_frames = 0
+        is_aligned_good = False
+        capture_blocked_frames = 0
 
         current_img_idx = get_next_image_index(DATA_RAW_DIR)
-        stage = PipelineStage.PREVIEW_ALIGN
         captured_frame = None
-        captured_img_path = None
-        captured_result_dir = None
-        quick_snapshot_mode = False
 
         primary_face = None
         faces = []
@@ -598,52 +678,51 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
         face_crop_static = None
         aligned_img_static = None
         best_spoof_static = None
+        spoof_res = []
+        primary_spoof_iou = 0.0
+        has_any_spoof_in_frame = False
 
+        blink_passed = False
         blink_counter = 0
         blink_state = False
-        blink_passed = False
 
         head_movement_passed = False
+        head_movement_detector.reset()
         current_head_action = HeadAction.NONE
         head_action_prompt = ""
-        head_movement_detector.reset()
 
         final_pass = False
-        reasons.clear()
-        final_display_img = None
+        reasons = []
         final_record = None
-        consecutive_center_frames = 0
-        is_aligned_good = False
-        capture_blocked_frames = 0
-        is_light_ok = True
-        mean_lum = 100.0
+        final_display_img = None
 
-        print(f"\n[PHIÊN MỚI] Sẵn sàng chụp ảnh ID tiếp theo: {current_img_idx}.jpg")
+        print(f"\n[INFO] Đã khởi tạo phiên mới! Chuẩn bị chụp ảnh ID: {current_img_idx}.jpg")
 
     while True:
         ret, frame = cap.read()
         if not ret:
+            print("[WARN] Mất tín hiệu Webcam.")
             break
 
         frame = cv2.flip(frame, 1)
         h, w = frame.shape[:2]
         display = frame.copy()
 
-        # Cấu hình khung oval cố định ngay giữa màn hình cho TOÀN BỘ các giai đoạn
-        oval_cx = w // 2
-        oval_cy = int(h * 0.505)
-        oval_ay = int(h * 0.38)          # Tăng chiều cao oval dài hơn (38% h)
-        oval_ax = int(oval_ay * 0.65)     # Chiều ngang cân đối tỷ lệ khuôn mặt
+        # Tính toán tọa độ và bán kính khung oval trung tâm
+        oval_cx = int(w * 0.50)
+        oval_cy = int(h * 0.50)
+        oval_ax = int(w * 0.22)
+        oval_ay = int(h * 0.38)
         oval_center = (oval_cx, oval_cy)
         oval_axes = (oval_ax, oval_ay)
 
         # =====================================================================
-        # GIAI ĐOẠN 1: PREVIEW & CANH CHỈNH KHUÔN MẶT TRONG KHUNG OVAL
+        # GIAI ĐOẠN 1: PREVIEW & CĂN CHỈNH KHUÔN MẶT TRONG KHUNG OVAL
         # =====================================================================
         if stage == PipelineStage.PREVIEW_ALIGN:
-            # 2. Phát hiện vị trí mặt và góc nhìn: làm mờ ngoại vi để bỏ qua người ngoài oval
-            frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
-            landmarks_live = landmark_detector.detect(frame_for_detect)
+            masked_frame = get_oval_masked_frame(frame, oval_center, oval_axes)
+            landmarks_live = landmark_detector.detect(masked_frame)
+
             if landmarks_live and len(landmarks_live) >= 468:
                 xs = [p[0] for p in landmarks_live]
                 ys = [p[1] for p in landmarks_live]
@@ -663,7 +742,6 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                 pose_valid_live, _, pose_dict_live = pose_validator.validate(landmarks_live, get_landmark_point)
                 display = draw_landmarks(display, landmarks_live)
 
-                # Tính tâm và kích thước khuôn mặt từ landmarks
                 xs = [p[0] for p in landmarks_live]
                 ys = [p[1] for p in landmarks_live]
                 face_min_x, face_max_x = min(xs), max(xs)
@@ -673,11 +751,8 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                 face_w = face_max_x - face_min_x
                 face_h = face_max_y - face_min_y
 
-                # Kiểm tra độ lệch tâm so với khung oval
                 dx_norm = abs(face_cx - oval_cx) / float(oval_ax)
                 dy_norm = abs(face_cy - oval_cy) / float(oval_ay)
-
-                # Kiểm tra kích thước khuôn mặt so với khung oval
                 oval_total_h = 2 * oval_ay
                 face_h_ratio = face_h / float(oval_total_h)
 
@@ -707,7 +782,6 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
             # Đánh giá toàn diện: Có mặt trong oval + Góc nhìn 3D chuẩn + ĐỦ ÁNH SÁNG
             is_aligned_good = (landmarks_live is not None and face_in_oval and pose_valid_live and is_light_ok)
 
-            # Xác định màu sắc khung oval & thông báo trạng thái
             if landmarks_live is None:
                 guide_color = (200, 200, 200)
                 align_msg = "VUI LONG DUA KHUON MAT VAO KHUNG OVAL"
@@ -720,116 +794,125 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                 consecutive_center_frames = max(0, consecutive_center_frames - 1)
             elif is_aligned_good:
                 guide_color = (0, 255, 127)
-                consecutive_center_frames += 1
-                if auto_capture_mode:
-                    pct = min(100, int(consecutive_center_frames / 25 * 100))
-                    align_msg = f"MAT CHUAN TRONG KHUNG OVAL! DANG CHUP... ({pct}%)"
-                else:
-                    align_msg = "KHUON MAT CHUAN! NHAN [SPACE] HOAC [c] DE CHUP"
+                align_msg = "KHUON MAT CHUAN XAC - SAN SANG CHUP!"
                 align_col = (0, 255, 127)
-            elif is_too_far:
-                guide_color = (0, 165, 255)
-                align_msg = "VUI LONG TIEN LAI GAN CAMERA HON (Khuon mat qua nho)..."
-                align_col = (0, 165, 255)
-                consecutive_center_frames = max(0, consecutive_center_frames - 1)
-            elif is_too_close:
-                guide_color = (0, 165, 255)
-                align_msg = "VUI LONG LUI RA XA CAMERA HON (Khuon mat qua to)..."
-                align_col = (0, 165, 255)
-                consecutive_center_frames = max(0, consecutive_center_frames - 1)
-            elif is_off_center:
-                guide_color = (0, 200, 255)
-                align_msg = off_center_hint if off_center_hint else "CAN CHINH MAT VAO CHINH GIUA KHUNG OVAL..."
-                align_col = (0, 200, 255)
-                consecutive_center_frames = max(0, consecutive_center_frames - 1)
+                consecutive_center_frames += 1
             else:
-                guide_color = (0, 200, 255)
-                align_msg = "VUI LONG NHIN THANG VAO CAMERA (Giu dau thang)..."
-                align_col = (0, 200, 255)
+                guide_color = (0, 165, 255)
                 consecutive_center_frames = max(0, consecutive_center_frames - 1)
+                if is_too_far:
+                    align_msg = "TIEN LAI GAN CAMERA HON"
+                    align_col = (0, 165, 255)
+                elif is_too_close:
+                    align_msg = "LUI RA XA CAMERA MOT CHUT"
+                    align_col = (0, 165, 255)
+                elif is_off_center:
+                    align_msg = off_center_hint if off_center_hint else "DUA MAT VAO DUNG TAM KHUNG OVAL"
+                    align_col = (0, 165, 255)
+                elif not pose_valid_live:
+                    align_msg = "VUI LONG NHIN THANG VAO CAMERA"
+                    align_col = (70, 70, 240)
+                else:
+                    align_msg = "CANH CHINH MAT VAO KHUNG OVAL"
+                    align_col = (0, 165, 255)
 
-            # Cảnh báo khi người dùng nhấn phím chụp mà bị khóa
+            # Vẽ khung oval hướng dẫn
+            display = draw_oval_face_guide(display, oval_center, oval_axes,
+                                           is_aligned=is_aligned_good,
+                                           is_detected=(landmarks_live is not None),
+                                           color=guide_color)
+
+            # Header Top Card
+            top_card_h = 75
+            draw_ui_card(display, 20, 15, w - 40, top_card_h, bg_color=(15, 15, 25), alpha=0.88)
+            cv2.putText(display, f"BUOC 1: CAN CHINH MAT VAO KHUNG OVAL - ID TIEP THEO: {current_img_idx}.jpg",
+                        (35, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (0, 230, 255), 2, cv2.LINE_AA)
+            cv2.putText(display, f"Huong dan: {align_msg}",
+                        (35, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.48, align_col, 1, cv2.LINE_AA)
+
+            # Cảnh báo thiếu sáng trực quan
+            if not is_light_ok and landmarks_live is not None:
+                light_card_w = min(420, w - 40)
+                draw_ui_card(display, (w - light_card_w) // 2, top_card_h + 25, light_card_w, 40, bg_color=(10, 20, 40), alpha=0.92)
+                cv2.rectangle(display, ((w - light_card_w) // 2, top_card_h + 25),
+                              ((w - light_card_w) // 2 + light_card_w, top_card_h + 65), (0, 140, 255), 2)
+                cv2.putText(display, f"! CANH BAO: KHUON MAT BI TOI (Luminance: {mean_lum:.1f}/60) !",
+                            ((w - light_card_w) // 2 + 15, top_card_h + 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 140, 255), 1, cv2.LINE_AA)
+
+            # Cảnh báo khóa chụp nếu bấm phím khi mặt chưa đạt chuẩn
             if capture_blocked_frames > 0:
                 capture_blocked_frames -= 1
+                warn_w = min(540, w - 40)
+                draw_ui_card(display, (w - warn_w) // 2, h // 2 - 30, warn_w, 60, bg_color=(10, 10, 40), alpha=0.92)
+                cv2.rectangle(display, ((w - warn_w) // 2, h // 2 - 30),
+                              ((w - warn_w) // 2 + warn_w, h // 2 + 30), (0, 0, 255), 2)
                 if not is_light_ok:
-                    align_msg = f"ANH SANG YEU (L:{mean_lum:.0f}/60) - KHOA CHUP! VUI LONG BAT DEN."
+                    cv2.putText(display, "KHOA CHUP: ANH SANG QUA YEU (L < 60)!",
+                                ((w - warn_w) // 2 + 20, h // 2 - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.50, (0, 0, 255), 2, cv2.LINE_AA)
+                    cv2.putText(display, "Vui long bat den hoac di chuyen ra noi sang hon!",
+                                ((w - warn_w) // 2 + 20, h // 2 + 18),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.40, (0, 180, 255), 1, cv2.LINE_AA)
                 else:
-                    align_msg = "CHUA DUA MAT VAO OVAL - KHONG THE NHAN CHUP!"
-                align_col = (0, 0, 255)
-                guide_color = (0, 0, 255)
+                    cv2.putText(display, "KHOA CHUP: MAT CHUA DUNG TRONG KHUNG OVAL!",
+                                ((w - warn_w) // 2 + 20, h // 2 - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.50, (0, 0, 255), 2, cv2.LINE_AA)
+                    cv2.putText(display, "Vui long nhin thang va dua mat vao giua oval de chup",
+                                ((w - warn_w) // 2 + 20, h // 2 + 18),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.40, (0, 180, 255), 1, cv2.LINE_AA)
 
-            # 3. Vẽ khung oval hướng dẫn ra màn hình
-            display = draw_oval_face_guide(
-                display,
-                center=oval_center,
-                axes=oval_axes,
-                is_aligned=is_aligned_good,
-                is_detected=(landmarks_live is not None),
-                color=guide_color
-            )
+            # Bottom Controls Card
+            bot_card_h = 58
+            bot_y = h - bot_card_h - 15
+            draw_ui_card(display, 20, bot_y, w - 40, bot_card_h, bg_color=(15, 15, 20), alpha=0.88)
 
-            # 4. Banner tiêu đề trên cùng (gọn gàng, không che khuất khung oval)
-            draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.85)
-            cv2.putText(display, f"E-KYC ENSEMBLE: CANH CHINH KHUON MAT (ID: {current_img_idx}.jpg)", (28, 28),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
-            mode_str = f"Auto-Capture: {'BAT' if auto_capture_mode else 'TAT'} | Sang (Luminance): {mean_lum:.0f}/255"
-            cv2.putText(display, mode_str, (28, 46),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (180, 180, 180), 1, cv2.LINE_AA)
-
-            # 5. Banner thông báo hướng dẫn & phím tắt dưới cùng
-            bot_y = h - 56
-            draw_ui_card(display, 15, bot_y, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
-            cv2.putText(display, align_msg, (28, bot_y + 22),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.48, align_col, 2, cv2.LINE_AA)
+            auto_tag = "[BAT - DANG QUET]" if auto_capture_mode else "[TAT]"
+            auto_col = (0, 255, 127) if auto_capture_mode else (170, 170, 170)
+            cv2.putText(display, f"Che do Auto-Capture: {auto_tag} (Bam [a] de bat/tat)",
+                        (35, bot_y + 24), cv2.FONT_HERSHEY_SIMPLEX, 0.45, auto_col, 1, cv2.LINE_AA)
 
             if is_aligned_good:
-                shortcut_hint = "[SPACE]/[c]: SAN SANG CHUP | [s]: Luu ngay | [a]: Auto | [r]: Reset | [q]: Thoat"
+                shortcut_hint = "Bam [SPACE] de Chup Full eKYC  |  [s]: Chup Nhanh  |  [q]: Thoat"
                 shortcut_col = (0, 255, 127)
-            elif not is_light_ok:
-                shortcut_hint = f"[KHOA CHUP: THIEU SANG L:{mean_lum:.0f}/60] Vui long bat den de mo khoa chup"
-                shortcut_col = (0, 140, 255)
             else:
-                shortcut_hint = "[SPACE]/[c]: KHOA CHUP (Canh mat vao oval de mo khoa) | [a]: Auto | [q]: Thoat"
-                shortcut_col = (150, 150, 150)
+                shortcut_hint = "Canh mat vao Oval de Mo Khoa Chup | [a]: Auto-Capture | [q]: Thoat"
+                shortcut_col = (140, 140, 150)
 
             cv2.putText(display, shortcut_hint,
-                        (28, bot_y + 40), cv2.FONT_HERSHEY_SIMPLEX, 0.38, shortcut_col, 1, cv2.LINE_AA)
+                        (28, bot_y + 44), cv2.FONT_HERSHEY_SIMPLEX, 0.38, shortcut_col, 1, cv2.LINE_AA)
 
-            # Tự động chụp nếu bật auto_capture_mode và giữ mặt chuẩn 25 frames trong oval
             if auto_capture_mode and consecutive_center_frames >= 25 and is_aligned_good:
                 trigger_capture = True
             else:
                 trigger_capture = False
 
-            if trigger_capture:
-                key_trigger = ord(' ')
-            else:
-                key_trigger = None
+            key_trigger = ord(' ') if trigger_capture else None
 
         # =====================================================================
         # GIAI ĐOẠN 2: CHẠY AI MODEL TRÊN ẢNH CHỤP ĐẾN BƯỚC ANTI-SPOOF
         # =====================================================================
         elif stage == PipelineStage.RUN_AI_STATIC:
             draw_ui_card(display, 20, 20, w - 40, 90, bg_color=(15, 15, 25), alpha=0.9)
-            cv2.putText(display, f"DANG CHAY AI MODEL TREN ANH ID {current_img_idx}.jpg...", (35, 55),
+            cv2.putText(display, f"DANG CHAY AI MODEL V2 TREN ANH ID {current_img_idx}.jpg...", (35, 55),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 230, 255), 2)
-            cv2.putText(display, "Tien trinh: Face Detect -> Landmark -> Pose 3D -> Crop 224 -> Dual-Model Ensemble", (35, 85),
+            cv2.putText(display, "Tien trinh: Face Detect -> Landmark -> Pose 3D -> Crop 224 -> Roboflow V2 Anti-Spoof", (35, 85),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)
-            cv2.imshow("Full E-KYC Pipeline (Dual-Model Ensemble)", display)
+            cv2.imshow("Full E-KYC Pipeline (Roboflow V2 Anti-Spoof)", display)
             cv2.waitKey(1)
 
-            # 1. Lưu ảnh gốc vào data_raw/<id>.jpg
+            # 1. Lưu ảnh gốc
             captured_img_path = os.path.join(DATA_RAW_DIR, f"{current_img_idx}.jpg")
             cv2.imwrite(captured_img_path, captured_frame)
             print(f"\n[1. CHỤP ẢNH GỐC] Đã lưu ảnh vào: {captured_img_path}")
 
-            # 2. Tạo thư mục output/pipeline_ensemble/<id>/ và thư mục con all_faces_cropped/
+            # 2. Tạo thư mục output/pipeline_roboflow_v2/<id>/
             captured_result_dir = os.path.join(OUTPUT_DIR, str(current_img_idx))
             os.makedirs(captured_result_dir, exist_ok=True)
             all_faces_dir = os.path.join(captured_result_dir, "all_faces_cropped")
             os.makedirs(all_faces_dir, exist_ok=True)
 
-            # 3. Chạy Face Detection: Tìm & Crop khuôn mặt trong khung oval
+            # 3. Chạy Face Detection
             raw_faces = detector.detect(captured_frame)
             # CHỈ nhận diện và xác thực người trong khung oval, những người bên ngoài khung oval bỏ qua
             faces = [f for f in raw_faces if is_face_in_oval(f["bbox"], oval_center, oval_axes)]
@@ -862,7 +945,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                         "crop_file": crop_filename
                     })
 
-            # Chọn Khuôn mặt chính (Primary Face: To nhất và gần trung tâm oval nhất)
+            # Chọn Primary Face (chỉ từ các khuôn mặt trong khung oval)
             primary_face = None
             if faces:
                 def get_face_priority(f):
@@ -875,7 +958,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                 primary_face = max(faces, key=get_face_priority)
                 print(f"  -> Đã chọn Primary Face: BBox={primary_face['bbox']} (Conf: {primary_face['confidence']:.2f})")
 
-            # 4. Chạy Landmarks (chỉ quét trong khung oval)
+            # 4. Landmarks (chỉ quét trong khung oval)
             captured_masked = get_oval_masked_frame(captured_frame, oval_center, oval_axes)
             landmarks_static = landmark_detector.detect(captured_masked)
             if landmarks_static and len(landmarks_static) >= 468:
@@ -885,7 +968,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                     landmarks_static = None
             print(f"[3. Landmarks] Trích xuất được {len(landmarks_static) if landmarks_static else 0} điểm.")
 
-            # 5. Chạy Pose 3D
+            # 5. Pose 3D
             pose_valid_static = False
             pose_dict_static = None
             if landmarks_static:
@@ -893,7 +976,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                 if pose_dict_static:
                     print(f"[4. Head Pose 3D] Y={pose_dict_static['yaw']:+.1f}° | P={pose_dict_static['pitch']:+.1f}° | R={pose_dict_static['roll']:+.1f}° -> {'PASS' if pose_valid_static else 'FAIL'}")
 
-            # 6. Cắt khuôn mặt chính thẳng đứng tự nhiên từ Bounding Box của YOLO trên ảnh gốc
+            # 6. Align & Crop 224x224
             aligned_img_static = None
             face_crop_static = None
 
@@ -914,80 +997,87 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                     output_size=(224, 224)
                 )
 
-            # Căn chỉnh xoay 2 mắt nếu cần ảnh aligned đối soát
             if landmarks_static:
                 aligned_img_static = aligner.align_face(captured_frame, landmarks_static)
 
             if aligned_img_static is None:
                 aligned_img_static = captured_frame.copy()
 
-            # LƯU NGAY LẬP TỨC CÁC FILE CROP & ALIGNED
             if face_crop_static is not None:
-                out_crop_p = os.path.join(captured_result_dir, "2_face_crop_224.jpg")
-                cv2.imwrite(out_crop_p, face_crop_static)
+                cv2.imwrite(os.path.join(captured_result_dir, "2_face_crop_224.jpg"), face_crop_static)
 
             if aligned_img_static is not None:
-                out_align_p = os.path.join(captured_result_dir, "3_aligned_full.jpg")
-                cv2.imwrite(out_align_p, aligned_img_static)
+                cv2.imwrite(os.path.join(captured_result_dir, "3_aligned_full.jpg"), aligned_img_static)
 
-            # 7. Chạy Dual-Model Anti-Spoofing Ensemble trên Primary Face
+            # 7. Roboflow V2 Anti-Spoofing Inference
+            captured_light = check_illumination_quality(captured_frame, bbox=primary_face["bbox"] if primary_face else None)
+            if captured_light["mean_luminance"] < 80.0:
+                input_spoof = enhance_low_light(captured_frame)
+                print(f"[Anti-Spoof Preprocess] Độ sáng L={captured_light['mean_luminance']:.1f}. Đã tự động áp dụng CLAHE tăng cường vi vân da mặt.")
+            else:
+                input_spoof = captured_frame
+
+            print(f"[6. Anti-Spoofing Roboflow V2] Đang chạy suy luận mô hình {model_id}...")
+            rf_res = roboflow_model.infer(image=input_spoof)
+            raw_spoof_res = parse_roboflow_v2_predictions(rf_res, w_f, h_f)
+
+            # CHỈ giữ lại các nhận diện anti-spoof nằm trong khung oval
+            raw_spoof_res = [sd for sd in raw_spoof_res if is_face_in_oval(sd["bbox"], oval_center, oval_axes)]
+
+            # Nếu không tìm thấy bbox trên toàn ảnh nhưng có primary_face, thử infer trên crop
+            if not raw_spoof_res and face_crop_static is not None:
+                rf_crop_res = roboflow_model.infer(image=face_crop_static)
+                crop_preds = parse_roboflow_v2_predictions(rf_crop_res, 224, 224)
+                if crop_preds and primary_face:
+                    # Map ngược lại bbox của primary_face
+                    best_crop = max(crop_preds, key=lambda x: x["confidence"])
+                    raw_spoof_res.append({
+                        "bbox": primary_face["bbox"],
+                        "confidence": best_crop["confidence"],
+                        "class_name": best_crop["class_name"],
+                        "is_real": best_crop["is_real"],
+                        "label": best_crop["label"],
+                        "raw_class": best_crop["raw_class"]
+                    })
+
+            # Lọc chỉ giữ khung có tỉ lệ cao nhất
+            spoof_res = filter_highest_confidence_boxes(raw_spoof_res, iou_thresh=0.25)
+            print(f"  -> Tìm thấy {len(raw_spoof_res)} vùng -> Lọc còn {len(spoof_res)} khung có tỉ lệ cao nhất trong oval.")
+
             best_spoof_static = None
-            if primary_face:
-                captured_light = check_illumination_quality(captured_frame, bbox=primary_face["bbox"] if primary_face else None)
-                if captured_light["mean_luminance"] < 80.0:
-                    input_spoof = enhance_low_light(captured_frame)
-                    print(f"[Anti-Spoof Preprocess] Độ sáng L={captured_light['mean_luminance']:.1f}. Đã tự động áp dụng CLAHE tăng cường vi vân da mặt.")
+            primary_spoof_iou = 0.0
+
+            if primary_face and spoof_res:
+                matching_spoofs = [sd for sd in spoof_res if calculate_iou(primary_face["bbox"], sd["bbox"]) > 0.15]
+                if matching_spoofs:
+                    best_spoof_static = max(matching_spoofs, key=lambda x: x["confidence"])
+                    primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof_static["bbox"])
                 else:
-                    input_spoof = captured_frame
+                    best_spoof_static = max(spoof_res, key=lambda x: x["confidence"])
+                    primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof_static["bbox"])
 
-                print("[6. Anti-Spoof Ensemble] Đang phân tích Dual-Model MiniFASNet (2.7x + 4.0x)...")
-                ens_pred = anti_spoof_ensemble.predict_face(input_spoof, primary_face["bbox"])
-                best_spoof_static = {
-                    "bbox": primary_face["bbox"],
-                    "is_real": ens_pred["is_real"],
-                    "label": ens_pred["label"],
-                    "confidence": ens_pred["confidence"],
-                    "real_score": ens_pred["real_score"],
-                    "fake_score": ens_pred["fake_score"],
-                    "class_scores": ens_pred["class_scores"],
-                    "model1_scores": ens_pred["model1_scores"],
-                    "model2_scores": ens_pred["model2_scores"],
-                    "raw_class": "real" if ens_pred["is_real"] else "spoof"
-                }
+            if best_spoof_static is None and spoof_res:
+                best_spoof_static = spoof_res[0]
 
-                # Lưu ảnh crop 2.7x và 4.0x
-                c27 = ens_pred.get("crop_27", None)
-                c40 = ens_pred.get("crop_40", None)
-                if c27 is not None:
-                    cv2.imwrite(os.path.join(captured_result_dir, "4_crop_2.7x_minifasnet.jpg"), c27)
-                if c40 is not None:
-                    cv2.imwrite(os.path.join(captured_result_dir, "5_crop_4.0x_minifasnet.jpg"), c40)
+            has_any_spoof_in_frame = any(not sd["is_real"] for sd in spoof_res) if spoof_res else False
 
-                r_pct = best_spoof_static["real_score"] * 100.0
-                p2_pct = best_spoof_static["class_scores"]["spoof_2d"] * 100.0
-                p3_pct = best_spoof_static["class_scores"]["spoof_3d"] * 100.0
-                m1_r = best_spoof_static["model1_scores"]["real"] * 100.0
-                m2_r = best_spoof_static["model2_scores"]["real"] * 100.0
-                print(f"  -> Kết quả Ensemble: {best_spoof_static['label']} (Real: {r_pct:.1f}%) | 2D: {p2_pct:.1f}% | 3D: {p3_pct:.1f}%")
-                print(f"     M1(2.7x): Real {m1_r:.1f}% | M2(4.0x): Real {m2_r:.1f}%")
+            if best_spoof_static:
+                print(f"  -> Kết quả Anti-Spoof Roboflow V2: {best_spoof_static['label']} ({best_spoof_static['confidence']*100:.1f}%) | IoU={primary_spoof_iou:.2f} | Real={best_spoof_static['is_real']}")
 
-            # Nếu chạy chế độ chụp nhanh (Snapshot) hoặc bỏ qua liveness -> Chuyển ngay đến FINAL_DECISION
             if quick_snapshot_mode or skip_liveness:
                 print("\n[INFO] Chế độ Quick Save / Skip Liveness -> Chuyển ngay đến Lưu Kết quả Final...")
                 blink_passed = True
                 head_movement_passed = True
                 stage = PipelineStage.FINAL_DECISION
             else:
-                # Chuyển sang giai đoạn Active Liveness trên Webcam
                 print("\n[INFO] Chuyển sang giai đoạn Live Active Liveness (Blink & Head Movement)...")
-                print("  (Mẹo: Nhấn phím 's' bất cứ lúc nào để lưu kết quả ngay lập tức)")
                 stage = PipelineStage.LIVE_BLINK
                 blink_counter = 0
                 blink_state = False
                 blink_passed = False
 
         # =====================================================================
-        # GIAI ĐOẠN 3: ACTIVE LIVENESS - BLINK DETECTION (LIVE WEBCAM)
+        # GIAI ĐOẠN 3: ACTIVE LIVENESS - BLINK DETECTION
         # =====================================================================
         elif stage == PipelineStage.LIVE_BLINK:
             # Chỉ nhận diện người trong khung oval, bỏ qua người bên ngoài
@@ -1001,7 +1091,6 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
 
             ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks_live) if landmarks_live else (0.0, 0.0, 0.0)
 
-            # Thuật toán đếm chớp mắt
             if ear_avg > 0.05 and ear_avg < 0.18:
                 if not blink_state:
                     blink_state = True
@@ -1013,7 +1102,6 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
             if blink_counter >= 1:
                 blink_passed = True
                 print(f"[LIVENESS 1: BLINK] ĐÃ XÁC NHẬN CHỚP MẮT ({blink_counter} lần) -> PASS!")
-                # Chuyển sang thử thách cử động đầu
                 stage = PipelineStage.LIVE_HEAD_MOVEMENT
                 current_head_action = head_movement_detector.start_challenge()
                 head_action_prompt = head_movement_detector.get_prompt()
@@ -1033,7 +1121,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
             if landmarks_live:
                 display = draw_landmarks(display, landmarks_live)
 
-            # Banner trên cùng: Thử thách chớp mắt (gọn gàng, không che mặt trong oval)
+            # Banner trên cùng: Thử thách chớp mắt (bố cục gọn gàng, không che mặt trong oval)
             draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
             cv2.putText(display, f"E-KYC BUOC 1/2: THU THACH CHOP MAT (ID: {current_img_idx})", (28, 28),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
@@ -1053,7 +1141,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
             cv2.putText(display, prog_label, (35, bot_y + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (255, 255, 255), 1, cv2.LINE_AA)
 
         # =====================================================================
-        # GIAI ĐOẠN 4: ACTIVE LIVENESS - HEAD MOVEMENT CHALLENGE (LIVE WEBCAM)
+        # GIAI ĐOẠN 4: ACTIVE LIVENESS - HEAD MOVEMENT CHALLENGE
         # =====================================================================
         elif stage == PipelineStage.LIVE_HEAD_MOVEMENT:
             # Chỉ nhận diện người trong khung oval, bỏ qua người bên ngoài
@@ -1098,7 +1186,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
             if landmarks_live:
                 display = draw_landmarks(display, landmarks_live)
 
-            # Banner trên cùng: Thử thách cử động đầu (gọn gàng, không che mặt trong oval)
+            # Banner trên cùng: Thử thách cử động đầu (bố cục gọn gàng, không che mặt trong oval)
             draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
             cv2.putText(display, f"E-KYC BUOC 2/2: THU THACH CU DONG DAU (ID: {current_img_idx})", (28, 28),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
@@ -1118,11 +1206,10 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
             cv2.putText(display, f"TIEN TRINH QUAY DAU: {pct_hm}%", (35, bot_y + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (255, 255, 255), 1, cv2.LINE_AA)
 
         # =====================================================================
-        # GIAI ĐOẠN 5: TỔNG HỢP KẾT QUẢ & LƯU VÀO OUTPUT/PIPELINE_ENSEMBLE/<ID>/
+        # GIAI ĐOẠN 5: TỔNG HỢP KẾT QUẢ & LƯU VÀO OUTPUT/PIPELINE_ROBOFLOW_V2/<ID>/
         # =====================================================================
         elif stage == PipelineStage.FINAL_DECISION:
             if final_record is None:
-                # 1. Đánh giá Final Decision
                 c_face = (primary_face is not None)
                 c_single = (num_faces == 1)
                 c_pose = bool(pose_valid_static)
@@ -1140,7 +1227,9 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                     reasons.append("Góc mặt ảnh chụp bị nghiêng/lệch")
 
                 if not c_spoof:
-                    reasons.append("Phát hiện giả mạo qua Dual-Model Anti-Spoofing Ensemble")
+                    reasons.append("Phát hiện giả mạo qua Roboflow V2 Anti-Spoofing Model")
+                elif has_any_spoof_in_frame:
+                    print("  [CẢNH BÁO BỐI CẢNH] Phát hiện vật thể nghi ngờ ở nền xung quanh, nhưng khuôn mặt chính đạt chuẩn REAL.")
 
                 if not c_blink:
                     reasons.append("Chưa hoàn thành chớp mắt (Blink)")
@@ -1149,40 +1238,44 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
 
                 final_pass = (c_face and c_single and c_pose and c_spoof and c_blink and c_head)
 
-                # 2. Chuẩn bị ảnh kết quả trực quan
                 res_img = captured_frame.copy()
 
                 if landmarks_static:
                     res_img = draw_landmarks(res_img, landmarks_static)
 
-                # CHỈ HIỂN THỊ 1 KHUNG NHẬN DIỆN CÓ TỈ LỆ CAO NHẤT (Ẩn khung trùng lặp/tỉ lệ thấp hơn)
-                if primary_face and best_spoof_static:
-                    bx1, by1, bx2, by2 = primary_face["bbox"]
-                    is_real = best_spoof_static["is_real"]
-                    b_color = (0, 255, 0) if is_real else (0, 0, 255)
-                    cv2.rectangle(res_img, (bx1, by1), (bx2, by2), b_color, 2)
-                    label_str = f"{best_spoof_static['label']} {best_spoof_static['confidence']*100:.1f}%"
-                    cv2.putText(res_img, label_str, (bx1, max(25, by1 - 10)),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.65, b_color, 2)
+                # CHỈ HIỂN THỊ 1 KHUNG NHẬN DIỆN CÓ TỈ LỆ CAO NHẤT
+                drawn_spoof_bboxes = []
+                if spoof_res:
+                    for sd in spoof_res:
+                        sx1, sy1, sx2, sy2 = sd["bbox"]
+                        s_col = (0, 255, 0) if sd["is_real"] else (0, 0, 255)
+                        cv2.rectangle(res_img, (sx1, sy1), (sx2, sy2), s_col, 2)
+                        cv2.putText(res_img, f"{sd['label']} {sd['confidence']*100:.1f}%",
+                                    (sx1, max(25, sy1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.65, s_col, 2)
+                        drawn_spoof_bboxes.append(sd["bbox"])
 
-                # Với các mặt phụ khác nếu có (Multi-Face warning), vẽ khung màu xám mờ
-                if num_faces > 1:
-                    for f_it in faces:
-                        if primary_face and f_it["bbox"] == primary_face["bbox"]:
-                            continue
-                        fx1, fy1, fx2, fy2 = f_it["bbox"]
-                        cv2.rectangle(res_img, (fx1, fy1), (fx2, fy2), (180, 180, 180), 1)
-                        cv2.putText(res_img, "EXTRA FACE", (fx1, max(15, fy1 - 5)),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
+                # Vẽ khuôn mặt phụ (nếu có), ẩn khung primary face nếu đã có box anti-spoof
+                for f_it in faces:
+                    bx1, by1, bx2, by2 = f_it["bbox"]
+                    is_p = (primary_face and f_it["bbox"] == primary_face["bbox"])
+                    has_spoof_box = any(calculate_iou(f_it["bbox"], sb) > 0.20 for sb in drawn_spoof_bboxes)
+                    if is_p and has_spoof_box:
+                        continue
+                    box_c = (0, 255, 0) if is_p else (180, 180, 180)
+                    box_thick = 2 if is_p else 1
+                    cv2.rectangle(res_img, (bx1, by1), (bx2, by2), box_c, box_thick)
+                    lbl_tag = "PRIMARY FACE" if is_p else "EXTRA FACE"
+                    cv2.putText(res_img, lbl_tag, (bx1, max(15, by1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, box_c, 1)
 
-                # Tạo bảng Dashboard thông số độc lập (Window 2)
-                dashboard_img = create_ensemble_pipeline_dashboard(
+                # Tạo bảng Dashboard thông số độc lập
+                dashboard_img = create_roboflow_pipeline_dashboard(
                     img_idx=current_img_idx,
                     face_info=primary_face,
                     num_faces=num_faces,
                     pose_info=pose_dict_static,
                     pose_valid=pose_valid_static,
-                    spoof_info=best_spoof_static,
+                    anti_spoof_info=best_spoof_static,
+                    spoof_iou=primary_spoof_iou,
                     blink_passed=blink_passed,
                     blink_count=blink_counter,
                     head_movement_passed=head_movement_passed,
@@ -1190,10 +1283,11 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                     final_pass=final_pass,
                     reasons=reasons,
                     face_crop=face_crop_static,
-                    target_height=h
+                    target_height=h,
+                    model_id=model_id
                 )
 
-                # Ảnh kết quả sạch (Window 1)
+                # Ảnh kết quả sạch
                 clean_img = res_img.copy()
                 verdict_badge = "eKYC: APPROVED" if final_pass else "eKYC: REJECTED"
                 badge_col = (0, 255, 0) if final_pass else (0, 0, 255)
@@ -1202,45 +1296,38 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                 cv2.putText(clean_img, verdict_badge, (w - 225, 42),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.62, badge_col, 2)
 
-                # Ghép 2 Window song song cạnh nhau không bao giờ che mặt
                 side_by_side_img = create_side_by_side_result(clean_img, dashboard_img)
 
-                # 3. Lưu các file vào thư mục output/pipeline_ensemble/<id>/
-                # File 1A: 1_pipeline_result_clean.jpg (Ảnh khuôn mặt sạch)
+                # Lưu các file vào thư mục output/pipeline_roboflow_v2/<id>/
                 out_clean_path = os.path.join(captured_result_dir, "1_pipeline_result_clean.jpg")
                 cv2.imwrite(out_clean_path, clean_img)
 
-                # File 1B: 1_dashboard_panel.jpg (Bảng thông số Dashboard độc lập)
                 out_dash_path = os.path.join(captured_result_dir, "1_dashboard_panel.jpg")
                 cv2.imwrite(out_dash_path, dashboard_img)
 
-                # File 1C: 1_pipeline_side_by_side.jpg (Ghép 2 window cạnh nhau)
                 out_sbs_path = os.path.join(captured_result_dir, "1_pipeline_side_by_side.jpg")
                 cv2.imwrite(out_sbs_path, side_by_side_img)
 
-                # File 1: 1_pipeline_result.jpg (Mặc định xuất ảnh song song Side-by-Side)
                 out_res_path = os.path.join(captured_result_dir, "1_pipeline_result.jpg")
                 cv2.imwrite(out_res_path, side_by_side_img)
 
                 final_display_img = side_by_side_img
 
-                # File 2: 2_face_crop_224.jpg (Khuôn mặt chính đã align chuẩn hóa 224x224)
                 if face_crop_static is not None:
                     out_crop_path = os.path.join(captured_result_dir, "2_face_crop_224.jpg")
                     cv2.imwrite(out_crop_path, face_crop_static)
 
-                # File 3: 3_aligned_full.jpg
                 if aligned_img_static is not None:
                     out_align_path = os.path.join(captured_result_dir, "3_aligned_full.jpg")
                     cv2.imwrite(out_align_path, aligned_img_static)
 
-                # File 4: 4_report.json
+                # File báo cáo JSON
                 final_record = {
                     "image_id": current_img_idx,
                     "image_name": f"{current_img_idx}.jpg",
                     "raw_image_path": captured_img_path,
                     "output_folder": captured_result_dir,
-                    "model_type": "Dual-Model Official Anti-Spoof Ensemble (2.7x + 4.0x)",
+                    "model_type": f"Roboflow V2 ({model_id})",
                     "face_detection": {
                         "face_detected": primary_face is not None,
                         "num_faces_detected": num_faces,
@@ -1256,15 +1343,14 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                         "pitch": round(pose_dict_static["pitch"], 2) if pose_dict_static else 0.0,
                         "roll": round(pose_dict_static["roll"], 2) if pose_dict_static else 0.0,
                     },
-                    "anti_spoof_ensemble": {
+                    "anti_spoof_roboflow": {
+                        "model_id": model_id,
                         "label": best_spoof_static["label"] if best_spoof_static else "NONE",
                         "is_real": bool(best_spoof_static["is_real"]) if best_spoof_static else False,
                         "confidence": round(best_spoof_static["confidence"], 4) if best_spoof_static else 0.0,
-                        "real_score": round(best_spoof_static["real_score"], 4) if best_spoof_static else 0.0,
-                        "fake_score": round(best_spoof_static["fake_score"], 4) if best_spoof_static else 0.0,
-                        "class_scores": best_spoof_static.get("class_scores", {}) if best_spoof_static else {},
-                        "model1_scores": best_spoof_static.get("model1_scores", {}) if best_spoof_static else {},
-                        "model2_scores": best_spoof_static.get("model2_scores", {}) if best_spoof_static else {},
+                        "matched_iou": round(primary_spoof_iou, 4),
+                        "has_global_spoof_in_frame": bool(has_any_spoof_in_frame),
+                        "all_spoof_detections": spoof_res
                     },
                     "active_liveness": {
                         "blink_passed": bool(blink_passed),
@@ -1280,27 +1366,23 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                 with open(out_json_path, "w", encoding="utf-8") as f:
                     json.dump(final_record, f, ensure_ascii=False, indent=2, default=json_serialize_helper)
 
-                # 4. Cập nhật Báo cáo tổng kết batch_summary_ensemble.csv
-                batch_csv_path = os.path.join(OUTPUT_DIR, "batch_summary_ensemble.csv")
+                # Báo cáo CSV
+                batch_csv_path = os.path.join(OUTPUT_DIR, "batch_summary_roboflow_v2.csv")
                 file_exists = os.path.exists(batch_csv_path)
                 with open(batch_csv_path, "a", newline="", encoding="utf-8-sig") as f:
                     writer = csv.writer(f)
                     if not file_exists:
                         writer.writerow([
-                            "Image ID", "Verdict", "Num Faces", "Ensemble Label", "Real Score", "2D Spoof", "3D Spoof",
-                            "Pose Valid", "Blink", "Head Movement", "Reasons", "Output Folder"
+                            "Image ID", "Verdict", "Num Faces", "Roboflow V2 Label", "Confidence",
+                            "IoU", "Pose Valid", "Blink", "Head Movement", "Reasons", "Output Folder"
                         ])
-                    r_sc = f"{best_spoof_static['real_score']*100:.1f}%" if best_spoof_static else "0.0%"
-                    s2_sc = f"{best_spoof_static['class_scores']['spoof_2d']*100:.1f}%" if best_spoof_static else "0.0%"
-                    s3_sc = f"{best_spoof_static['class_scores']['spoof_3d']*100:.1f}%" if best_spoof_static else "0.0%"
                     writer.writerow([
                         f"{current_img_idx}.jpg",
                         final_record["final_verdict"],
                         num_faces,
-                        final_record["anti_spoof_ensemble"]["label"],
-                        r_sc,
-                        s2_sc,
-                        s3_sc,
+                        final_record["anti_spoof_roboflow"]["label"],
+                        final_record["anti_spoof_roboflow"]["confidence"],
+                        f"{primary_spoof_iou:.2f}",
                         "PASS" if final_record["pose_validation"]["is_valid"] else "FAIL",
                         "PASS" if blink_passed else "FAIL",
                         f"PASS ({final_record['active_liveness']['head_action']})" if head_movement_passed else f"FAIL ({final_record['active_liveness']['head_action']})",
@@ -1309,7 +1391,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                     ])
 
                 print("\n" + "=" * 65)
-                print(f"  [HOÀN TẤT eKYC ENSEMBLE ID: {current_img_idx}] Kết quả: {final_record['final_verdict']}")
+                print(f"  [HOÀN TẤT eKYC ROBOFLOW V2 ID: {current_img_idx}] Kết quả: {final_record['final_verdict']}")
                 print(f"  * Ảnh gốc đã lưu      : {captured_img_path}")
                 print(f"  * Thư mục kết quả     : {captured_result_dir}")
                 print(f"  * Chi tiết 4_report   : {out_json_path}")
@@ -1321,15 +1403,13 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
             cv2.putText(display, "[r]: Tiep tuc chup anh tiep theo | [q]: Thoat", (35, disp_h - 38),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 230, 255), 2)
 
-        # Vẽ thanh trạng thái FPS ở góc phải trên
         curr_time = time.time()
         fps = 1.0 / (curr_time - prev_fps_time) if curr_time > prev_fps_time else 0.0
         prev_fps_time = curr_time
         cv2.putText(display, f"FPS: {fps:.1f}", (w - 120, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
-        cv2.imshow("Full E-KYC Pipeline (Dual-Model Ensemble)", display)
+        cv2.imshow("Full E-KYC Pipeline (Roboflow V2 Anti-Spoof)", display)
 
-        # Xử lý phím bấm
         key = cv2.waitKey(1) & 0xFF
         if key == 27 or key == ord('q') or key == ord('Q'):
             break
@@ -1341,7 +1421,6 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
             auto_capture_mode = not auto_capture_mode
             print(f"[INFO] Chế độ Auto-Capture: {'BẬT' if auto_capture_mode else 'TẮT'}")
 
-        # Phím 's': Chụp ảnh nhanh (Snapshot Mode) và lưu kết quả ngay lập tức
         elif (key == ord('s') or key == ord('S')):
             if stage == PipelineStage.PREVIEW_ALIGN:
                 if not is_aligned_good:
@@ -1361,7 +1440,6 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                 head_movement_passed = True
                 stage = PipelineStage.FINAL_DECISION
 
-        # Phím SPACE hoặc 'c': Chụp ảnh và chạy Full quy trình eKYC
         elif (key == 32 or key == ord('c') or key == ord('C') or key_trigger == ord(' ')) and stage == PipelineStage.PREVIEW_ALIGN:
             if not is_aligned_good:
                 capture_blocked_frames = 40
@@ -1377,19 +1455,21 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
 
     cap.release()
     cv2.destroyAllWindows()
-    print("[INFO] Đã đóng chương trình Pipeline Ensemble an toàn.")
+    print("[INFO] Đã đóng chương trình Pipeline Roboflow V2 an toàn.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Full E-KYC Pipeline (Dual-Model Official Anti-Spoof Ensemble)")
+    parser = argparse.ArgumentParser(description="Full E-KYC Pipeline V2 (Roboflow Anti-Spoofing Local Inference)")
     parser.add_argument("--cam", "--camera", type=int, default=0, help="Camera device index (mặc định 0)")
     parser.add_argument("--static", "--skip-liveness", "--quick", action="store_true", help="Chế độ chụp và lưu AI nhanh, bỏ qua thử thách Liveness")
+    parser.add_argument("--model-id", type=str, default=DEFAULT_MODEL_ID, help=f"Roboflow Model ID (mặc định: {DEFAULT_MODEL_ID})")
     args = parser.parse_args()
 
     try:
-        main_pipeline_ensemble(
+        main_pipeline_roboflow_v2(
             cam_id=args.cam,
-            skip_liveness=getattr(args, 'static', False)
+            skip_liveness=getattr(args, 'static', False),
+            model_id=args.model_id
         )
     except KeyboardInterrupt:
         print("\n[INFO] Đã dừng pipeline theo yêu cầu của người dùng.")

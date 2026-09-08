@@ -37,6 +37,7 @@ import glob
 import unicodedata
 from enum import Enum
 from pathlib import Path
+from typing import Optional, Union, Tuple, Dict, Any, List
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -288,6 +289,48 @@ def draw_oval_face_guide(image, center, axes, is_aligned=False, is_detected=Fals
     return image
 
 
+def is_point_in_oval(pt: Tuple[float, float], center: Tuple[int, int], axes: Tuple[int, int], tolerance: float = 1.0) -> bool:
+    """Kiểm tra tọa độ (x, y) có nằm bên trong khung oval hay không."""
+    cx, cy = center
+    ax, ay = axes
+    if ax <= 0 or ay <= 0:
+        return False
+    norm_x = (float(pt[0]) - cx) / float(ax * tolerance)
+    norm_y = (float(pt[1]) - cy) / float(ay * tolerance)
+    return (norm_x ** 2 + norm_y ** 2) <= 1.0
+
+
+def is_face_in_oval(bbox: Union[List[int], Tuple[int, ...]], center: Tuple[int, int], axes: Tuple[int, int], tolerance: float = 1.08) -> bool:
+    """
+    Kiểm tra xem bounding box của khuôn mặt có nằm trong khung oval hay không.
+    Tính toán dựa trên tâm của khuôn mặt (face center).
+    """
+    x1, y1, x2, y2 = bbox
+    face_cx = (x1 + x2) / 2.0
+    face_cy = (y1 + y2) / 2.0
+    return is_point_in_oval((face_cx, face_cy), center, axes, tolerance=tolerance)
+
+
+def get_oval_masked_frame(frame: np.ndarray, center: Tuple[int, int], axes: Tuple[int, int], blur_ksize: int = 45, dim_factor: float = 0.35) -> np.ndarray:
+    """
+    Tạo bản sao frame với vùng bên ngoài khung oval bị làm mờ mạnh (Gaussian Blur) và giảm sáng.
+    Giúp MediaPipe và các thuật toán phát hiện chỉ tập trung vào người bên trong oval,
+    hoàn toàn bỏ qua những người bên ngoài khung oval.
+    """
+    h, w = frame.shape[:2]
+    cx, cy = center
+    ax, ay = axes
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.ellipse(mask, (cx, cy), (ax, ay), 0, 0, 360, 255, -1)
+    outside_mask = (mask == 0)
+
+    masked = frame.copy()
+    ksize = blur_ksize if blur_ksize % 2 == 1 else blur_ksize + 1
+    blurred = cv2.GaussianBlur(masked, (ksize, ksize), 0)
+    masked[outside_mask] = (blurred[outside_mask] * dim_factor).astype(np.uint8)
+    return masked
+
+
 def draw_pipeline4_result_hud(
     image,
     img_idx,
@@ -530,20 +573,27 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
         h, w = frame.shape[:2]
         display = frame.copy()
 
+        # Cấu hình khung oval cố định ngay giữa màn hình cho TOÀN BỘ các giai đoạn
+        oval_cx = w // 2
+        oval_cy = int(h * 0.505)
+        oval_ay = int(h * 0.38)          # Tăng chiều cao oval dài hơn (38% h)
+        oval_ax = int(oval_ay * 0.65)     # Chiều ngang cân đối tỷ lệ khuôn mặt
+        oval_center = (oval_cx, oval_cy)
+        oval_axes = (oval_ax, oval_ay)
+
         # =====================================================================
         # GIAI ĐOẠN 1: PREVIEW & CHỤP ẢNH
         # =====================================================================
         if stage == PipelineStage.PREVIEW_ALIGN:
-            # 1. Cấu hình khung oval cố định ngay giữa màn hình (chiều cao dài hơn)
-            oval_cx = w // 2
-            oval_cy = int(h * 0.505)
-            oval_ay = int(h * 0.38)          # Tăng chiều cao oval dài hơn (38% h)
-            oval_ax = int(oval_ay * 0.65)     # Chiều ngang cân đối tỷ lệ khuôn mặt
-            oval_center = (oval_cx, oval_cy)
-            oval_axes = (oval_ax, oval_ay)
+            # 2. Phát hiện vị trí mặt và góc nhìn: làm mờ ngoại vi để bỏ qua người ngoài oval
+            frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
+            landmarks_live = landmark_detector.detect(frame_for_detect)
+            if landmarks_live and len(landmarks_live) >= 468:
+                xs = [p[0] for p in landmarks_live]
+                ys = [p[1] for p in landmarks_live]
+                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                    landmarks_live = None
 
-            # 2. Phát hiện vị trí mặt và góc nhìn tạm thời trên webcam
-            landmarks_live = landmark_detector.detect(frame)
             pose_valid_live = False
             pose_dict_live = None
 
@@ -723,10 +773,16 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
             all_faces_dir = os.path.join(captured_result_dir, "all_faces_cropped")
             os.makedirs(all_faces_dir, exist_ok=True)
 
-            # 3. Chạy Face Detection: Tìm & Crop TẤT CẢ các khuôn mặt trong ảnh
-            faces = detector.detect(captured_frame)
+            # 3. Chạy Face Detection: Tìm & Crop khuôn mặt trong khung oval
+            raw_faces = detector.detect(captured_frame)
+            # CHỈ nhận diện và xác thực người trong khung oval, những người bên ngoài khung oval bỏ qua
+            faces = [f for f in raw_faces if is_face_in_oval(f["bbox"], oval_center, oval_axes)]
+            ignored_faces = [f for f in raw_faces if not is_face_in_oval(f["bbox"], oval_center, oval_axes)]
             num_faces = len(faces)
-            print(f"[2. Face Detection] Tìm thấy {num_faces} khuôn mặt trong khung hình.")
+            print(f"[2. Face Detection] Tổng phát hiện: {len(raw_faces)} khuôn mặt.")
+            print(f"  -> Trong khung oval (xác thực): {num_faces} mặt.")
+            if ignored_faces:
+                print(f"  -> Ngoài khung oval (bỏ qua): {len(ignored_faces)} mặt.")
 
             all_face_crops_info = []
             h_f, w_f = captured_frame.shape[:2]
@@ -750,7 +806,7 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                         "crop_file": crop_filename
                     })
 
-            # Chọn Khuôn mặt chính (Primary Face: To nhất và gần trung tâm màn hình nhất)
+            # Chọn Khuôn mặt chính (Primary Face: To nhất và gần trung tâm oval nhất)
             primary_face = None
             if faces:
                 def get_face_priority(f):
@@ -762,11 +818,15 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
 
                 primary_face = max(faces, key=get_face_priority)
                 print(f"  -> Đã chọn Primary Face: BBox={primary_face['bbox']} (Conf: {primary_face['confidence']:.2f})")
-                if num_faces > 1:
-                    print(f"  [CẢNH BÁO] Phát hiện {num_faces} người trong ảnh! Đã crop lưu tất cả {num_faces} mặt vào output/{current_img_idx}/all_faces_cropped/")
 
-            # 4. Chạy Landmarks
-            landmarks_static = landmark_detector.detect(captured_frame)
+            # 4. Chạy Landmarks (chỉ quét trong khung oval)
+            captured_masked = get_oval_masked_frame(captured_frame, oval_center, oval_axes)
+            landmarks_static = landmark_detector.detect(captured_masked)
+            if landmarks_static and len(landmarks_static) >= 468:
+                xs = [p[0] for p in landmarks_static]
+                ys = [p[1] for p in landmarks_static]
+                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                    landmarks_static = None
             print(f"[3. Landmarks] Trích xuất được {len(landmarks_static) if landmarks_static else 0} điểm.")
 
             # 5. Chạy Pose 3D
@@ -824,9 +884,11 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                 input_spoof = captured_frame
 
             raw_spoof_res = anti_spoof_detector.predict(input_spoof, conf_threshold=0.25)
+            # CHỈ giữ lại các nhận diện anti-spoof nằm trong khung oval
+            raw_spoof_res = [sd for sd in raw_spoof_res if is_face_in_oval(sd["bbox"], oval_center, oval_axes)]
             # Lọc chỉ giữ khung có tỉ lệ cao nhất khi các khung trùng đè lên nhau (ẩn khung tỉ lệ thấp hơn)
             spoof_res = filter_highest_confidence_boxes(raw_spoof_res, iou_thresh=0.25)
-            print(f"[6. Anti-Spoofing Full Frame] Tìm thấy {len(raw_spoof_res)} vùng -> Lọc còn {len(spoof_res)} khung có tỉ lệ cao nhất.")
+            print(f"[6. Anti-Spoofing Full Frame] Tìm thấy {len(raw_spoof_res)} vùng -> Lọc còn {len(spoof_res)} khung có tỉ lệ cao nhất trong oval.")
 
             best_spoof_static = None
             primary_spoof_iou = 0.0
@@ -870,11 +932,16 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
         # GIAI ĐOẠN 3: ACTIVE LIVENESS - BLINK DETECTION (LIVE WEBCAM)
         # =====================================================================
         elif stage == PipelineStage.LIVE_BLINK:
-            landmarks_live = landmark_detector.detect(frame)
-            ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks_live) if landmarks_live else (0.0, 0.0, 0.0)
+            # Chỉ nhận diện người trong khung oval, bỏ qua người bên ngoài
+            frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
+            landmarks_live = landmark_detector.detect(frame_for_detect)
+            if landmarks_live and len(landmarks_live) >= 468:
+                xs = [p[0] for p in landmarks_live]
+                ys = [p[1] for p in landmarks_live]
+                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                    landmarks_live = None
 
-            if landmarks_live:
-                display = draw_landmarks(display, landmarks_live)
+            ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks_live) if landmarks_live else (0.0, 0.0, 0.0)
 
             # Thuật toán đếm chớp mắt
             if ear_avg > 0.05 and ear_avg < 0.18:
@@ -894,29 +961,55 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                 head_action_prompt = head_movement_detector.get_prompt()
                 print(f"[LIVENESS 2: HEAD MOVEMENT] Thử thách: {current_head_action.value} -> {head_action_prompt}")
 
-            # Vẽ HUD Blink
-            draw_ui_card(display, 20, 20, w - 40, 110, bg_color=(20, 20, 25), alpha=0.85)
-            cv2.putText(display, f"E-KYC BUOC 1/2: THU THACH CHOP MAT (ID: {current_img_idx})", (35, 48),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 230, 255), 2)
-            cv2.putText(display, f"VUI LONG CHOP MAT (EAR: {ear_avg:.2f} | Blinks: {blink_counter}/1)", (35, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            # KHUNG OVAL GIỮ NGUYÊN NGAY CẢ KHI THỰC HIỆN CÁC THỬ THÁCH
+            blink_col = (0, 255, 127) if (blink_state or blink_counter >= 1) else (0, 230, 255)
+            display = draw_oval_face_guide(
+                display,
+                center=oval_center,
+                axes=oval_axes,
+                is_aligned=True,
+                is_detected=(landmarks_live is not None),
+                color=blink_col
+            )
 
+            if landmarks_live:
+                display = draw_landmarks(display, landmarks_live)
+
+            # Banner trên cùng: Thử thách chớp mắt (gọn gàng, không che mặt trong oval)
+            draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
+            cv2.putText(display, f"E-KYC BUOC 1/2: THU THACH CHOP MAT (ID: {current_img_idx})", (28, 28),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
+            cv2.putText(display, f"VUI LONG CHOP MAT TU NHIEN | EAR: {ear_avg:.2f} | Blinks: {blink_counter}/1", (28, 46),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 255, 255), 1, cv2.LINE_AA)
+
+            # Banner dưới cùng: Thanh tiến trình
+            bot_y = h - 56
+            draw_ui_card(display, 15, bot_y, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
             b_prog = 1.0 if blink_counter >= 1 else (0.5 if blink_state else 0.0)
-            bar_w = w - 110
-            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (50, 50, 50), -1)
+            bar_w = w - 80
+            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (40, 40, 50), -1)
             if b_prog > 0:
-                cv2.rectangle(display, (35, 95), (35 + int(bar_w * b_prog), 107), (0, 255, 0), -1)
-            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (120, 120, 120), 1)
+                cv2.rectangle(display, (28, bot_y + 16), (28 + int(bar_w * b_prog), bot_y + 32), (0, 255, 127), -1)
+            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (100, 100, 100), 1)
+            prog_label = "DA XAC NHAN CHOP MAT! (100%)" if blink_counter >= 1 else ("DANG CHOP MAT... (50%)" if blink_state else "DANG DOI CHOP MAT... (0%)")
+            cv2.putText(display, prog_label, (35, bot_y + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (255, 255, 255), 1, cv2.LINE_AA)
 
         # =====================================================================
         # GIAI ĐOẠN 4: ACTIVE LIVENESS - HEAD MOVEMENT CHALLENGE (LIVE WEBCAM)
         # =====================================================================
         elif stage == PipelineStage.LIVE_HEAD_MOVEMENT:
-            landmarks_live = landmark_detector.detect(frame)
+            # Chỉ nhận diện người trong khung oval, bỏ qua người bên ngoài
+            frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
+            landmarks_live = landmark_detector.detect(frame_for_detect)
+            if landmarks_live and len(landmarks_live) >= 468:
+                xs = [p[0] for p in landmarks_live]
+                ys = [p[1] for p in landmarks_live]
+                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                    landmarks_live = None
+
             pose_dict_live = None
             if landmarks_live:
                 _, _, pose_dict_live = pose_validator.validate(landmarks_live, get_landmark_point)
-                display = draw_landmarks(display, landmarks_live)
 
             hm_status = head_movement_detector.update(pose_dict_live)
             prompt_str = hm_status.get("prompt", "")
@@ -933,21 +1026,38 @@ def main_pipeline_4(cam_id=0, skip_liveness=False, model_version="v7"):
                 print(f"[LIVENESS 2: HEAD MOVEMENT] HẾT THỜI GIAN THỰC HIỆN -> FAIL!")
                 stage = PipelineStage.FINAL_DECISION
 
-            # Vẽ HUD Head Movement
-            draw_ui_card(display, 20, 20, w - 40, 110, bg_color=(20, 20, 25), alpha=0.85)
-            cv2.putText(display, f"E-KYC BUOC 2/2: THU THACH CU DONG DAU (ID: {current_img_idx})", (35, 48),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.62, (0, 230, 255), 2)
+            # KHUNG OVAL GIỮ NGUYÊN NGAY CẢ KHI THỰC HIỆN CÁC THỬ THÁCH
+            hm_col = (0, 255, 127) if hm_status["passed"] else (0, 230, 255)
+            display = draw_oval_face_guide(
+                display,
+                center=oval_center,
+                axes=oval_axes,
+                is_aligned=True,
+                is_detected=(landmarks_live is not None),
+                color=hm_col
+            )
 
-            hm_color = (0, 255, 0) if hm_status["passed"] else (0, 255, 255)
-            cv2.putText(display, f"{prompt_str.upper()} ({time_left:.1f}s)", (35, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.58, hm_color, 2)
+            if landmarks_live:
+                display = draw_landmarks(display, landmarks_live)
 
-            bar_w = w - 110
-            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (50, 50, 50), -1)
+            # Banner trên cùng: Thử thách cử động đầu (gọn gàng, không che mặt trong oval)
+            draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
+            cv2.putText(display, f"E-KYC BUOC 2/2: THU THACH CU DONG DAU (ID: {current_img_idx})", (28, 28),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
+            cv2.putText(display, f"{prompt_str.upper()} | Thoi gian: {time_left:.1f}s", (28, 46),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, hm_col, 1, cv2.LINE_AA)
+
+            # Banner dưới cùng: Thanh tiến trình
+            bot_y = h - 56
+            draw_ui_card(display, 15, bot_y, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
+            bar_w = w - 80
+            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (40, 40, 50), -1)
             fill_w = int(bar_w * progress_val)
             if fill_w > 0:
-                cv2.rectangle(display, (35, 95), (35 + fill_w, 107), (0, 255, 0), -1)
-            cv2.rectangle(display, (35, 95), (35 + bar_w, 107), (120, 120, 120), 1)
+                cv2.rectangle(display, (28, bot_y + 16), (28 + fill_w, bot_y + 32), (0, 255, 127), -1)
+            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (100, 100, 100), 1)
+            pct_hm = int(progress_val * 100)
+            cv2.putText(display, f"TIEN TRINH QUAY DAU: {pct_hm}%", (35, bot_y + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (255, 255, 255), 1, cv2.LINE_AA)
 
         # =====================================================================
         # GIAI ĐOẠN 5: TỔNG HỢP KẾT QUẢ & LƯU VÀO OUTPUT/<ID>/

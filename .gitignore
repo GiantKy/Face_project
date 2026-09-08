@@ -49,6 +49,12 @@ dist/
 !models/Anti_Spoof_YOLO.pt
 !models/face_landmarker.task
 !models/roboflow/**/weights.onnx
+
+# Ignore heavy Transformer / RF-DETR model weights (> 100MB) to comply with GitHub / GitLab limits
+models/roboflow/*rfdetr*/**/weights.onnx
+models/roboflow/*rfdetr*/*.onnx
+models/roboflow/**/*rfdetr*/**/*.onnx
+models/*rfdetr*.onnx
 *.db
 
 # =============================================================================
