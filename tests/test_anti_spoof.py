@@ -16,7 +16,7 @@ from ultralytics import YOLO
 # =========================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 candidate_models = [
-    "Anti_Spoof_YOLO.pt"
+    "Anti_Spoof_YOLO_4.pt"
 ]
 
 MODEL_PATH = None
@@ -41,6 +41,12 @@ model = YOLO(MODEL_PATH)
 print(f"[INFO] Model loaded! Classes: {model.names}")
 
 # =========================
+# CONFIGURATION & THRESHOLDS
+# =========================
+CONF_THRESHOLD = 0.7   # Ngưỡng tin cậy (Confidence threshold): chỉ nhận diện khi conf >= ngưỡng này (VD: 0.5, 0.6, 0.7...)
+IOU_THRESHOLD = 0.45   # Ngưỡng NMS IoU
+
+# =========================
 # CAMERA
 # =========================
 cap = cv2.VideoCapture(0)
@@ -49,7 +55,7 @@ if not cap.isOpened():
     print("[ERROR] Cannot open camera!")
     sys.exit(1)
 
-print("[INFO] Camera opened. Press ESC to exit.")
+print(f"[INFO] Camera opened. Conf threshold: {CONF_THRESHOLD}. Press ESC to exit.")
 
 # =========================
 # FPS
@@ -68,7 +74,7 @@ while True:
     frame = cv2.flip(frame, 1)
 
     # ---- Inference ----
-    results = model(frame, verbose=False)
+    results = model(frame, conf=CONF_THRESHOLD, iou=IOU_THRESHOLD, verbose=False)
 
     # ---- Draw results ----
     for result in results:
@@ -124,14 +130,14 @@ while True:
                 2
             )
 
-    # ---- FPS ----
+    # ---- FPS & Info ----
     curr_time = time.time()
     fps = 1.0 / (curr_time - prev_time)
     prev_time = curr_time
 
     cv2.putText(
         frame,
-        f"FPS: {fps:.1f}",
+        f"FPS: {fps:.1f} | Conf Thresh: {CONF_THRESHOLD}",
         (10, 30),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.8,

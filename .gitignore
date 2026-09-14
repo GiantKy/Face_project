@@ -54,6 +54,9 @@ dist/
 models/roboflow/*rfdetr*/**/weights.onnx
 models/roboflow/*rfdetr*/*.onnx
 models/roboflow/**/*rfdetr*/**/*.onnx
+models/roboflow/*rfder*/**/weights.onnx
+models/roboflow/*rfder*/*.onnx
+models/roboflow/**/*rfder*/**/*.onnx
 models/*rfdetr*.onnx
 *.db
 

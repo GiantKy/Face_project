@@ -1,38 +1,36 @@
 # -*- coding: utf-8 -*-
 """
 =============================================================================
-Full E-KYC Pipeline RF-DETR: RF-DETR Nano Anti-Spoofing + Active Liveness
+Full E-KYC Pipeline RF-DETR Small: RF-DETR Small Anti-Spoofing + Active Liveness
 =============================================================================
-Quy trình thực hiện toàn diện (End-to-End eKYC Verification Pipeline RF-DETR):
+Quy trình thực hiện toàn diện (End-to-End eKYC Verification Pipeline RF-DETR Small):
   1. Mở Webcam: Hiển thị giao diện xem trước & khung oval bán nguyệt căn chỉnh khuôn mặt.
      - Vùng bên ngoài khung oval được làm mờ (Gaussian Blur) và giảm sáng (Bokeh effect).
      - Khóa chụp ảnh (Capture Lock): Nếu khuôn mặt chưa đưa vào đúng khung oval hoặc
-       chưa nhìn thẳng, hệ thống sẽ chặn không cho chụp và hiện cảnh báo.
+       chưa nhìn thẳng / thiếu sáng, hệ thống sẽ chặn không cho chụp và hiện cảnh báo.
   2. Chụp ảnh (Phím SPACE / 'c' hoặc Tự động khi mặt chuẩn trong oval):
      - Lưu ảnh gốc vào data_raw/<id>.jpg (đánh số tăng dần tiếp theo).
   3. Chạy AI Models trên ảnh vừa chụp:
      - Face Detection (YOLOv8) -> Landmarks (MediaPipe) -> Pose 3D -> Face Align & Crop 224x224.
-     - RF-DETR Nano Anti-Spoofing (Detection Transformer):
-       + Model ID: ks-workspace-hatfd/face-spoof-detection-liika-qopyy-1-rfdetr-nano-t5
-       + Weights: ~108 MB (RF-DETR Nano - Detection Transformer Architecture)
+     - RF-DETR Small Anti-Spoofing (Detection Transformer):
+       + Model ID: k-thi-gia-s-workspace/face-spoof-detection-liika-owgrl-1-rfdetr-small-t1
+       + Weights: ~109 MB (RF-DETR Small - Detection Transformer Architecture)
        + Nhãn: real, spoof (+ background_class83422 được lọc bỏ tự động)
-       + Chạy offline 100%, không cần Docker.
-       + LƯU Ý: RF-DETR chậm hơn YOLOv11n ~2-5x nhưng chính xác hơn.
+       + Chạy OFFLINE 100% từ cache models/roboflow/, không phụ thuộc mạng.
   4. Bắt đầu Active Liveness trên luồng Live Webcam:
      - Blink Detection: Yêu cầu người dùng chớp mắt (đo EAR).
      - Head Movement Challenge: Thử thách quay đầu ngẫu nhiên (Trái/Phải).
   5. Tổng hợp toàn bộ dữ liệu & Đưa ra quyết định cuối cùng (Final eKYC Decision).
   6. Hiển thị giao diện kết quả:
-     - Chỉ hiển thị 1 khung nhận diện có tỉ lệ cao nhất (ẩn các khung tỉ lệ thấp hơn / trùng lặp).
      - Giao diện song song (Side-by-Side): Ảnh khuôn mặt bên trái + Dashboard thông số bên phải.
-  7. Lưu toàn bộ kết quả vào output/pipeline_rfdetr/<id>/ gồm:
+  7. Lưu toàn bộ kết quả vào output/pipeline_rfdetr_small/<id>/ gồm:
      - 1_pipeline_result.jpg (Ảnh song song Side-by-Side)
      - 1_pipeline_result_clean.jpg (Ảnh khuôn mặt sạch)
      - 1_dashboard_panel.jpg (Bảng Dashboard độc lập)
      - 2_face_crop_224.jpg
      - 3_aligned_full.jpg
      - 4_report.json
-     - Cập nhật batch_summary_rfdetr.csv.
+     - Cập nhật batch_summary_rfdetr_small.csv.
 
 Phím điều khiển:
   - SPACE / 'c' : Chụp ảnh và bắt đầu quy trình eKYC (yêu cầu mặt trong oval)
@@ -42,11 +40,11 @@ Phím điều khiển:
   - 'q' / ESC   : Thoát chương trình
 
 Cách chạy:
-  # 1. Full Pipeline RF-DETR trên Webcam:
-  py -3.11 tests/test_pipeline_rfdetr.py --cam 0
+  # 1. Full Pipeline RF-DETR Small trên Webcam:
+  py -3.11 tests/test_pipeline_rfdetr_small.py --cam 0
 
   # 2. Chụp nhanh (bỏ qua Liveness):
-  py -3.11 tests/test_pipeline_rfdetr.py --cam 0 --static
+  py -3.11 tests/test_pipeline_rfdetr_small.py --cam 0 --static
 =============================================================================
 """
 
@@ -84,7 +82,7 @@ BASE_DIR = os.path.dirname(CURRENT_DIR)
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-# Trỏ cache của Roboflow về thư mục models/roboflow của repo (đảm bảo chạy offline 100%)
+# Trỏ cache của Roboflow về thư mục models/roboflow của repo (chạy offline 100%)
 ROBOFLOW_CACHE_DIR = os.path.join(BASE_DIR, "models", "roboflow")
 os.environ["MODEL_CACHE_DIR"] = ROBOFLOW_CACHE_DIR
 os.makedirs(ROBOFLOW_CACHE_DIR, exist_ok=True)
@@ -105,15 +103,16 @@ from src.illumination import check_illumination_quality, enhance_low_light
 from server_module.utils import create_side_by_side_result
 
 DATA_RAW_DIR = os.path.join(BASE_DIR, "data_raw")
-OUTPUT_DIR = os.path.join(CURRENT_DIR, "output", "pipeline_rfdetr")
+OUTPUT_DIR = os.path.join(CURRENT_DIR, "output", "pipeline_rfdetr_small")
 os.makedirs(DATA_RAW_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Cấu hình Model RF-DETR Nano (Detection Transformer - ~108MB)
-DEFAULT_MODEL_ID = "ks-workspace-hatfd/face-spoof-detection-liika-qopyy-1-rfdetr-nano-t5"
-ROBOFLOW_API_KEY = "LiYT7osRW01duX3ao91S"
+# Cấu hình Model RF-DETR Small
+DEFAULT_MODEL_ID = "k-thi-gia-s-workspace/face-spoof-detection-liika-owgrl-1-rfdetr-small-t1"
+SHORT_MODEL_ID = "face-spoof-detection-liika-owgrl-1-rfdetr-small-t1"
+ROBOFLOW_API_KEY = "ydUs8YBnVWjyjFFVvcpx"
 
-# Nhãn lớp RF-DETR (3 lớp thay vì 2 như YOLOv11n)
+# Nhãn lớp RF-DETR Small
 CLASS_NAMES = ["background_class83422", "real", "spoof"]
 BACKGROUND_CLASS = "background_class83422"
 
@@ -122,7 +121,7 @@ BACKGROUND_CLASS = "background_class83422"
 # 1. HELPER FUNCTIONS: FONT, EAR & FILE INDEX MANAGEMENT
 # =============================================================================
 def remove_vietnamese_accents(text: str) -> str:
-    """Chuyển đổi văn bản tiếng Việt có dấu thành không dấu để OpenCV cv2.putText hiển thị đẹp, không bị lỗi phông"""
+    """Chuyển đổi văn bản tiếng Việt có dấu thành không dấu để OpenCV hiển thị không lỗi phông"""
     if not text:
         return ""
     text = str(text)
@@ -147,10 +146,7 @@ def calculate_iou(boxA, boxB):
 
 
 def filter_highest_confidence_boxes(detections, iou_thresh=0.25):
-    """
-    Lọc các khung nhận diện bị trùng lặp hoặc đè lên nhau (IoU > iou_thresh).
-    Chỉ giữ lại khung có tỉ lệ confidence cao nhất, ẩn hoàn toàn các khung có tỉ lệ thấp hơn.
-    """
+    """Lọc các khung nhận diện bị trùng lặp, chỉ giữ khung có confidence cao nhất."""
     if not detections:
         return []
 
@@ -179,24 +175,43 @@ def compute_eye_aspect_ratio(landmarks):
     if not landmarks or len(landmarks) < 468:
         return 0.0, 0.0, 0.0
 
-    l_top = (calc_dist(landmarks[160], landmarks[144]) + calc_dist(landmarks[158], landmarks[153])) / 2.0
-    l_width = calc_dist(landmarks[33], landmarks[133])
-    ear_left = (l_top / l_width) if l_width > 0 else 0.0
+    # Mắt trái: 33, 160, 158, 133, 153, 144
+    p33 = landmarks[33][:2]
+    p160 = landmarks[160][:2]
+    p158 = landmarks[158][:2]
+    p133 = landmarks[133][:2]
+    p153 = landmarks[153][:2]
+    p144 = landmarks[144][:2]
 
-    r_top = (calc_dist(landmarks[385], landmarks[380]) + calc_dist(landmarks[387], landmarks[373])) / 2.0
-    r_width = calc_dist(landmarks[362], landmarks[263])
-    ear_right = (r_top / r_width) if r_width > 0 else 0.0
+    ear_left_v1 = calc_dist(p160, p144)
+    ear_left_v2 = calc_dist(p158, p153)
+    ear_left_h = calc_dist(p33, p133)
+    ear_left = (ear_left_v1 + ear_left_v2) / (2.0 * ear_left_h + 1e-6)
+
+    # Mắt phải: 362, 385, 387, 263, 373, 380
+    p362 = landmarks[362][:2]
+    p385 = landmarks[385][:2]
+    p387 = landmarks[387][:2]
+    p263 = landmarks[263][:2]
+    p373 = landmarks[373][:2]
+    p380 = landmarks[380][:2]
+
+    ear_right_v1 = calc_dist(p385, p380)
+    ear_right_v2 = calc_dist(p387, p373)
+    ear_right_h = calc_dist(p362, p263)
+    ear_right = (ear_right_v1 + ear_right_v2) / (2.0 * ear_right_h + 1e-6)
 
     ear_avg = (ear_left + ear_right) / 2.0
-    return ear_left, ear_right, ear_avg
+    return ear_avg, ear_left, ear_right
 
 
-def get_next_image_index(data_dir=DATA_RAW_DIR):
-    """Tìm số thứ tự tiếp theo cho ảnh mới trong thư mục data_raw"""
-    os.makedirs(data_dir, exist_ok=True)
-    existing_files = glob.glob(os.path.join(data_dir, "*.*"))
+def get_next_image_index(data_dir: str) -> int:
+    """Quét thư mục data_raw/ tìm số thứ tự ảnh lớn nhất dạng <id>.jpg để tự động tăng dần"""
+    if not os.path.exists(data_dir):
+        return 0
+
+    existing_files = glob.glob(os.path.join(data_dir, "*.jpg"))
     max_idx = -1
-
     for file_path in existing_files:
         base_name = os.path.splitext(os.path.basename(file_path))[0]
         if base_name.isdigit():
@@ -232,35 +247,25 @@ def draw_ui_card(image, x, y, w, h, bg_color=(15, 15, 20), alpha=0.85):
 
 
 def draw_oval_face_guide(image, center, axes, is_aligned=False, is_detected=False, color=(0, 255, 127)):
-    """
-    Vẽ khung oval bán nguyệt/elip ngay giữa màn hình để người dùng đưa khuôn mặt vào trước khi chụp.
-    - Làm mờ nhòe (Gaussian Blur bokeh) và giảm sáng toàn bộ các vùng bên ngoài oval để tập trung sự chú ý vào khuôn mặt.
-    - Vẽ viền oval phản hồi động theo trạng thái khuôn mặt kèm 4 vạch căn chỉnh công nghệ cao (biometric ticks).
-    """
+    """Vẽ khung oval bán nguyệt/elip ngay giữa màn hình với bokeh blur vùng ngoài."""
     h, w = image.shape[:2]
     cx, cy = center
     ax, ay = axes
 
-    # 1. Tạo mask oval
     mask = np.zeros((h, w), dtype=np.uint8)
     cv2.ellipse(mask, (cx, cy), (ax, ay), 0, 0, 360, 255, -1)
     outside_mask = (mask == 0)
 
-    # Làm mờ nhòe các vùng bên ngoài khung oval bằng Gaussian Blur
     blurred = cv2.GaussianBlur(image, (35, 35), 0)
-    # Kết hợp làm mờ và giảm độ sáng (60% độ sáng) cho các vùng ngoài oval
     image[outside_mask] = (blurred[outside_mask] * 0.60).astype(np.uint8)
 
-    # 2. Vẽ viền ngoài mỏng tạo hiệu ứng phát sáng (glow effect)
     glow_color = (int(color[0] * 0.35), int(color[1] * 0.35), int(color[2] * 0.35))
     cv2.ellipse(image, (cx, cy), (ax + 3, ay + 3), 0, 0, 360, glow_color, 1, cv2.LINE_AA)
     cv2.ellipse(image, (cx, cy), (max(10, ax - 3), max(10, ay - 3)), 0, 0, 360, glow_color, 1, cv2.LINE_AA)
 
-    # 3. Vẽ đường viền oval chính
     thickness = 3 if is_aligned else 2
     cv2.ellipse(image, (cx, cy), (ax, ay), 0, 0, 360, color, thickness, cv2.LINE_AA)
 
-    # 4. Vẽ 4 vạch căn chỉnh thước đo (Biometric ticks) ở 4 cực trên, dưới, trái, phải
     tick_len = 16
     cv2.line(image, (cx, cy - ay - tick_len), (cx, cy - ay + 6), color, 2, cv2.LINE_AA)
     cv2.line(image, (cx, cy + ay - 6), (cx, cy + ay + tick_len), color, 2, cv2.LINE_AA)
@@ -282,10 +287,7 @@ def is_point_in_oval(pt: Tuple[float, float], center: Tuple[int, int], axes: Tup
 
 
 def is_face_in_oval(bbox: Union[List[int], Tuple[int, ...]], center: Tuple[int, int], axes: Tuple[int, int], tolerance: float = 1.08) -> bool:
-    """
-    Kiểm tra xem bounding box của khuôn mặt có nằm trong khung oval hay không.
-    Tính toán dựa trên tâm của khuôn mặt (face center).
-    """
+    """Kiểm tra xem bounding box của khuôn mặt có nằm trong khung oval hay không."""
     x1, y1, x2, y2 = bbox
     face_cx = (x1 + x2) / 2.0
     face_cy = (y1 + y2) / 2.0
@@ -293,11 +295,7 @@ def is_face_in_oval(bbox: Union[List[int], Tuple[int, ...]], center: Tuple[int, 
 
 
 def get_oval_masked_frame(frame: np.ndarray, center: Tuple[int, int], axes: Tuple[int, int], blur_ksize: int = 45, dim_factor: float = 0.35) -> np.ndarray:
-    """
-    Tạo bản sao frame với vùng bên ngoài khung oval bị làm mờ mạnh (Gaussian Blur) và giảm sáng.
-    Giúp MediaPipe và các thuật toán phát hiện chỉ tập trung vào người bên trong oval,
-    hoàn toàn bỏ qua những người bên ngoài khung oval.
-    """
+    """Tạo bản sao frame với vùng bên ngoài khung oval bị làm mờ mạnh."""
     h, w = frame.shape[:2]
     cx, cy = center
     ax, ay = axes
@@ -312,7 +310,7 @@ def get_oval_masked_frame(frame: np.ndarray, center: Tuple[int, int], axes: Tupl
     return masked
 
 
-def create_rfdetr_pipeline_dashboard(
+def create_rfdetr_small_dashboard(
     img_idx: Any,
     face_info: Optional[Dict[str, Any]] = None,
     num_faces: int = 1,
@@ -331,10 +329,7 @@ def create_rfdetr_pipeline_dashboard(
     model_id: str = DEFAULT_MODEL_ID,
     width: int = 560
 ) -> np.ndarray:
-    """
-    Tạo bảng Dashboard độc lập chuyên nghiệp cho RF-DETR Nano Anti-Spoofing Pipeline.
-    Giao diện Dark Slate đồng bộ chuẩn mực với Pipeline Full.
-    """
+    """Tạo bảng Dashboard độc lập chuyên nghiệp cho RF-DETR Small Anti-Spoofing Pipeline."""
     clean_reasons = [remove_vietnamese_accents(r) for r in reasons] if (not final_pass and reasons) else []
     num_reasons = len(clean_reasons)
     extra_h = max(0, num_reasons * 24)
@@ -343,7 +338,6 @@ def create_rfdetr_pipeline_dashboard(
     h = max(min_h, target_height) if target_height else min_h
     w = max(500, width)
 
-    # Nền Dark Slate cao cấp
     canvas = np.full((h, w, 3), (20, 22, 28), dtype=np.uint8)
 
     # 1. Header Card
@@ -351,15 +345,13 @@ def create_rfdetr_pipeline_dashboard(
     cv2.rectangle(canvas, (10, 10), (w - 10, hdr_h), (32, 36, 48), -1)
     cv2.rectangle(canvas, (10, 10), (w - 10, hdr_h), (60, 70, 90), 1)
 
-    cv2.putText(canvas, "E-KYC VERIFICATION DASHBOARD (RF-DETR)", (24, 38),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 230, 255), 2, cv2.LINE_AA)
-    # Rút gọn model_id cho gọn
+    cv2.putText(canvas, "E-KYC DASHBOARD (RF-DETR SMALL ENGINE)", (24, 38),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.58, (0, 230, 255), 2, cv2.LINE_AA)
     model_short = model_id.split("/")[-1] if "/" in model_id else model_id
-    session_str = f"Session ID: {img_idx} | Engine: RF-DETR Nano (Transformer)"
+    session_str = f"Session ID: {img_idx} | Arch: Detection Transformer (~109MB)"
     cv2.putText(canvas, session_str, (24, 58),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.40, (170, 180, 195), 1, cv2.LINE_AA)
 
-    # Thumbnail khuôn mặt chuẩn hóa ở góc phải Header
     if face_crop is not None and face_crop.size > 0:
         try:
             th_size = 50
@@ -373,12 +365,10 @@ def create_rfdetr_pipeline_dashboard(
 
     cur_y = hdr_h + 12
 
-    # Helper vẽ từng thẻ nội dung
     def _draw_card(title: str, lines: List[Tuple[str, Tuple[int, int, int], float]], card_h: int):
         nonlocal cur_y
         cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + card_h), (27, 30, 40), -1)
         cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + card_h), (50, 58, 75), 1)
-        # Accent bar bên trái
         cv2.rectangle(canvas, (10, cur_y), (14, cur_y + card_h), (0, 200, 240), -1)
 
         cv2.putText(canvas, title, (24, cur_y + 20),
@@ -421,7 +411,7 @@ def create_rfdetr_pipeline_dashboard(
         p_lines = [("Status: UNKNOWN (Khong duoc tinh toan)", (70, 70, 240), 0.42)]
     _draw_card("2. 3D HEAD POSE ESTIMATION", p_lines, card_h=68)
 
-    # Section 3: Anti-Spoofing (RF-DETR Nano Engine)
+    # Section 3: Anti-Spoofing (RF-DETR Small Engine)
     if anti_spoof_info:
         as_lbl = anti_spoof_info.get("label", "UNKNOWN")
         as_conf = anti_spoof_info.get("confidence", 0.0)
@@ -431,7 +421,7 @@ def create_rfdetr_pipeline_dashboard(
         as_lines = [
             (f"Model Verdict: {as_lbl} ({as_conf*100:.1f}%){iou_str}", as_col, 0.44),
             (f"Classification: {'REAL FACE (Hop le)' if is_real else 'FAKE / SPOOF ATTACK (Phat hien gia mao)'}", as_col, 0.41),
-            (f"Arch: RF-DETR Nano (Detection Transformer, ~108MB)", (160, 180, 200), 0.38)
+            (f"Engine: RF-DETR Small ({model_short})", (160, 180, 200), 0.38)
         ]
 
         card_h = 96
@@ -439,7 +429,7 @@ def create_rfdetr_pipeline_dashboard(
         cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + card_h), (50, 58, 75), 1)
         cv2.rectangle(canvas, (10, cur_y), (14, cur_y + card_h), (0, 200, 240), -1)
 
-        cv2.putText(canvas, "3. ANTI-SPOOFING (RF-DETR NANO ENGINE)", (24, cur_y + 20),
+        cv2.putText(canvas, "3. ANTI-SPOOFING (RF-DETR SMALL ENGINE)", (24, cur_y + 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.46, (220, 225, 235), 1, cv2.LINE_AA)
 
         line_y = cur_y + 38
@@ -463,7 +453,7 @@ def create_rfdetr_pipeline_dashboard(
         cur_y += card_h + 8
     else:
         as_lines = [("Status: NO ANTI-SPOOF DATA", (0, 180, 255), 0.42)]
-        _draw_card("3. ANTI-SPOOFING (RF-DETR NANO ENGINE)", as_lines, card_h=52)
+        _draw_card("3. ANTI-SPOOFING (RF-DETR SMALL ENGINE)", as_lines, card_h=52)
 
     # Section 4: Active Liveness (Blink & Head Action)
     b_stat = f"PASS ({blink_count} blinks)" if blink_passed else f"FAIL ({blink_count} blinks)"
@@ -498,7 +488,6 @@ def create_rfdetr_pipeline_dashboard(
             cv2.putText(canvas, f"  * {r_t}", (24, r_start_y + idx_r * 22),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.39, (160, 215, 255), 1, cv2.LINE_AA)
 
-    # Footer note
     cv2.putText(canvas, "Press [r]: Tiep tuc chup anh tiep theo | [q]: Thoat", (24, h - 12),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.35, (100, 110, 130), 1, cv2.LINE_AA)
 
@@ -506,22 +495,18 @@ def create_rfdetr_pipeline_dashboard(
 
 
 # =============================================================================
-# 3. PIPELINE RF-DETR WORKFLOW STATE MACHINE
+# 3. PIPELINE RF-DETR SMALL WORKFLOW STATE MACHINE
 # =============================================================================
 class PipelineStage(Enum):
     PREVIEW_ALIGN = 1       # Giai đoạn 1: Mở webcam, canh góc mặt & chờ chụp ảnh trong oval
-    RUN_AI_STATIC = 2       # Giai đoạn 2: Chạy Face -> Landmark -> Pose -> Crop 224 -> RF-DETR Anti-Spoof
+    RUN_AI_STATIC = 2       # Giai đoạn 2: Chạy Face -> Landmark -> Pose -> Crop 224 -> RF-DETR Small Anti-Spoof
     LIVE_BLINK = 3          # Giai đoạn 3: Active Liveness - Thử thách chớp mắt
     LIVE_HEAD_MOVEMENT = 4  # Giai đoạn 4: Active Liveness - Thử thách quay đầu
-    FINAL_DECISION = 5      # Giai đoạn 5: Tổng hợp toàn bộ & lưu vào output/pipeline_rfdetr/<id>/
+    FINAL_DECISION = 5      # Giai đoạn 5: Tổng hợp toàn bộ & lưu vào output/pipeline_rfdetr_small/<id>/
 
 
 def parse_rfdetr_predictions(response, img_w: int, img_h: int):
-    """
-    Trích xuất kết quả nhận diện từ response của mô hình RF-DETR Nano.
-    Tự động lọc bỏ nhãn 'background_class83422' (vùng nền, không phải khuôn mặt).
-    Hỗ trợ cả đối tượng Object và Dictionary, tự động chuẩn hóa tọa độ và phân loại real/spoof.
-    """
+    """Trích xuất danh sách bounding box từ kết quả dự đoán RF-DETR Small (lọc bỏ background)."""
     dets = []
     preds = []
 
@@ -555,11 +540,9 @@ def parse_rfdetr_predictions(response, img_w: int, img_h: int):
         else:
             continue
 
-        # BỎ QUA nhãn background (vùng nền, không phải khuôn mặt)
         if "background" in cls_name:
             continue
 
-        # Chuẩn hóa nếu tọa độ ở dạng tỉ lệ (0.0 - 1.0)
         if 0.0 <= cx <= 1.0 and 0.0 <= pw <= 1.0 and img_w > 1:
             cx *= img_w
             cy *= img_h
@@ -584,22 +567,25 @@ def parse_rfdetr_predictions(response, img_w: int, img_h: int):
     return dets
 
 
-def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_ID):
-    # Tính kích thước weights
-    weights_path = os.path.join(ROBOFLOW_CACHE_DIR, "face-spoof-detection-liika-qopyy-1-rfdetr-nano-t5", "weights.onnx")
-    weights_mb = os.path.getsize(weights_path) / (1024 * 1024) if os.path.exists(weights_path) else 0
+def main_pipeline_rfdetr_small(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_ID):
+    # Kiểm tra kích thước weights
+    candidate_weights = [
+        os.path.join(ROBOFLOW_CACHE_DIR, *model_id.split("/"), "weights.onnx"),
+        os.path.join(ROBOFLOW_CACHE_DIR, SHORT_MODEL_ID, "weights.onnx"),
+    ]
+    weights_path = next((p for p in candidate_weights if os.path.exists(p)), None)
+    weights_mb = os.path.getsize(weights_path) / (1024 * 1024) if weights_path else 109.0
 
     print("\n" + "=" * 80)
-    print("      FULL E-KYC PIPELINE RF-DETR (DETECTION TRANSFORMER ANTI-SPOOFING)")
+    print("   FULL E-KYC PIPELINE RF-DETR SMALL (DETECTION TRANSFORMER ANTI-SPOOFING)")
     print("=" * 80)
     print(f"  * Thư mục lưu ảnh gốc : {DATA_RAW_DIR}")
     print(f"  * Thư mục lưu kết quả : {OUTPUT_DIR}")
     print(f"  * Model RF-DETR ID    : {model_id}")
-    print(f"  * Kiến trúc           : RF-DETR Nano (Detection Transformer)")
-    print(f"  * Weights             : {weights_mb:.1f} MB")
-    print(f"  * Nhãn                : real, spoof (background tự lọc)")
-    print("  * Nền tảng thực thi   : inference.get_model (Local Offline Cache, Không cần Docker)")
-    print("  * LƯU Ý              : RF-DETR chậm hơn YOLO ~2-5x nhưng chính xác hơn")
+    print(f"  * Kiến trúc           : RF-DETR Small (Detection Transformer)")
+    print(f"  * Weights             : {weights_mb:.1f} MB (weights.onnx)")
+    print(f"  * Nhãn                : real, spoof (background_class83422 tự động lọc bỏ)")
+    print("  * Nền tảng thực thi   : inference.get_model (Local Offline Cache 100%)")
     print("  * Điều khiển:")
     print("      [SPACE] hoặc [c]  : Chụp ảnh và chạy Full Quy trình (AI + Live Liveness)")
     print("      [s]               : CHỤP NHANH & LƯU NGAY (Chạy AI Model -> Lưu kết quả ngay)")
@@ -619,9 +605,16 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
     aligner = FaceAligner()
     head_movement_detector = HeadMovementDetector(yaw_threshold=16.0, pitch_threshold=12.0, timeout=7.0)
 
-    print(f"[INFO] Đang nạp mô hình RF-DETR Nano ({model_id}) vào RAM...")
-    print(f"[INFO] LƯU Ý: File weights ~{weights_mb:.0f}MB, quá trình nạp có thể mất 5-15 giây...")
-    roboflow_model = get_model(model_id=model_id, api_key=ROBOFLOW_API_KEY)
+    print(f"[INFO] Đang nạp mô hình RF-DETR Small ({model_id}) vào RAM...")
+    print(f"[INFO] File weights ~{weights_mb:.0f}MB, quá trình nạp có thể mất vài giây...")
+    try:
+        roboflow_model = get_model(model_id=model_id, api_key=ROBOFLOW_API_KEY)
+        print("[OK] Đã nạp thành công với Full Model ID!")
+    except Exception as e:
+        print(f"[WARN] Thử nạp với Short ID '{SHORT_MODEL_ID}'... ({e})")
+        roboflow_model = get_model(model_id=SHORT_MODEL_ID, api_key=ROBOFLOW_API_KEY)
+        print("[OK] Đã nạp thành công với Short Model ID!")
+
     print("[OK] Đã khởi tạo hoàn tất toàn bộ Models!\n")
 
     cap = cv2.VideoCapture(cam_id)
@@ -737,7 +730,7 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
         display = frame.copy()
         key_trigger = None
 
-        # Tính toán tọa độ và bán kính khung oval trung tâm
+        # Khung oval trung tâm
         oval_cx = int(w * 0.50)
         oval_cy = int(h * 0.50)
         oval_ax = int(w * 0.22)
@@ -749,95 +742,45 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
         # GIAI ĐOẠN 1: PREVIEW & CĂN CHỈNH KHUÔN MẶT TRONG KHUNG OVAL
         # =====================================================================
         if stage == PipelineStage.PREVIEW_ALIGN:
-            masked_frame = get_oval_masked_frame(frame, oval_center, oval_axes)
-            landmarks_live = landmark_detector.detect(masked_frame)
+            masked_preview = get_oval_masked_frame(frame, oval_center, oval_axes)
+            landmarks_live = landmark_detector.detect(masked_preview)
 
-            if landmarks_live and len(landmarks_live) >= 468:
-                xs = [p[0] for p in landmarks_live]
-                ys = [p[1] for p in landmarks_live]
-                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
-                    landmarks_live = None
-
+            is_in_oval = False
             pose_valid_live = False
             pose_dict_live = None
 
-            face_in_oval = False
-            is_too_far = False
-            is_too_close = False
-            is_off_center = False
-            off_center_hint = ""
-
             if landmarks_live and len(landmarks_live) >= 468:
-                pose_valid_live, _, pose_dict_live = pose_validator.validate(landmarks_live, get_landmark_point)
-                display = draw_landmarks(display, landmarks_live)
-
                 xs = [p[0] for p in landmarks_live]
                 ys = [p[1] for p in landmarks_live]
-                face_min_x, face_max_x = min(xs), max(xs)
-                face_min_y, face_max_y = min(ys), max(ys)
-                face_cx = (face_min_x + face_max_x) / 2.0
-                face_cy = (face_min_y + face_max_y) / 2.0
-                face_w = face_max_x - face_min_x
-                face_h = face_max_y - face_min_y
+                face_center = ((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0)
+                is_in_oval = is_point_in_oval(face_center, oval_center, oval_axes, tolerance=1.12)
 
-                dx_norm = abs(face_cx - oval_cx) / float(oval_ax)
-                dy_norm = abs(face_cy - oval_cy) / float(oval_ay)
-                oval_total_h = 2 * oval_ay
-                face_h_ratio = face_h / float(oval_total_h)
+                if is_in_oval:
+                    pose_valid_live, _, pose_dict_live = pose_validator.validate(landmarks_live, get_landmark_point)
 
-                if face_h_ratio < 0.46 or face_h < 150:
-                    is_too_far = True
-                elif face_h_ratio > 1.15 or face_w > oval_ax * 2.2:
-                    is_too_close = True
-                elif dx_norm > 0.32 or dy_norm > 0.32:
-                    is_off_center = True
-                    if face_cx < oval_cx - oval_ax * 0.25:
-                        off_center_hint = "Di chuyen mat sang PHAI vao giua oval"
-                    elif face_cx > oval_cx + oval_ax * 0.25:
-                        off_center_hint = "Di chuyen mat sang TRAI vao giua oval"
-                    elif face_cy < oval_cy - oval_ay * 0.25:
-                        off_center_hint = "Di chuyen mat xuong DUOI vao giua oval"
-                    else:
-                        off_center_hint = "Di chuyen mat len TREN vao giua oval"
-                else:
-                    face_in_oval = True
+            # Kiểm tra ánh sáng
+            lum_bbox = None
+            if landmarks_live and is_in_oval:
+                xs = [p[0] for p in landmarks_live]
+                ys = [p[1] for p in landmarks_live]
+                lum_bbox = [int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))]
+            light_metrics = check_illumination_quality(frame, bbox=lum_bbox)
+            mean_lum = light_metrics["mean_luminance"]
+            is_light_ok = (mean_lum >= 60.0)
 
-            # Kiểm tra chất lượng ánh sáng khuôn mặt trong khung oval
-            face_bbox_live = [int(face_min_x), int(face_min_y), int(face_max_x), int(face_max_y)] if (landmarks_live and len(landmarks_live) >= 468) else None
-            light_res = check_illumination_quality(frame, bbox=face_bbox_live, dark_threshold=60.0)
-            is_light_ok = light_res["is_acceptable"]
-            mean_lum = light_res["mean_luminance"]
+            is_aligned_good = (landmarks_live is not None and is_in_oval and pose_valid_live and is_light_ok)
 
-            # Đánh giá toàn diện: Có mặt trong oval + Góc nhìn 3D chuẩn + ĐỦ ÁNH SÁNG
-            is_aligned_good = (landmarks_live is not None and face_in_oval and pose_valid_live and is_light_ok)
-
-            if landmarks_live is None:
-                guide_color = (200, 200, 200)
-                align_msg = "VUI LONG DUA KHUON MAT VAO KHUNG OVAL"
-                align_col = (220, 220, 220)
-                consecutive_center_frames = max(0, consecutive_center_frames - 1)
-            elif not is_light_ok:
-                guide_color = (0, 140, 255)  # Màu cam đậm cảnh báo thiếu sáng
-                align_msg = f"ANH SANG YEU (L:{mean_lum:.0f}/60) - VUI LONG BAT DEN HOAC TIEN VE PHIA SANG!"
-                align_col = (0, 140, 255)
-                consecutive_center_frames = max(0, consecutive_center_frames - 1)
-            elif is_aligned_good:
-                guide_color = (0, 255, 127)
-                align_msg = "KHUON MAT CHUAN XAC - SAN SANG CHUP!"
-                align_col = (0, 255, 127)
+            if is_aligned_good:
                 consecutive_center_frames += 1
+                guide_color = (0, 255, 127)  # Xanh lục sáng
+                align_msg = "MAT CHUAN TRONG OVAL! SAN SANG CHUP"
+                align_col = (0, 255, 127)
             else:
-                guide_color = (0, 165, 255)
-                consecutive_center_frames = max(0, consecutive_center_frames - 1)
-                if is_too_far:
-                    align_msg = "TIEN LAI GAN CAMERA HON"
-                    align_col = (0, 165, 255)
-                elif is_too_close:
-                    align_msg = "LUI RA XA CAMERA MOT CHUT"
-                    align_col = (0, 165, 255)
-                elif is_off_center:
-                    align_msg = off_center_hint if off_center_hint else "DUA MAT VAO DUNG TAM KHUNG OVAL"
-                    align_col = (0, 165, 255)
+                consecutive_center_frames = 0
+                guide_color = (0, 140, 255)  # Cam
+                if not is_light_ok and landmarks_live is not None:
+                    align_msg = f"THIEU SANG (Luminance={mean_lum:.1f} < 60)! VUI LONG BAT DEN"
+                    align_col = (0, 100, 255)
                 elif not pose_valid_live:
                     align_msg = "VUI LONG NHIN THANG VAO CAMERA"
                     align_col = (70, 70, 240)
@@ -845,7 +788,6 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
                     align_msg = "CANH CHINH MAT VAO KHUNG OVAL"
                     align_col = (0, 165, 255)
 
-            # Vẽ khung oval hướng dẫn
             display = draw_oval_face_guide(display, oval_center, oval_axes,
                                            is_aligned=is_aligned_good,
                                            is_detected=(landmarks_live is not None),
@@ -854,12 +796,11 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
             # Header Top Card
             top_card_h = 75
             draw_ui_card(display, 20, 15, w - 40, top_card_h, bg_color=(15, 15, 25), alpha=0.88)
-            cv2.putText(display, f"BUOC 1: CAN CHINH MAT VAO KHUNG OVAL - ID TIEP THEO: {current_img_idx}.jpg",
+            cv2.putText(display, f"BUOC 1: CAN CHINH MAT VAO OVAL - ID TIEP THEO: {current_img_idx}.jpg",
                         (35, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (0, 230, 255), 2, cv2.LINE_AA)
             cv2.putText(display, f"Huong dan: {align_msg}",
                         (35, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.48, align_col, 1, cv2.LINE_AA)
 
-            # Cảnh báo thiếu sáng trực quan
             if not is_light_ok and landmarks_live is not None:
                 light_card_w = min(420, w - 40)
                 draw_ui_card(display, (w - light_card_w) // 2, top_card_h + 25, light_card_w, 40, bg_color=(10, 20, 40), alpha=0.92)
@@ -869,7 +810,6 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
                             ((w - light_card_w) // 2 + 15, top_card_h + 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 140, 255), 1, cv2.LINE_AA)
 
-            # Cảnh báo khóa chụp nếu bấm phím khi mặt chưa đạt chuẩn
             if capture_blocked_frames > 0:
                 capture_blocked_frames -= 1
                 warn_w = min(540, w - 40)
@@ -891,7 +831,6 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
                                 ((w - warn_w) // 2 + 20, h // 2 + 18),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.40, (0, 180, 255), 1, cv2.LINE_AA)
 
-            # Bottom Controls Card
             bot_card_h = 58
             bot_y = h - bot_card_h - 15
             draw_ui_card(display, 20, bot_y, w - 40, bot_card_h, bg_color=(15, 15, 20), alpha=0.88)
@@ -911,11 +850,7 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
             cv2.putText(display, shortcut_hint,
                         (28, bot_y + 44), cv2.FONT_HERSHEY_SIMPLEX, 0.38, shortcut_col, 1, cv2.LINE_AA)
 
-            if auto_capture_mode and consecutive_center_frames >= 25 and is_aligned_good:
-                trigger_capture = True
-            else:
-                trigger_capture = False
-
+            trigger_capture = (auto_capture_mode and consecutive_center_frames >= 25 and is_aligned_good)
             key_trigger = ord(' ') if trigger_capture else None
 
         # =====================================================================
@@ -923,34 +858,28 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
         # =====================================================================
         elif stage == PipelineStage.RUN_AI_STATIC:
             draw_ui_card(display, 20, 20, w - 40, 90, bg_color=(15, 15, 25), alpha=0.9)
-            cv2.putText(display, f"DANG CHAY RF-DETR NANO TREN ANH ID {current_img_idx}.jpg...", (35, 55),
+            cv2.putText(display, f"DANG CHAY RF-DETR SMALL TREN ANH ID {current_img_idx}.jpg...", (35, 55),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 230, 255), 2)
-            cv2.putText(display, "Tien trinh: Face Detect -> Landmark -> Pose 3D -> Crop 224 -> RF-DETR Anti-Spoof", (35, 85),
+            cv2.putText(display, "Tien trinh: Face Detect -> Landmark -> Pose 3D -> Crop 224 -> RF-DETR Small Anti-Spoof", (35, 85),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 0), 1)
-            cv2.imshow("Full E-KYC Pipeline (RF-DETR Nano Anti-Spoof)", display)
+            cv2.imshow("Full E-KYC Pipeline (RF-DETR Small Anti-Spoof)", display)
             cv2.waitKey(1)
 
-            # 1. Lưu ảnh gốc
             captured_img_path = os.path.join(DATA_RAW_DIR, f"{current_img_idx}.jpg")
             cv2.imwrite(captured_img_path, captured_frame)
             print(f"\n[1. CHỤP ẢNH GỐC] Đã lưu ảnh vào: {captured_img_path}")
 
-            # 2. Tạo thư mục output/pipeline_rfdetr/<id>/
             captured_result_dir = os.path.join(OUTPUT_DIR, str(current_img_idx))
             os.makedirs(captured_result_dir, exist_ok=True)
             all_faces_dir = os.path.join(captured_result_dir, "all_faces_cropped")
             os.makedirs(all_faces_dir, exist_ok=True)
 
-            # 3. Chạy Face Detection
             raw_faces = detector.detect(captured_frame)
-            # CHỈ nhận diện và xác thực người trong khung oval, những người bên ngoài khung oval bỏ qua
             faces = [f for f in raw_faces if is_face_in_oval(f["bbox"], oval_center, oval_axes)]
             ignored_faces = [f for f in raw_faces if not is_face_in_oval(f["bbox"], oval_center, oval_axes)]
             num_faces = len(faces)
             print(f"[2. Face Detection] Tổng phát hiện: {len(raw_faces)} khuôn mặt.")
             print(f"  -> Trong khung oval (xác thực): {num_faces} mặt.")
-            if ignored_faces:
-                print(f"  -> Ngoài khung oval (bỏ qua): {len(ignored_faces)} mặt.")
 
             all_face_crops_info = []
             h_f, w_f = captured_frame.shape[:2]
@@ -974,7 +903,6 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
                         "crop_file": crop_filename
                     })
 
-            # Chọn Primary Face (chỉ từ các khuôn mặt trong khung oval)
             primary_face = None
             if faces:
                 def get_face_priority(f):
@@ -987,7 +915,6 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
                 primary_face = max(faces, key=get_face_priority)
                 print(f"  -> Đã chọn Primary Face: BBox={primary_face['bbox']} (Conf: {primary_face['confidence']:.2f})")
 
-            # 4. Landmarks (chỉ quét trong khung oval)
             captured_masked = get_oval_masked_frame(captured_frame, oval_center, oval_axes)
             landmarks_static = landmark_detector.detect(captured_masked)
             if landmarks_static and len(landmarks_static) >= 468:
@@ -997,7 +924,6 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
                     landmarks_static = None
             print(f"[3. Landmarks] Trích xuất được {len(landmarks_static) if landmarks_static else 0} điểm.")
 
-            # 5. Pose 3D
             pose_valid_static = False
             pose_dict_static = None
             if landmarks_static:
@@ -1005,7 +931,6 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
                 if pose_dict_static:
                     print(f"[4. Head Pose 3D] Y={pose_dict_static['yaw']:+.1f}° | P={pose_dict_static['pitch']:+.1f}° | R={pose_dict_static['roll']:+.1f}° -> {'PASS' if pose_valid_static else 'FAIL'}")
 
-            # 6. Align & Crop 224x224
             aligned_img_static = None
             face_crop_static = None
 
@@ -1038,267 +963,203 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
             if aligned_img_static is not None:
                 cv2.imwrite(os.path.join(captured_result_dir, "3_aligned_full.jpg"), aligned_img_static)
 
-            # 7. RF-DETR Nano Anti-Spoofing Inference
+            # 7. RF-DETR Small Anti-Spoofing Inference
             captured_light = check_illumination_quality(captured_frame, bbox=primary_face["bbox"] if primary_face else None)
             if captured_light["mean_luminance"] < 80.0:
                 input_spoof = enhance_low_light(captured_frame)
-                print(f"[Anti-Spoof Preprocess] Độ sáng L={captured_light['mean_luminance']:.1f}. Đã tự động áp dụng CLAHE tăng cường vi vân da mặt.")
+                print(f"[Anti-Spoof Preprocess] Độ sáng L={captured_light['mean_luminance']:.1f}. Áp dụng CLAHE tăng cường vi vân da.")
             else:
                 input_spoof = captured_frame
 
-            print(f"[6. Anti-Spoofing RF-DETR Nano] Đang chạy suy luận mô hình {model_id}...")
-            print(f"[INFO] RF-DETR inference có thể mất 50-200ms trên CPU (chậm hơn YOLO)...")
+            print(f"[6. Anti-Spoofing RF-DETR Small] Đang chạy suy luận mô hình {model_id}...")
+            t0 = time.time()
             rf_res = roboflow_model.infer(image=input_spoof)
-            raw_spoof_res = parse_rfdetr_predictions(rf_res, w_f, h_f)
+            rf_time = (time.time() - t0) * 1000.0
+            print(f"[OK] RF-DETR Small hoàn thành trong {rf_time:.1f}ms (Offline 100%)")
 
-            # CHỈ giữ lại các nhận diện anti-spoof nằm trong khung oval
-            raw_spoof_res = [sd for sd in raw_spoof_res if is_face_in_oval(sd["bbox"], oval_center, oval_axes)]
+            spoof_res = parse_rfdetr_predictions(rf_res, w_f, h_f)
 
-            # Nếu không tìm thấy bbox trên toàn ảnh nhưng có primary_face, thử infer trên crop
-            if not raw_spoof_res and face_crop_static is not None:
-                rf_crop_res = roboflow_model.infer(image=face_crop_static)
-                crop_preds = parse_rfdetr_predictions(rf_crop_res, 224, 224)
-                if crop_preds and primary_face:
-                    # Map ngược lại bbox của primary_face
-                    best_crop = max(crop_preds, key=lambda x: x["confidence"])
-                    raw_spoof_res.append({
-                        "bbox": primary_face["bbox"],
-                        "confidence": best_crop["confidence"],
-                        "class_name": best_crop["class_name"],
-                        "is_real": best_crop["is_real"],
-                        "label": best_crop["label"],
-                        "raw_class": best_crop["raw_class"]
-                    })
-
-            # Lọc chỉ giữ khung có tỉ lệ cao nhất
-            spoof_res = filter_highest_confidence_boxes(raw_spoof_res, iou_thresh=0.25)
-            print(f"  -> Tìm thấy {len(raw_spoof_res)} vùng -> Lọc còn {len(spoof_res)} khung có tỉ lệ cao nhất trong oval.")
-
+            has_any_spoof_in_frame = any(not d["is_real"] for d in spoof_res)
             best_spoof_static = None
             primary_spoof_iou = 0.0
 
-            if primary_face and spoof_res:
-                matching_spoofs = [sd for sd in spoof_res if calculate_iou(primary_face["bbox"], sd["bbox"]) > 0.15]
-                if matching_spoofs:
-                    best_spoof_static = max(matching_spoofs, key=lambda x: x["confidence"])
-                    primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof_static["bbox"])
+            if primary_face is not None and spoof_res:
+                p_box = primary_face["bbox"]
+                best_iou = -1.0
+                best_d = None
+                for d in spoof_res:
+                    iou = calculate_iou(p_box, d["bbox"])
+                    if iou > best_iou:
+                        best_iou = iou
+                        best_d = d
+                if best_iou > 0.10:
+                    best_spoof_static = best_d
+                    primary_spoof_iou = best_iou
                 else:
                     best_spoof_static = max(spoof_res, key=lambda x: x["confidence"])
-                    primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof_static["bbox"])
-
-            if best_spoof_static is None and spoof_res:
-                best_spoof_static = spoof_res[0]
-
-            has_any_spoof_in_frame = any(not sd["is_real"] for sd in spoof_res) if spoof_res else False
+            elif spoof_res:
+                best_spoof_static = max(spoof_res, key=lambda x: x["confidence"])
 
             if best_spoof_static:
-                print(f"  -> Kết quả Anti-Spoof RF-DETR: {best_spoof_static['label']} ({best_spoof_static['confidence']*100:.1f}%) | IoU={primary_spoof_iou:.2f} | Real={best_spoof_static['is_real']}")
+                stat_str = "REAL (THẬT)" if best_spoof_static["is_real"] else "SPOOF (GIẢ MẠO)"
+                print(f"  -> Kết quả RF-DETR: {stat_str} | Độ tin cậy: {best_spoof_static['confidence']*100:.2f}% | IoU: {primary_spoof_iou:.2f}")
 
-            if quick_snapshot_mode or skip_liveness:
-                print("\n[INFO] Chế độ Quick Save / Skip Liveness -> Chuyển ngay đến Lưu Kết quả Final...")
+            # Điều hướng giai đoạn tiếp theo
+            if skip_liveness or quick_snapshot_mode:
+                print("\n[CHẾ ĐỘ STATIC] Bỏ qua Active Liveness. Đưa ra phán quyết ngay lập tức!")
                 blink_passed = True
                 head_movement_passed = True
                 stage = PipelineStage.FINAL_DECISION
             else:
-                print("\n[INFO] Chuyển sang giai đoạn Live Active Liveness (Blink & Head Movement)...")
                 stage = PipelineStage.LIVE_BLINK
-                blink_counter = 0
-                blink_state = False
-                blink_passed = False
+                print("\n[BƯỚC TIẾP THEO] Bắt đầu Active Liveness: Thử thách chớp mắt...")
 
         # =====================================================================
-        # GIAI ĐOẠN 3: ACTIVE LIVENESS - BLINK DETECTION
+        # GIAI ĐOẠN 3: ACTIVE LIVENESS - THỬ THÁCH CHỚP MẮT (BLINK)
         # =====================================================================
         elif stage == PipelineStage.LIVE_BLINK:
-            # Chỉ nhận diện người trong khung oval, bỏ qua người bên ngoài
-            frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
-            landmarks_live = landmark_detector.detect(frame_for_detect)
-            if landmarks_live and len(landmarks_live) >= 468:
-                xs = [p[0] for p in landmarks_live]
-                ys = [p[1] for p in landmarks_live]
-                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
-                    landmarks_live = None
+            masked_blink = get_oval_masked_frame(frame, oval_center, oval_axes)
+            landmarks_blink = landmark_detector.detect(masked_blink)
 
-            ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks_live) if landmarks_live else (0.0, 0.0, 0.0)
+            ear_avg = 0.0
+            if landmarks_blink and len(landmarks_blink) >= 468:
+                xs = [p[0] for p in landmarks_blink]
+                ys = [p[1] for p in landmarks_blink]
+                if is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                    ear_avg, _, _ = compute_eye_aspect_ratio(landmarks_blink)
 
-            if ear_avg > 0.05 and ear_avg < 0.18:
-                if not blink_state:
-                    blink_state = True
-            elif ear_avg >= 0.22:
-                if blink_state:
-                    blink_counter += 1
-                    blink_state = False
+            EAR_THRESH = 0.20
+            if ear_avg > 0.0:
+                if ear_avg < EAR_THRESH:
+                    if not blink_state:
+                        blink_state = True
+                else:
+                    if blink_state:
+                        blink_counter += 1
+                        blink_state = False
+                        print(f"[LIVE BLINK] Đã ghi nhận {blink_counter} lần chớp mắt!")
 
             if blink_counter >= 1:
                 blink_passed = True
-                print(f"[LIVENESS 1: BLINK] ĐÃ XÁC NHẬN CHỚP MẮT ({blink_counter} lần) -> PASS!")
                 stage = PipelineStage.LIVE_HEAD_MOVEMENT
                 current_head_action = head_movement_detector.start_challenge()
                 head_action_prompt = head_movement_detector.get_prompt()
-                print(f"[LIVENESS 2: HEAD MOVEMENT] Thử thách: {current_head_action.value} -> {head_action_prompt}")
+                print(f"\n[LIVE BLINK] Hoàn thành chớp mắt ({blink_counter} lần)!")
+                print(f"[LIVE HEAD] Thử thách quay đầu: {head_action_prompt} ({current_head_action.value})")
 
-            # KHUNG OVAL GIỮ NGUYÊN NGAY CẢ KHI THỰC HIỆN CÁC THỬ THÁCH
-            blink_col = (0, 255, 127) if (blink_state or blink_counter >= 1) else (0, 230, 255)
-            display = draw_oval_face_guide(
-                display,
-                center=oval_center,
-                axes=oval_axes,
-                is_aligned=True,
-                is_detected=(landmarks_live is not None),
-                color=blink_col
-            )
-
-            if landmarks_live:
-                display = draw_landmarks(display, landmarks_live)
-
-            # Banner trên cùng: Thử thách chớp mắt (bố cục gọn gàng, không che mặt trong oval)
-            draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
-            cv2.putText(display, f"E-KYC BUOC 1/2: THU THACH CHOP MAT (ID: {current_img_idx})", (28, 28),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
-            cv2.putText(display, f"VUI LONG CHOP MAT TU NHIEN | EAR: {ear_avg:.2f} | Blinks: {blink_counter}/1", (28, 46),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 255, 255), 1, cv2.LINE_AA)
-
-            # Banner dưới cùng: Thanh tiến trình
-            bot_y = h - 56
-            draw_ui_card(display, 15, bot_y, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
-            b_prog = 1.0 if blink_counter >= 1 else (0.5 if blink_state else 0.0)
-            bar_w = w - 80
-            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (40, 40, 50), -1)
-            if b_prog > 0:
-                cv2.rectangle(display, (28, bot_y + 16), (28 + int(bar_w * b_prog), bot_y + 32), (0, 255, 127), -1)
-            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (100, 100, 100), 1)
-            prog_label = "DA XAC NHAN CHOP MAT! (100%)" if blink_counter >= 1 else ("DANG CHOP MAT... (50%)" if blink_state else "DANG DOI CHOP MAT... (0%)")
-            cv2.putText(display, prog_label, (35, bot_y + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (255, 255, 255), 1, cv2.LINE_AA)
+            draw_oval_face_guide(display, oval_center, oval_axes, is_aligned=True, is_detected=True, color=(0, 230, 255))
+            draw_ui_card(display, 20, 20, w - 40, 95, bg_color=(15, 15, 25), alpha=0.9)
+            cv2.putText(display, "THU THACH 1: VUI LONG CHOP MAT (BLINK DETECTION)", (35, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 230, 255), 2)
+            cv2.putText(display, f"So lan chop mat: {blink_counter}/1  |  EAR: {ear_avg:.2f} (Nguong: < {EAR_THRESH})", (35, 80),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.46, (0, 255, 127) if blink_counter >= 1 else (200, 200, 200), 1)
+            cv2.putText(display, "[s]: Bo qua va Luu ngay  |  [q]: Thoat", (35, 102),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (150, 150, 150), 1)
 
         # =====================================================================
-        # GIAI ĐOẠN 4: ACTIVE LIVENESS - HEAD MOVEMENT CHALLENGE
+        # GIAI ĐOẠN 4: ACTIVE LIVENESS - THỬ THÁCH QUAY ĐẦU (HEAD MOVEMENT)
         # =====================================================================
         elif stage == PipelineStage.LIVE_HEAD_MOVEMENT:
-            # Chỉ nhận diện người trong khung oval, bỏ qua người bên ngoài
-            frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
-            landmarks_live = landmark_detector.detect(frame_for_detect)
-            if landmarks_live and len(landmarks_live) >= 468:
-                xs = [p[0] for p in landmarks_live]
-                ys = [p[1] for p in landmarks_live]
-                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
-                    landmarks_live = None
+            masked_head = get_oval_masked_frame(frame, oval_center, oval_axes)
+            landmarks_head = landmark_detector.detect(masked_head)
 
-            pose_dict_live = None
-            if landmarks_live:
-                _, _, pose_dict_live = pose_validator.validate(landmarks_live, get_landmark_point)
+            h_status = None
+            if landmarks_head and len(landmarks_head) >= 468:
+                xs = [p[0] for p in landmarks_head]
+                ys = [p[1] for p in landmarks_head]
+                if is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                    _, _, pose_dict_live = pose_validator.validate(landmarks_head, get_landmark_point)
+                    if pose_dict_live:
+                        h_status = head_movement_detector.update(pose_dict_live)
 
-            hm_status = head_movement_detector.update(pose_dict_live)
-            prompt_str = hm_status.get("prompt", "")
-            time_left = hm_status.get("time_left", 0.0)
-            progress_val = hm_status.get("progress", 0.0)
+            draw_oval_face_guide(display, oval_center, oval_axes, is_aligned=True, is_detected=True, color=(0, 230, 255))
+            draw_ui_card(display, 20, 20, w - 40, 105, bg_color=(15, 15, 25), alpha=0.9)
 
-            if hm_status["passed"]:
-                head_movement_passed = True
-                print(f"[LIVENESS 2: HEAD MOVEMENT] ĐÃ HOÀN THÀNH CỬ ĐỘNG ĐẦU [{current_head_action.value}] -> PASS!")
-                stage = PipelineStage.FINAL_DECISION
+            prompt_no_accent = remove_vietnamese_accents(head_action_prompt)
+            cv2.putText(display, f"THU THACH 2: {prompt_no_accent.upper()}", (35, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 230, 255), 2)
 
-            elif hm_status["state"] == "FAILED":
-                head_movement_passed = False
-                print(f"[LIVENESS 2: HEAD MOVEMENT] HẾT THỜI GIAN THỰC HIỆN -> FAIL!")
-                stage = PipelineStage.FINAL_DECISION
+            prog = h_status.get("progress", 0.0) if h_status else 0.0
+            t_left = h_status.get("time_left", 0.0) if h_status else 0.0
+            cv2.putText(display, f"Tien trinh: {prog*100:.0f}%  |  Thoi gian con lai: {t_left:.1f}s", (35, 80),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 255, 127) if prog >= 1.0 else (200, 200, 200), 1)
+            cv2.putText(display, "[s]: Bo qua va Luu ngay  |  [q]: Thoat", (35, 106),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (150, 150, 150), 1)
 
-            # KHUNG OVAL GIỮ NGUYÊN NGAY CẢ KHI THỰC HIỆN CÁC THỬ THÁCH
-            hm_col = (0, 255, 127) if hm_status["passed"] else (0, 230, 255)
-            display = draw_oval_face_guide(
-                display,
-                center=oval_center,
-                axes=oval_axes,
-                is_aligned=True,
-                is_detected=(landmarks_live is not None),
-                color=hm_col
-            )
-
-            if landmarks_live:
-                display = draw_landmarks(display, landmarks_live)
-
-            # Banner trên cùng: Thử thách cử động đầu (bố cục gọn gàng, không che mặt trong oval)
-            draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
-            cv2.putText(display, f"E-KYC BUOC 2/2: THU THACH CU DONG DAU (ID: {current_img_idx})", (28, 28),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
-            cv2.putText(display, f"{prompt_str.upper()} | Thoi gian: {time_left:.1f}s", (28, 46),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, hm_col, 1, cv2.LINE_AA)
-
-            # Banner dưới cùng: Thanh tiến trình
-            bot_y = h - 56
-            draw_ui_card(display, 15, bot_y, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
-            bar_w = w - 80
-            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (40, 40, 50), -1)
-            fill_w = int(bar_w * progress_val)
-            if fill_w > 0:
-                cv2.rectangle(display, (28, bot_y + 16), (28 + fill_w, bot_y + 32), (0, 255, 127), -1)
-            cv2.rectangle(display, (28, bot_y + 16), (28 + bar_w, bot_y + 32), (100, 100, 100), 1)
-            pct_hm = int(progress_val * 100)
-            cv2.putText(display, f"TIEN TRINH QUAY DAU: {pct_hm}%", (35, bot_y + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (255, 255, 255), 1, cv2.LINE_AA)
+            if h_status:
+                if h_status.get("passed", False):
+                    head_movement_passed = True
+                    stage = PipelineStage.FINAL_DECISION
+                    print(f"[LIVE HEAD] Thử thách quay đầu '{current_head_action.value}' HOÀN TẤT THÀNH CÔNG!")
+                elif str(h_status.get("state", "")).upper() == "FAILED":
+                    head_movement_passed = False
+                    stage = PipelineStage.FINAL_DECISION
+                    print(f"[LIVE HEAD] Hết thời gian thử thách quay đầu!")
 
         # =====================================================================
-        # GIAI ĐOẠN 5: TỔNG HỢP KẾT QUẢ & LƯU VÀO OUTPUT/PIPELINE_RFDETR/<ID>/
+        # GIAI ĐOẠN 5: TỔNG HỢP VÀ RA QUYẾT ĐỊNH CUỐI CÙNG (FINAL DECISION)
         # =====================================================================
         elif stage == PipelineStage.FINAL_DECISION:
-            if final_record is None:
-                c_face = (primary_face is not None)
-                c_single = (num_faces == 1)
-                c_pose = bool(pose_valid_static)
-                c_spoof = bool(best_spoof_static["is_real"]) if best_spoof_static else False
-                c_blink = bool(blink_passed)
-                c_head = bool(head_movement_passed)
+            if final_display_img is None:
+                reasons = []
 
-                reasons.clear()
-                if not c_face:
-                    reasons.append("Không tìm thấy khuôn mặt trong ảnh")
-                elif not c_single:
-                    reasons.append(f"Phát hiện {num_faces} người trong khung hình (Yêu cầu 1 người duy nhất)")
+                if num_faces == 0:
+                    reasons.append("Khong phat hien khuon mat hop le trong oval")
+                elif num_faces > 1:
+                    reasons.append(f"Phat hien nhieu khuon mat ({num_faces} mat trong oval)")
 
-                if not c_pose:
-                    reasons.append("Góc mặt ảnh chụp bị nghiêng/lệch")
+                if not pose_valid_static:
+                    reasons.append("Tu the khuon mat khong thang hoac vuot nguong")
 
-                if not c_spoof:
-                    reasons.append("Phát hiện giả mạo qua RF-DETR Nano Anti-Spoofing Model")
-                elif has_any_spoof_in_frame:
-                    print("  [CẢNH BÁO BỐI CẢNH] Phát hiện vật thể nghi ngờ ở nền xung quanh, nhưng khuôn mặt chính đạt chuẩn REAL.")
+                if best_spoof_static is None:
+                    reasons.append("Khong co du lieu Anti-Spoof tu mo hinh RF-DETR Small")
+                else:
+                    if not best_spoof_static["is_real"]:
+                        reasons.append(f"Phat hien gia mao boi RF-DETR Small ({best_spoof_static['confidence']*100:.1f}%)")
+                    elif best_spoof_static["confidence"] < 0.60:
+                        reasons.append(f"Do tin cay mat that RF-DETR Small qua thap ({best_spoof_static['confidence']*100:.1f}% < 60%)")
 
-                if not c_blink:
-                    reasons.append("Chưa hoàn thành chớp mắt (Blink)")
-                if not c_head:
-                    reasons.append("Chưa hoàn thành cử động đầu (Head Movement)")
+                if has_any_spoof_in_frame:
+                    reasons.append("Phat hien doi tuong gia mao trong khung hinh")
 
-                final_pass = (c_face and c_single and c_pose and c_spoof and c_blink and c_head)
+                if not blink_passed:
+                    reasons.append("Khong vuot qua thu thach chop mat (Liveness)")
 
-                res_img = captured_frame.copy()
+                if not head_movement_passed:
+                    reasons.append(f"Khong vuot qua thu thach quay dau ({current_head_action.value})")
+
+                final_pass = (len(reasons) == 0)
+
+                # Vẽ ảnh kết quả sạch
+                clean_annotated = captured_frame.copy()
+                if primary_face:
+                    px1, py1, px2, py2 = primary_face["bbox"]
+                    box_color = (0, 255, 0) if final_pass else (0, 50, 255)
+                    cv2.rectangle(clean_annotated, (px1, py1), (px2, py2), box_color, 2)
+
+                    c_len = min(22, (px2 - px1) // 4, (py2 - py1) // 4)
+                    cv2.line(clean_annotated, (px1, py1), (px1 + c_len, py1), box_color, 3)
+                    cv2.line(clean_annotated, (px1, py1), (px1, py1 + c_len), box_color, 3)
+                    cv2.line(clean_annotated, (px2, py1), (px2 - c_len, py1), box_color, 3)
+                    cv2.line(clean_annotated, (px2, py1), (px2, py1 + c_len), box_color, 3)
+                    cv2.line(clean_annotated, (px1, py2), (px1 + c_len, py2), box_color, 3)
+                    cv2.line(clean_annotated, (px1, py2), (px1, py2 - c_len), box_color, 3)
+                    cv2.line(clean_annotated, (px2, py2), (px2 - c_len, py2), box_color, 3)
+                    cv2.line(clean_annotated, (px2, py2), (px2, py2 - c_len), box_color, 3)
+
+                    tag_txt = f"{'REAL' if final_pass else 'SPOOF'} {best_spoof_static['confidence']*100:.1f}%" if best_spoof_static else "FACE"
+                    (tw, th_t), _ = cv2.getTextSize(tag_txt, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+                    cv2.rectangle(clean_annotated, (px1, max(0, py1 - th_t - 12)), (px1 + tw + 16, py1), box_color, -1)
+                    cv2.putText(clean_annotated, tag_txt, (px1 + 8, py1 - 5),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
 
                 if landmarks_static:
-                    res_img = draw_landmarks(res_img, landmarks_static)
+                    draw_landmarks(clean_annotated, landmarks_static)
 
-                # CHỈ HIỂN THỊ 1 KHUNG NHẬN DIỆN CÓ TỈ LỆ CAO NHẤT
-                drawn_spoof_bboxes = []
-                if spoof_res:
-                    for sd in spoof_res:
-                        sx1, sy1, sx2, sy2 = sd["bbox"]
-                        s_col = (0, 255, 0) if sd["is_real"] else (0, 0, 255)
-                        cv2.rectangle(res_img, (sx1, sy1), (sx2, sy2), s_col, 2)
-                        cv2.putText(res_img, f"{sd['label']} {sd['confidence']*100:.1f}%",
-                                    (sx1, max(25, sy1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.65, s_col, 2)
-                        drawn_spoof_bboxes.append(sd["bbox"])
+                if pose_dict_static:
+                    draw_pose_info(clean_annotated, pose_dict_static, "Head Pose", pose_valid_static)
 
-                # Vẽ khuôn mặt phụ (nếu có), ẩn khung primary face nếu đã có box anti-spoof
-                for f_it in faces:
-                    bx1, by1, bx2, by2 = f_it["bbox"]
-                    is_p = (primary_face and f_it["bbox"] == primary_face["bbox"])
-                    has_spoof_box = any(calculate_iou(f_it["bbox"], sb) > 0.20 for sb in drawn_spoof_bboxes)
-                    if is_p and has_spoof_box:
-                        continue
-                    box_c = (0, 255, 0) if is_p else (180, 180, 180)
-                    box_thick = 2 if is_p else 1
-                    cv2.rectangle(res_img, (bx1, by1), (bx2, by2), box_c, box_thick)
-                    lbl_tag = "PRIMARY FACE" if is_p else "EXTRA FACE"
-                    cv2.putText(res_img, lbl_tag, (bx1, max(15, by1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, box_c, 1)
-
-                # Tạo bảng Dashboard thông số độc lập
-                dashboard_img = create_rfdetr_pipeline_dashboard(
+                dashboard_img = create_rfdetr_small_dashboard(
                     img_idx=current_img_idx,
                     face_info=primary_face,
                     num_faces=num_faces,
@@ -1309,91 +1170,63 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
                     blink_passed=blink_passed,
                     blink_count=blink_counter,
                     head_movement_passed=head_movement_passed,
-                    head_action_name=current_head_action.value if hasattr(current_head_action, "value") else str(current_head_action),
+                    head_action_name=current_head_action.value if hasattr(current_head_action, 'value') else str(current_head_action),
                     final_pass=final_pass,
                     reasons=reasons,
                     face_crop=face_crop_static,
-                    target_height=h,
-                    model_id=model_id
+                    target_height=clean_annotated.shape[0],
+                    model_id=model_id,
+                    width=560
                 )
 
-                # Ảnh kết quả sạch
-                clean_img = res_img.copy()
-                verdict_badge = "eKYC: APPROVED" if final_pass else "eKYC: REJECTED"
-                badge_col = (0, 255, 0) if final_pass else (0, 0, 255)
-                cv2.rectangle(clean_img, (w - 240, 15), (w - 15, 55), (15, 15, 20), -1)
-                cv2.rectangle(clean_img, (w - 240, 15), (w - 15, 55), badge_col, 2)
-                cv2.putText(clean_img, verdict_badge, (w - 225, 42),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.62, badge_col, 2)
+                sbs_result = create_side_by_side_result(clean_annotated, dashboard_img)
+                final_display_img = sbs_result
 
-                side_by_side_img = create_side_by_side_result(clean_img, dashboard_img)
+                # Lưu ảnh kết quả
+                cv2.imwrite(os.path.join(captured_result_dir, "1_pipeline_result.jpg"), sbs_result)
+                cv2.imwrite(os.path.join(captured_result_dir, "1_pipeline_result_clean.jpg"), clean_annotated)
+                cv2.imwrite(os.path.join(captured_result_dir, "1_dashboard_panel.jpg"), dashboard_img)
 
-                # Lưu các file vào thư mục output/pipeline_rfdetr/<id>/
-                out_clean_path = os.path.join(captured_result_dir, "1_pipeline_result_clean.jpg")
-                cv2.imwrite(out_clean_path, clean_img)
-
-                out_dash_path = os.path.join(captured_result_dir, "1_dashboard_panel.jpg")
-                cv2.imwrite(out_dash_path, dashboard_img)
-
-                out_sbs_path = os.path.join(captured_result_dir, "1_pipeline_side_by_side.jpg")
-                cv2.imwrite(out_sbs_path, side_by_side_img)
-
-                out_res_path = os.path.join(captured_result_dir, "1_pipeline_result.jpg")
-                cv2.imwrite(out_res_path, side_by_side_img)
-
-                final_display_img = side_by_side_img
-
-                if face_crop_static is not None:
-                    out_crop_path = os.path.join(captured_result_dir, "2_face_crop_224.jpg")
-                    cv2.imwrite(out_crop_path, face_crop_static)
-
-                if aligned_img_static is not None:
-                    out_align_path = os.path.join(captured_result_dir, "3_aligned_full.jpg")
-                    cv2.imwrite(out_align_path, aligned_img_static)
-
-                # File báo cáo JSON
+                # Báo cáo JSON
                 final_record = {
                     "image_id": current_img_idx,
-                    "image_name": f"{current_img_idx}.jpg",
-                    "raw_image_path": captured_img_path,
-                    "output_folder": captured_result_dir,
-                    "model_type": f"RF-DETR Nano ({model_id})",
-                    "model_architecture": "RF-DETR Nano (Detection Transformer)",
-                    "weights_size_mb": round(weights_mb, 1),
-                    "class_names": ["real", "spoof", "background_class83422 (filtered)"],
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "final_verdict": "APPROVED" if final_pass else "REJECTED",
+                    "decision_reasons": reasons,
+                    "camera_index": cam_id,
+                    "quick_snapshot_mode": quick_snapshot_mode,
+                    "pipeline_architecture": "RF-DETR Small Detection Transformer",
                     "face_detection": {
-                        "face_detected": primary_face is not None,
-                        "num_faces_detected": num_faces,
-                        "single_person_passed": (num_faces == 1),
+                        "num_faces": num_faces,
                         "primary_face_bbox": primary_face["bbox"] if primary_face else None,
-                        "primary_face_confidence": round(primary_face["confidence"], 4) if primary_face else 0.0,
-                        "all_faces_cropped_folder": all_faces_dir,
+                        "confidence": float(primary_face["confidence"]) if primary_face else 0.0,
                         "all_faces": all_face_crops_info
                     },
                     "pose_validation": {
-                        "is_valid": bool(pose_valid_static),
-                        "yaw": round(pose_dict_static["yaw"], 2) if pose_dict_static else 0.0,
-                        "pitch": round(pose_dict_static["pitch"], 2) if pose_dict_static else 0.0,
-                        "roll": round(pose_dict_static["roll"], 2) if pose_dict_static else 0.0,
+                        "is_valid": pose_valid_static,
+                        "angles": pose_dict_static
                     },
-                    "anti_spoof_rfdetr": {
+                    "anti_spoof_rfdetr_small": {
                         "model_id": model_id,
-                        "architecture": "RF-DETR Nano",
-                        "label": best_spoof_static["label"] if best_spoof_static else "NONE",
-                        "is_real": bool(best_spoof_static["is_real"]) if best_spoof_static else False,
-                        "confidence": round(best_spoof_static["confidence"], 4) if best_spoof_static else 0.0,
-                        "matched_iou": round(primary_spoof_iou, 4),
-                        "has_global_spoof_in_frame": bool(has_any_spoof_in_frame),
-                        "all_spoof_detections": spoof_res
+                        "model_architecture": "RF-DETR Small (Detection Transformer)",
+                        "weights_size_mb": round(weights_mb, 1),
+                        "class_names": ["real", "spoof"],
+                        "label": best_spoof_static["label"] if best_spoof_static else "UNKNOWN",
+                        "confidence": float(best_spoof_static["confidence"]) if best_spoof_static else 0.0,
+                        "is_real": best_spoof_static["is_real"] if best_spoof_static else False,
+                        "iou_with_primary_face": round(float(primary_spoof_iou), 4),
+                        "all_detections_in_frame": spoof_res
                     },
                     "active_liveness": {
-                        "blink_passed": bool(blink_passed),
-                        "blink_count": int(blink_counter),
-                        "head_movement_passed": bool(head_movement_passed),
-                        "head_action": current_head_action.value if hasattr(current_head_action, "value") else str(current_head_action),
-                    },
-                    "final_verdict": "APPROVED" if final_pass else "REJECTED",
-                    "reasons": reasons
+                        "blink_challenge": {
+                            "passed": blink_passed,
+                            "blink_count": blink_counter
+                        },
+                        "head_movement_challenge": {
+                            "passed": head_movement_passed,
+                            "head_action": current_head_action.value if hasattr(current_head_action, 'value') else str(current_head_action)
+                        }
+                    }
                 }
 
                 out_json_path = os.path.join(captured_result_dir, "4_report.json")
@@ -1401,31 +1234,31 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
                     json.dump(final_record, f, ensure_ascii=False, indent=2, default=json_serialize_helper)
 
                 # Báo cáo CSV
-                batch_csv_path = os.path.join(OUTPUT_DIR, "batch_summary_rfdetr.csv")
+                batch_csv_path = os.path.join(OUTPUT_DIR, "batch_summary_rfdetr_small.csv")
                 file_exists = os.path.exists(batch_csv_path)
                 with open(batch_csv_path, "a", newline="", encoding="utf-8-sig") as f:
                     writer = csv.writer(f)
                     if not file_exists:
                         writer.writerow([
-                            "Image ID", "Verdict", "Num Faces", "RF-DETR Label", "Confidence",
+                            "Image ID", "Verdict", "Num Faces", "RF-DETR Small Label", "Confidence",
                             "IoU", "Pose Valid", "Blink", "Head Movement", "Reasons", "Output Folder"
                         ])
                     writer.writerow([
                         f"{current_img_idx}.jpg",
                         final_record["final_verdict"],
                         num_faces,
-                        final_record["anti_spoof_rfdetr"]["label"],
-                        final_record["anti_spoof_rfdetr"]["confidence"],
+                        final_record["anti_spoof_rfdetr_small"]["label"],
+                        final_record["anti_spoof_rfdetr_small"]["confidence"],
                         f"{primary_spoof_iou:.2f}",
                         "PASS" if final_record["pose_validation"]["is_valid"] else "FAIL",
                         "PASS" if blink_passed else "FAIL",
-                        f"PASS ({final_record['active_liveness']['head_action']})" if head_movement_passed else f"FAIL ({final_record['active_liveness']['head_action']})",
+                        f"PASS ({final_record['active_liveness']['head_movement_challenge']['head_action']})" if head_movement_passed else f"FAIL ({final_record['active_liveness']['head_movement_challenge']['head_action']})",
                         "; ".join(reasons) if reasons else "None",
                         captured_result_dir
                     ])
 
                 print("\n" + "=" * 65)
-                print(f"  [HOÀN TẤT eKYC RF-DETR ID: {current_img_idx}] Kết quả: {final_record['final_verdict']}")
+                print(f"  [HOÀN TẤT eKYC RF-DETR SMALL ID: {current_img_idx}] Kết quả: {final_record['final_verdict']}")
                 print(f"  * Ảnh gốc đã lưu      : {captured_img_path}")
                 print(f"  * Thư mục kết quả     : {captured_result_dir}")
                 print(f"  * Chi tiết 4_report   : {out_json_path}")
@@ -1442,45 +1275,45 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
         prev_fps_time = curr_time
         cv2.putText(display, f"FPS: {fps:.1f}", (w - 120, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
-        cv2.imshow("Full E-KYC Pipeline (RF-DETR Nano Anti-Spoof)", display)
+        cv2.imshow("Full E-KYC Pipeline (RF-DETR Small Anti-Spoof)", display)
 
         key = cv2.waitKey(1) & 0xFF
-        if key == 27 or key == ord('q') or key == ord('Q'):
+        if key in (27, ord('q'), ord('Q')):
             break
 
-        elif key == ord('r') or key == ord('R'):
+        elif key in (ord('r'), ord('R')):
             start_new_session()
 
-        elif (key == ord('a') or key == ord('A')) and stage == PipelineStage.PREVIEW_ALIGN:
+        elif key in (ord('a'), ord('A')) and stage == PipelineStage.PREVIEW_ALIGN:
             auto_capture_mode = not auto_capture_mode
             print(f"[INFO] Chế độ Auto-Capture: {'BẬT' if auto_capture_mode else 'TẮT'}")
 
-        elif (key == ord('s') or key == ord('S')):
+        elif key in (ord('s'), ord('S')):
             if stage == PipelineStage.PREVIEW_ALIGN:
                 if not is_aligned_good:
                     capture_blocked_frames = 40
                     if not is_light_ok:
-                        print(f"\n[CHẶN CHỤP] Ánh sáng quá yếu (Luminance={mean_lum:.1f} < 60.0)! Vui lòng bật đèn hoặc di chuyển ra nơi đủ sáng.")
+                        print(f"\n[CHẶN CHỤP] Ánh sáng quá yếu (Luminance={mean_lum:.1f} < 60.0)! Vui lòng bật đèn.")
                     else:
-                        print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng trước.")
+                        print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng.")
                 else:
                     captured_frame = frame.copy()
                     quick_snapshot_mode = True
                     stage = PipelineStage.RUN_AI_STATIC
                     print(f"\n[QUICK SAVE] Đã kích hoạt Chụp nhanh & Lưu ngay cho ID: {current_img_idx}!")
             elif stage in (PipelineStage.LIVE_BLINK, PipelineStage.LIVE_HEAD_MOVEMENT):
-                print("\n[QUICK SAVE] Bỏ qua các bước Liveness tiếp theo và Lưu kết quả ngay lập tức!")
+                print("\n[QUICK SAVE] Bỏ qua Liveness tiếp theo và Lưu kết quả ngay lập tức!")
                 blink_passed = True
                 head_movement_passed = True
                 stage = PipelineStage.FINAL_DECISION
 
-        elif stage == PipelineStage.PREVIEW_ALIGN and (key == 32 or key == ord('c') or key == ord('C') or key_trigger == ord(' ')):
+        elif stage == PipelineStage.PREVIEW_ALIGN and (key in (32, ord('c'), ord('C')) or key_trigger == ord(' ')):
             if not is_aligned_good:
                 capture_blocked_frames = 40
                 if not is_light_ok:
-                    print(f"\n[CHẶN CHỤP] Ánh sáng quá yếu (Luminance={mean_lum:.1f} < 60.0)! Vui lòng bật đèn hoặc di chuyển ra nơi đủ sáng.")
+                    print(f"\n[CHẶN CHỤP] Ánh sáng quá yếu (Luminance={mean_lum:.1f} < 60.0)! Vui lòng bật đèn.")
                 else:
-                    print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng trước.")
+                    print("\n[CHẶN CHỤP] Không thể chụp! Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng.")
             else:
                 captured_frame = frame.copy()
                 quick_snapshot_mode = False
@@ -1489,18 +1322,18 @@ def main_pipeline_rfdetr(cam_id=0, skip_liveness=False, model_id=DEFAULT_MODEL_I
 
     cap.release()
     cv2.destroyAllWindows()
-    print("[INFO] Đã đóng chương trình Pipeline RF-DETR an toàn.")
+    print("[INFO] Đã đóng chương trình Pipeline RF-DETR Small an toàn.")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Full E-KYC Pipeline RF-DETR (Detection Transformer Anti-Spoofing)")
+    parser = argparse.ArgumentParser(description="Full E-KYC Pipeline RF-DETR Small (Detection Transformer Anti-Spoofing)")
     parser.add_argument("--cam", "--camera", type=int, default=0, help="Camera device index (mặc định 0)")
     parser.add_argument("--static", "--skip-liveness", "--quick", action="store_true", help="Chế độ chụp và lưu AI nhanh, bỏ qua thử thách Liveness")
     parser.add_argument("--model-id", type=str, default=DEFAULT_MODEL_ID, help=f"RF-DETR Model ID (mặc định: {DEFAULT_MODEL_ID})")
     args = parser.parse_args()
 
     try:
-        main_pipeline_rfdetr(
+        main_pipeline_rfdetr_small(
             cam_id=args.cam,
             skip_liveness=getattr(args, 'static', False),
             model_id=args.model_id
