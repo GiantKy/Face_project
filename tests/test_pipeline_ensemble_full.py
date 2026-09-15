@@ -377,13 +377,6 @@ def draw_oval_face_guide(image, center, axes, is_aligned=False, is_detected=Fals
     thickness = 3 if is_aligned else 2
     cv2.ellipse(image, (cx, cy), (ax, ay), 0, 0, 360, color, thickness, cv2.LINE_AA)
 
-    # Biometric ticks ở 4 góc
-    tick_len = 16
-    cv2.line(image, (cx, cy - ay - tick_len), (cx, cy - ay + 6), color, 2, cv2.LINE_AA)
-    cv2.line(image, (cx, cy + ay - 6), (cx, cy + ay + tick_len), color, 2, cv2.LINE_AA)
-    cv2.line(image, (cx - ax - tick_len, cy), (cx - ax + 6, cy), color, 2, cv2.LINE_AA)
-    cv2.line(image, (cx + ax - 6, cy), (cx + ax + tick_len, cy), color, 2, cv2.LINE_AA)
-
     return image
 
 
@@ -956,9 +949,10 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                 display = draw_landmarks(display, landmarks_live)
 
             draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
-            cv2.putText(display, f"E-KYC BUOC 2/2: THU THACH CU DONG DAU (ID: {current_img_idx})", (28, 28),
+            # Đưa hành động thử thách (QUAY MAT SANG PHAI/TRAI...) lên dòng tiêu đề chính to rõ, dễ nhận diện
+            cv2.putText(display, f"E-KYC BUOC 2/2: {prompt_str.upper()}", (28, 28),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
-            cv2.putText(display, f"{prompt_str.upper()} | Thoi gian: {time_left:.1f}s", (28, 46),
+            cv2.putText(display, f"Giu tu the den khi du 100% | Thoi gian: {time_left:.1f}s | ID: {current_img_idx}", (28, 46),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.38, hm_col, 1, cv2.LINE_AA)
 
             bot_y = h - 56
