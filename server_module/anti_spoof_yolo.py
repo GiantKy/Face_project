@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 import numpy as np
 from ultralytics import YOLO
 
-from .config import ANTI_SPOOF_YOLO_MODEL_PATH, CONF_THRESHOLD_ANTI_SPOOF, SERVER_MODULE_DIR
+from .config import ANTI_SPOOF_YOLO_MODEL_PATH, CONF_THRESHOLD_ANTI_SPOOF, MODELS_DIR
 
 
 class AntiSpoofYoloDetector:
@@ -20,12 +20,9 @@ class AntiSpoofYoloDetector:
 
     def __init__(self, model_path: Optional[str] = None):
         if model_path is None or not os.path.exists(model_path):
-            internal_models_dir = os.path.join(SERVER_MODULE_DIR, "models")
-            root_models_dir = os.path.join(PROJECT_ROOT, "models")
             candidate_files = [
                 ANTI_SPOOF_YOLO_MODEL_PATH,
-                os.path.join(internal_models_dir, "Anti_Spoof_YOLO.pt"),
-                os.path.join(root_models_dir, "Anti_Spoof_YOLO.pt")
+                os.path.join(MODELS_DIR, "Anti_Spoof_YOLO.pt"),
             ]
             self.model_path = None
             for p in candidate_files:
@@ -34,13 +31,12 @@ class AntiSpoofYoloDetector:
                     break
 
             if self.model_path is None:
-                pts = glob.glob(os.path.join(internal_models_dir, "*Anti_Spoof*.pt")) + \
-                      glob.glob(os.path.join(root_models_dir, "*Anti_Spoof*.pt"))
+                pts = glob.glob(os.path.join(MODELS_DIR, "*Anti_Spoof*.pt"))
                 if pts:
                     self.model_path = pts[0]
                 else:
                     raise FileNotFoundError(
-                        f"Không tìm thấy model Anti_Spoof YOLO tại: {ANTI_SPOOF_YOLO_MODEL_PATH} hoặc {root_models_dir}"
+                        f"Không tìm thấy model Anti_Spoof YOLO tại: {ANTI_SPOOF_YOLO_MODEL_PATH}"
                     )
         else:
             self.model_path = model_path

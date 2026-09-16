@@ -201,41 +201,49 @@ def draw_pipeline_result_hud(
         p_col = (0, 0, 255)
     cv2.putText(vis, p_txt, (25, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.44, p_col, 1, cv2.LINE_AA)
 
-    # 3. Anti-Spoof
+    # 3. Anti-Spoof Ensemble
     if anti_spoof_info:
         as_lbl = anti_spoof_info.get("label", "UNKNOWN")
         as_conf = anti_spoof_info.get("confidence", 0.0)
         as_col = (0, 255, 0) if anti_spoof_info.get("is_real", False) else (0, 0, 255)
         iou_str = f" | IoU:{spoof_iou:.2f}" if spoof_iou > 0 else ""
-        as_txt = f"3. Anti-Spoof YOLO : {as_lbl} ({as_conf*100:.1f}%{iou_str})"
+        both = anti_spoof_info.get("both_detected", False)
+        src_tag = "Ensemble" if both else "1-Model"
+        as_txt = f"3. Anti-Spoof [{src_tag}]: {as_lbl} ({as_conf*100:.1f}%{iou_str})"
     else:
-        as_txt = "3. Anti-Spoof YOLO : NO DATA"
+        as_txt = "3. Anti-Spoof Ensemble : NO DATA"
         as_col = (0, 165, 255)
     cv2.putText(vis, as_txt, (25, 118), cv2.FONT_HERSHEY_SIMPLEX, 0.44, as_col, 1, cv2.LINE_AA)
+    # Sub-line: YOLO + RF-DETR detail
+    if anti_spoof_info:
+        yolo_d = anti_spoof_info.get("yolo_res", "N/A")
+        rf_d = anti_spoof_info.get("rfdetr_res", "N/A")
+        sub_txt = f"   YOLO: {yolo_d} | RF-DETR: {rf_d}"
+        cv2.putText(vis, sub_txt, (25, 133), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (180, 190, 200), 1, cv2.LINE_AA)
 
     # 4. Blink Liveness
     b_txt = f"4. Blink Liveness: PASS ({blink_count} blinks)" if blink_passed else f"4. Blink Liveness: FAIL ({blink_count} blinks)"
     b_col = (0, 255, 0) if blink_passed else (0, 0, 255)
-    cv2.putText(vis, b_txt, (25, 141), cv2.FONT_HERSHEY_SIMPLEX, 0.44, b_col, 1, cv2.LINE_AA)
+    cv2.putText(vis, b_txt, (25, 156), cv2.FONT_HERSHEY_SIMPLEX, 0.44, b_col, 1, cv2.LINE_AA)
 
     # 5. Head Movement Liveness
     h_act = str(head_action_name).upper()
     hm_txt = f"5. Head Movement : PASS [{h_act}]" if head_movement_passed else f"5. Head Movement : FAIL [{h_act}]"
     hm_col = (0, 255, 0) if head_movement_passed else (0, 0, 255)
-    cv2.putText(vis, hm_txt, (25, 164), cv2.FONT_HERSHEY_SIMPLEX, 0.44, hm_col, 1, cv2.LINE_AA)
+    cv2.putText(vis, hm_txt, (25, 179), cv2.FONT_HERSHEY_SIMPLEX, 0.44, hm_col, 1, cv2.LINE_AA)
 
-    cv2.line(vis, (25, 180), (15 + card_w - 20, 180), (80, 80, 80), 1)
+    cv2.line(vis, (25, 195), (15 + card_w - 20, 195), (80, 80, 80), 1)
 
     # 6. Final Decision
     verdict_text = "eKYC: APPROVED (HOP LE)" if final_pass else "eKYC: REJECTED (TU CHOI)"
     verdict_col = (0, 255, 0) if final_pass else (0, 0, 255)
-    cv2.putText(vis, verdict_text, (25, 208),
+    cv2.putText(vis, verdict_text, (25, 223),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.65, verdict_col, 2, cv2.LINE_AA)
 
     if not final_pass and clean_reasons:
-        cv2.putText(vis, "Ly do tu choi:", (25, 230),
+        cv2.putText(vis, "Ly do tu choi:", (25, 245),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 200, 255), 1, cv2.LINE_AA)
-        start_y = 250
+        start_y = 265
         line_spacing = 20
         for idx_r, r_text in enumerate(clean_reasons[:5]):
             if len(r_text) > 65:
@@ -357,22 +365,29 @@ def create_pipeline_result_dashboard(
         p_lines = [("Status: UNKNOWN (Khong duoc tinh toan)", (70, 70, 240), 0.42)]
     _draw_card("2. 3D HEAD POSE ESTIMATION", p_lines, card_h=68)
 
-    # Section 3: Anti-Spoofing YOLO
+    # Section 3: Anti-Spoofing Ensemble (YOLO_4 + RF-DETR)
     if anti_spoof_info:
         as_lbl = anti_spoof_info.get("label", "UNKNOWN")
         as_conf = anti_spoof_info.get("confidence", 0.0)
         is_real = anti_spoof_info.get("is_real", False)
+        both = anti_spoof_info.get("both_detected", False)
+        agree = anti_spoof_info.get("agreement", False)
         as_col = (80, 220, 80) if is_real else (70, 70, 240)
-        iou_str = f"  |  IoU with Face: {spoof_iou:.2f}" if spoof_iou > 0 else ""
+        iou_str = f"  |  IoU: {spoof_iou:.2f}" if spoof_iou > 0 else ""
+        src_tag = anti_spoof_info.get("source", "")
+        yolo_d = anti_spoof_info.get("yolo_res", "N/A")
+        rf_d = anti_spoof_info.get("rfdetr_res", "N/A")
+        agree_str = "Dong thuan" if agree else "Bat dong"
         as_lines = [
-            (f"Model Verdict: {as_lbl} ({as_conf*100:.1f}%){iou_str}", as_col, 0.44),
-            (f"Classification: {'REAL FACE (Hop le)' if is_real else 'FAKE / SPOOF ATTACK (Phat hien gia mao)'}", as_col, 0.41)
+            (f"Verdict: {as_lbl} ({as_conf*100:.1f}%){iou_str}", as_col, 0.44),
+            (f"YOLO_4: {yolo_d}  |  RF-DETR: {rf_d}", (200, 210, 220), 0.41),
+            (f"Source: {src_tag}  |  Agreement: {agree_str}", (170, 180, 195), 0.39),
         ]
         # Thanh tỷ lệ xác thực Real vs Fake
         bar_w = w - 60
         bar_h = 8
         bar_x = 24
-        bar_y = cur_y + 68
+        bar_y = cur_y + 82
         cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (45, 48, 60), -1)
         real_fill = int(bar_w * (as_conf if is_real else (1.0 - as_conf)))
         if real_fill > 0:
@@ -381,7 +396,7 @@ def create_pipeline_result_dashboard(
             cv2.rectangle(canvas, (bar_x + real_fill, bar_y), (bar_x + bar_w, bar_y + bar_h), (70, 70, 240), -1)
     else:
         as_lines = [("Status: NO ANTI-SPOOF DATA", (0, 180, 255), 0.42)]
-    _draw_card("3. ANTI-SPOOFING (YOLO ENGINE)", as_lines, card_h=86)
+    _draw_card("3. ANTI-SPOOFING (ENSEMBLE: YOLO_4 + RF-DETR)", as_lines, card_h=100)
 
     # Section 4: Liveness (Blink & Head Action)
     b_stat = f"PASS ({blink_count} blinks)" if blink_passed else f"FAIL ({blink_count} blinks)"

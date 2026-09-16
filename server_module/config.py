@@ -6,28 +6,39 @@ Chứa các thiết lập đường dẫn weights, ngưỡng nhận diện và t
 import os
 from pathlib import Path
 
-# Đường dẫn thư mục gốc của project (Face-Project/)
+# Đường dẫn thư mục gốc
 SERVER_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SERVER_MODULE_DIR)
 
-# Thư mục models nội bộ bên trong server_module và thư mục models gốc
-MODELS_INTERNAL_DIR = os.path.join(SERVER_MODULE_DIR, "models")
-MODELS_ROOT_DIR = os.path.join(PROJECT_ROOT, "models")
+# =====================================================================
+# THƯ MỤC MODELS: Chỉ sử dụng server_module/models/ (tự chứa)
+# =====================================================================
+MODELS_DIR = os.path.join(SERVER_MODULE_DIR, "models")
 
-def _resolve_model_path(model_filename: str) -> str:
-    """Tìm đường dẫn file model: ưu tiên server_module/models, dự phòng models/."""
-    p1 = os.path.join(MODELS_INTERNAL_DIR, model_filename)
-    if os.path.exists(p1):
-        return p1
-    p2 = os.path.join(MODELS_ROOT_DIR, model_filename)
-    if os.path.exists(p2):
-        return p2
-    return p1
+# Đường dẫn các mô hình AI — tất cả nằm trong server_module/models/
+FACE_DETECTION_MODEL_PATH = os.path.join(MODELS_DIR, "Face_Detection.pt")
+ANTI_SPOOF_YOLO_MODEL_PATH = os.path.join(MODELS_DIR, "Anti_Spoof_YOLO.pt")
+FACE_LANDMARKER_MODEL_PATH = os.path.join(MODELS_DIR, "face_landmarker.task")
 
-# Đường dẫn các mô hình AI theo chuẩn test_pipeline_full
-FACE_DETECTION_MODEL_PATH = _resolve_model_path("Face_Detection.pt")
-ANTI_SPOOF_YOLO_MODEL_PATH = _resolve_model_path("Anti_Spoof_YOLO.pt")
-FACE_LANDMARKER_MODEL_PATH = _resolve_model_path("face_landmarker.task")
+# =====================================================================
+# ENSEMBLE ANTI-SPOOF: YOLO_4 + RF-DETR Small
+# =====================================================================
+# Model 1: YOLO_4 (Anti_Spoof_YOLO_4.pt) — Object Detection local
+ANTI_SPOOF_YOLO4_MODEL_PATH = os.path.join(MODELS_DIR, "Anti_Spoof_YOLO_4.pt")
+
+# Model 2: RF-DETR Small — Roboflow Inference (Transformer)
+RFDETR_MODEL_ID = "k-thi-gia-s-workspace/face-spoof-detection-liika-owgrl-1-rfdetr-small-t1"
+RFDETR_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "ydUs8YBnVWjyjFFVvcpx")
+
+# Roboflow model cache — nằm trong server_module/models/roboflow/
+ROBOFLOW_CACHE_DIR = os.path.join(MODELS_DIR, "roboflow")
+
+# Ensemble fusion parameters
+ENSEMBLE_CONF_THRESHOLD = 0.30       # Ngưỡng confidence tối thiểu cho mỗi model
+ENSEMBLE_IOU_THRESHOLD = 0.40        # Ngưỡng IoU để ghép cặp detection giữa 2 model
+ENSEMBLE_W_YOLO = 0.5                # Trọng số YOLO trong Soft Voting
+ENSEMBLE_W_RFDETR = 0.5              # Trọng số RF-DETR trong Soft Voting
+ENSEMBLE_SPOOF_VETO_THRESHOLD = 0.68 # Ngưỡng Spoof Veto: nếu 1 model phát hiện SPOOF >= ngưỡng → VETO
 
 # Thư mục lưu kết quả mặc định
 DEFAULT_DATA_RAW_DIR = os.path.join(PROJECT_ROOT, "data_raw")

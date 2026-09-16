@@ -1,7 +1,7 @@
 """
-Core E-KYC Pipeline Server Engine.
-Chuẩn hóa và đóng gói quy trình xử lý từ test_pipeline_full.py thành Class dịch vụ hoàn chỉnh.
-Sử dụng YOLO Face Detection và YOLO Anti-Spoofing.
+Core E-KYC Pipeline Server Engine — Ensemble Edition.
+Sử dụng Ensemble Anti-Spoofing (YOLO_4 + RF-DETR Small) để duyệt ảnh.
+Hoàn toàn headless (không webcam, không GUI), tương thích Server.
 """
 
 import os
@@ -29,9 +29,15 @@ try:
     )
     from .config import (
         FACE_DETECTION_MODEL_PATH,
-        ANTI_SPOOF_YOLO_MODEL_PATH,
+        ANTI_SPOOF_YOLO4_MODEL_PATH,
+        RFDETR_MODEL_ID,
+        RFDETR_API_KEY,
         CONF_THRESHOLD_FACE,
-        CONF_THRESHOLD_ANTI_SPOOF,
+        ENSEMBLE_CONF_THRESHOLD,
+        ENSEMBLE_IOU_THRESHOLD,
+        ENSEMBLE_W_YOLO,
+        ENSEMBLE_W_RFDETR,
+        ENSEMBLE_SPOOF_VETO_THRESHOLD,
         POSE_MAX_YAW,
         POSE_MAX_PITCH,
         POSE_MAX_ROLL,
@@ -43,7 +49,7 @@ try:
         HEAD_PITCH_THRESHOLD,
         CHALLENGE_TIMEOUT_SECONDS
     )
-    from .anti_spoof_yolo import AntiSpoofYoloDetector
+    from .ensemble_anti_spoof import EnsembleAntiSpoofDetector
     from .utils import (
         load_image,
         image_to_base64,
@@ -69,9 +75,15 @@ except (ImportError, ValueError):
     )
     from config import (
         FACE_DETECTION_MODEL_PATH,
-        ANTI_SPOOF_YOLO_MODEL_PATH,
+        ANTI_SPOOF_YOLO4_MODEL_PATH,
+        RFDETR_MODEL_ID,
+        RFDETR_API_KEY,
         CONF_THRESHOLD_FACE,
-        CONF_THRESHOLD_ANTI_SPOOF,
+        ENSEMBLE_CONF_THRESHOLD,
+        ENSEMBLE_IOU_THRESHOLD,
+        ENSEMBLE_W_YOLO,
+        ENSEMBLE_W_RFDETR,
+        ENSEMBLE_SPOOF_VETO_THRESHOLD,
         POSE_MAX_YAW,
         POSE_MAX_PITCH,
         POSE_MAX_ROLL,
@@ -83,7 +95,7 @@ except (ImportError, ValueError):
         HEAD_PITCH_THRESHOLD,
         CHALLENGE_TIMEOUT_SECONDS
     )
-    from anti_spoof_yolo import AntiSpoofYoloDetector
+    from ensemble_anti_spoof import EnsembleAntiSpoofDetector
     from utils import (
         load_image,
         image_to_base64,
@@ -99,35 +111,44 @@ except (ImportError, ValueError):
 
 class EKYCPipelineServer:
     """
-    E-KYC Server Pipeline Engine sử dụng YOLO (Thuần xử lý ảnh - Headless Server Mode):
-    - CHẾ ĐỘ HOẠT ĐỘNG: Hoàn toàn xử lý trên dữ liệu ảnh (Image file path, Base64, Bytes buffer hoặc NumPy array).
-    - KHÔNG SỬ DỤNG WEBCAM: Tuyệt đối KHÔNG gọi cv2.VideoCapture(), KHÔNG mở webcam, KHÔNG dùng GUI (cv2.imshow/waitKey).
-    - TƯƠNG THÍCH SERVER: Chạy an toàn 100% trên máy chủ headless (Linux/Ubuntu, Docker Container, Cloud VM, Windows Server).
+    E-KYC Server Pipeline Engine — Ensemble Edition.
     
+    Sử dụng Ensemble Anti-Spoofing (YOLO_4 + RF-DETR Small) kết hợp
+    IoU Matching + Weighted Soft-Voting + Spoof Veto.
+    
+    CHẾ ĐỘ HOẠT ĐỘNG:
+    - Hoàn toàn xử lý trên dữ liệu ảnh (Image file path, Base64, Bytes buffer hoặc NumPy array).
+    - KHÔNG SỬ DỤNG WEBCAM: Tuyệt đối KHÔNG gọi cv2.VideoCapture(), KHÔNG mở webcam, KHÔNG dùng GUI.
+    - TƯƠNG THÍCH SERVER: Chạy an toàn 100% trên máy chủ headless.
+
     Quy trình xử lý trên ảnh:
-    1. Face Detection: YOLO (Face_Detection.pt) trên ảnh đầu vào.
-    2. Face Landmarks: MediaPipe 478 points (face_landmarker.task).
-    3. 3D Pose Validation: Perspective-n-Point Euler Angles (Yaw, Pitch, Roll).
-    4. Face Alignment & Normalization: Affine Transform (224x224 crop).
-    5. Anti-Spoofing: YOLO (Anti_Spoof_YOLO.pt) với IoU matching cho Primary Face.
-    6. Active Liveness: Đánh giá chỉ số EAR chớp mắt & theo dõi góc quay đầu từ frame ảnh được gửi lên.
-    7. Decision Engine: Đánh giá hợp chuẩn FinTech/eKYC ngân hàng và xuất kết quả JSON / File ảnh.
+    1. Face Detection: YOLO (Face_Detection.pt)
+    2. Face Landmarks: MediaPipe 478 points
+    3. 3D Pose Validation: Euler Angles (Yaw, Pitch, Roll)
+    4. Face Alignment & Normalization: Affine Transform (224x224 crop)
+    5. Ensemble Anti-Spoofing: YOLO_4 + RF-DETR Small (IoU Matching + Soft Voting + Spoof Veto)
+    6. Active Liveness: EAR chớp mắt & quay đầu (từ frame gửi lên)
+    7. Decision Engine: Đánh giá hợp chuẩn eKYC và xuất JSON / File ảnh
     """
 
     def __init__(
         self,
         face_model_path: Optional[str] = None,
-        anti_spoof_model_path: Optional[str] = None,
+        yolo_antispoof_path: Optional[str] = None,
+        rfdetr_model_id: Optional[str] = None,
+        rfdetr_api_key: Optional[str] = None,
         lazy_load: bool = False
     ):
         self.face_model_path = face_model_path or FACE_DETECTION_MODEL_PATH
-        self.anti_spoof_model_path = anti_spoof_model_path or ANTI_SPOOF_YOLO_MODEL_PATH
+        self.yolo_antispoof_path = yolo_antispoof_path or ANTI_SPOOF_YOLO4_MODEL_PATH
+        self.rfdetr_model_id = rfdetr_model_id or RFDETR_MODEL_ID
+        self.rfdetr_api_key = rfdetr_api_key or RFDETR_API_KEY
 
         self.detector: Optional[FaceDetector] = None
         self.landmark_detector: Optional[LandmarkDetector] = None
         self.pose_validator: Optional[PoseValidator] = None
         self.aligner: Optional[FaceAligner] = None
-        self.anti_spoof_detector: Optional[AntiSpoofYoloDetector] = None
+        self.ensemble_anti_spoof: Optional[EnsembleAntiSpoofDetector] = None
         self.head_movement_detector: Optional[HeadMovementDetector] = None
 
         if not lazy_load:
@@ -135,18 +156,22 @@ class EKYCPipelineServer:
 
     def load_models(self):
         """Khởi tạo và tải trước toàn bộ mô hình AI vào bộ nhớ."""
-        print("[EKYCPipelineServer] Đang khởi tạo các mô hình AI...")
+        print("[EKYCPipelineServer] Đang khởi tạo các mô hình AI (Ensemble Edition)...")
         self.detector = FaceDetector(model_path=self.face_model_path)
         self.landmark_detector = LandmarkDetector()
         self.pose_validator = PoseValidator()
         self.aligner = FaceAligner()
-        self.anti_spoof_detector = AntiSpoofYoloDetector(model_path=self.anti_spoof_model_path)
+        self.ensemble_anti_spoof = EnsembleAntiSpoofDetector(
+            yolo_model_path=self.yolo_antispoof_path,
+            rfdetr_model_id=self.rfdetr_model_id,
+            rfdetr_api_key=self.rfdetr_api_key,
+        )
         self.head_movement_detector = HeadMovementDetector(
             yaw_threshold=HEAD_YAW_THRESHOLD,
             pitch_threshold=HEAD_PITCH_THRESHOLD,
             timeout=CHALLENGE_TIMEOUT_SECONDS
         )
-        print("[EKYCPipelineServer] Tải toàn bộ AI Models thành công!\n")
+        print("[EKYCPipelineServer] Tải toàn bộ AI Models thành công! (Ensemble Ready)\n")
 
     def _ensure_models_loaded(self):
         if self.detector is None:
@@ -157,12 +182,12 @@ class EKYCPipelineServer:
     # =========================================================================
     def validate_pose(self, image_input: Union[str, bytes, np.ndarray]) -> Dict[str, Any]:
         """
-        Kiểm tra tư thế khuôn mặt theo thời gian thực (trước khi chụp):
+        Kiểm tra tư thế khuôn mặt (trước khi chụp):
         - Phát hiện khuôn mặt và landmarks
         - Đánh giá khoảng cách camera (kích thước mặt)
         - Đánh giá 3 góc Euler (Yaw, Pitch, Roll)
         
-        Trả về:
+        Returns:
             Dict chứa trạng thái pose, góc quay và thông báo hướng dẫn.
         """
         self._ensure_models_loaded()
@@ -215,18 +240,22 @@ class EKYCPipelineServer:
         }
 
     # =========================================================================
-    # 2. KIỂM TRA CHỐNG GIẢ MẠO TĨNH (PASSIVE ANTI-SPOOFING VỚI YOLO)
+    # 2. KIỂM TRA CHỐNG GIẢ MẠO — ENSEMBLE (YOLO_4 + RF-DETR)
     # =========================================================================
     def check_antispoof(
         self,
         image_input: Union[str, bytes, np.ndarray],
-        conf_threshold: float = CONF_THRESHOLD_ANTI_SPOOF
+        conf_threshold: float = ENSEMBLE_CONF_THRESHOLD
     ) -> Dict[str, Any]:
         """
-        Thực hiện kiểm tra chống giả mạo khuôn mặt (Passive Anti-Spoofing):
-        - Quét toàn bộ ảnh bằng YOLO Anti-Spoof
+        Thực hiện kiểm tra chống giả mạo bằng Ensemble (YOLO_4 + RF-DETR Small):
+        - Quét toàn bộ ảnh bằng cả 2 model
+        - IoU Matching + Soft Voting + Spoof Veto
         - Khớp IoU với khuôn mặt chính
-        - Căn chỉnh Affine và Crop khuôn mặt 224x224
+        - Căn chỉnh Affine và Crop 224x224
+        
+        Returns:
+            Dict chứa kết quả ensemble anti-spoof chi tiết.
         """
         self._ensure_models_loaded()
         frame = load_image(image_input)
@@ -245,10 +274,11 @@ class EKYCPipelineServer:
                 "num_faces": 0,
                 "primary_face": None,
                 "crop_face_base64": None,
-                "all_spoof_detections": []
+                "ensemble_detail": None,
+                "all_ensemble_detections": []
             }
 
-        # Tìm Primary Face: Lớn nhất và gần tâm màn hình nhất
+        # Tìm Primary Face: Lớn nhất và gần tâm nhất
         def get_face_priority(f):
             bx1, by1, bx2, by2 = f["bbox"]
             area = (bx2 - bx1) * (by2 - by1)
@@ -271,7 +301,7 @@ class EKYCPipelineServer:
                     aligned_img, aligned_lms, padding=20, output_size=(224, 224)
                 )
 
-        # Fallback crop từ BBox nếu không bắt được landmark
+        # Fallback crop từ BBox
         if face_crop_224 is None and primary_face is not None:
             px1, py1, px2, py2 = primary_face["bbox"]
             px1_c, py1_c = max(0, min(w_f - 1, px1)), max(0, min(h_f - 1, py1))
@@ -280,25 +310,32 @@ class EKYCPipelineServer:
             if raw_crop_p.size > 0:
                 face_crop_224 = cv2.resize(raw_crop_p, (224, 224))
 
-        # 3. Quét Anti-Spoofing YOLO trên toàn bộ ảnh gốc và ghép IoU
-        spoof_detections = self.anti_spoof_detector.predict(frame, conf_threshold=conf_threshold)
+        # 3. Ensemble Anti-Spoofing (YOLO_4 + RF-DETR Small)
+        all_ensemble_dets, yolo_dets, rfdetr_dets = self.ensemble_anti_spoof.predict_ensemble(
+            frame, conf_threshold=conf_threshold
+        )
 
+        # Tìm detection khớp nhất với Primary Face
         best_spoof = None
         primary_spoof_iou = 0.0
-        if primary_face and spoof_detections:
-            for sd in spoof_detections:
-                iou = calculate_iou(primary_face["bbox"], sd["bbox"])
-                if iou > primary_spoof_iou:
-                    primary_spoof_iou = iou
-                    best_spoof = sd
+        if primary_face and all_ensemble_dets:
+            matching_spoofs = [
+                sd for sd in all_ensemble_dets
+                if calculate_iou(primary_face["bbox"], sd["bbox"]) > 0.15
+            ]
+            if matching_spoofs:
+                best_spoof = max(matching_spoofs, key=lambda x: x["confidence"])
+                primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
+            else:
+                best_spoof = max(all_ensemble_dets, key=lambda x: x["confidence"])
+                primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
 
-        if best_spoof is None and spoof_detections:
-            best_spoof = spoof_detections[0]
+        if best_spoof is None and all_ensemble_dets:
+            best_spoof = all_ensemble_dets[0]
 
         is_real = bool(best_spoof["is_real"]) if best_spoof else False
         label = best_spoof["label"] if best_spoof else "UNKNOWN"
         confidence = float(best_spoof["confidence"]) if best_spoof else 0.0
-        has_any_spoof_in_frame = any(not sd["is_real"] for sd in spoof_detections) if spoof_detections else False
 
         crop_b64 = image_to_base64(face_crop_224) if face_crop_224 is not None else None
 
@@ -309,20 +346,30 @@ class EKYCPipelineServer:
             "label": label,
             "confidence": round(confidence, 4),
             "primary_spoof_iou": round(primary_spoof_iou, 4),
-            "has_any_spoof_in_frame": bool(has_any_spoof_in_frame),
             "primary_face": {
                 "bbox": primary_face["bbox"],
                 "confidence": round(float(primary_face["confidence"]), 4)
             },
             "crop_face_base64": crop_b64,
-            "all_spoof_detections": [
+            "ensemble_detail": {
+                "source": best_spoof.get("source") if best_spoof else "NONE",
+                "yolo_detail": best_spoof.get("yolo_res") if best_spoof else "N/A",
+                "rfdetr_detail": best_spoof.get("rfdetr_res") if best_spoof else "N/A",
+                "agreement": best_spoof.get("agreement") if best_spoof else False,
+                "both_detected": best_spoof.get("both_detected") if best_spoof else False,
+            },
+            "all_ensemble_detections": [
                 {
                     "bbox": sd["bbox"],
                     "is_real": sd["is_real"],
                     "label": sd["label"],
-                    "confidence": round(float(sd["confidence"]), 4)
+                    "confidence": round(float(sd["confidence"]), 4),
+                    "source": sd.get("source", ""),
+                    "yolo_res": sd.get("yolo_res", "N/A"),
+                    "rfdetr_res": sd.get("rfdetr_res", "N/A"),
+                    "both_detected": sd.get("both_detected", False),
                 }
-                for sd in spoof_detections
+                for sd in all_ensemble_dets
             ]
         }
 
@@ -389,7 +436,7 @@ class EKYCPipelineServer:
         return status
 
     # =========================================================================
-    # 4. QUY TRÌNH TOÀN DIỆN (FULL VERIFY PIPELINE 4)
+    # 4. QUY TRÌNH TOÀN DIỆN — FULL VERIFY PIPELINE (ENSEMBLE)
     # =========================================================================
     def full_verify(
         self,
@@ -408,10 +455,9 @@ class EKYCPipelineServer:
         - MediaPipe 478 Landmark Detection
         - 3D Head Pose Validation
         - Face Alignment & 224x224 Crop
-        - YOLO Anti-Spoofing với IoU Matching
-        - Tổng hợp quyết định cuối cùng (6 tiêu chí: Face, Single, Pose, Spoof, Blink, Head)
-        - Lưu các artifacts: 1_pipeline_result.jpg, 1_pipeline_result_clean.jpg,
-          2_face_crop_224.jpg, 3_aligned_full.jpg, 4_report.json (nếu có output_dir)
+        - ENSEMBLE Anti-Spoofing (YOLO_4 + RF-DETR Small) với IoU Matching
+        - Tổng hợp quyết định cuối cùng (7 tiêu chí: Face, Single, Pose, Spoof, BothModels, Blink, Head)
+        - Lưu artifacts nếu có output_dir
         """
         self._ensure_models_loaded()
         frame = load_image(image_input)
@@ -443,7 +489,7 @@ class EKYCPipelineServer:
         if landmarks:
             pose_valid, pose_msg, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point)
 
-        # 4. Cắt khuôn mặt chính thẳng đứng tự nhiên từ Bounding Box của YOLO trên ảnh gốc
+        # 4. Face Crop & Align
         aligned_img = None
         face_crop_224 = None
         if primary_face is not None:
@@ -462,35 +508,52 @@ class EKYCPipelineServer:
                 output_size=(224, 224)
             )
 
-        # Căn chỉnh xoay mắt nếu cần ảnh đối soát
         if landmarks:
             aligned_img = self.aligner.align_face(frame, landmarks)
 
         if aligned_img is None:
             aligned_img = frame.copy()
 
-        # 5. Anti-Spoofing YOLO
-        spoof_detections = self.anti_spoof_detector.predict(frame, conf_threshold=CONF_THRESHOLD_ANTI_SPOOF)
+        # 5. ENSEMBLE Anti-Spoofing (YOLO_4 + RF-DETR Small)
+        t_ens = time.time()
+        all_ensemble_dets, yolo_dets, rfdetr_dets = self.ensemble_anti_spoof.predict_ensemble(
+            frame,
+            conf_threshold=ENSEMBLE_CONF_THRESHOLD,
+            iou_thresh=ENSEMBLE_IOU_THRESHOLD,
+            w_yolo=ENSEMBLE_W_YOLO,
+            w_rfdetr=ENSEMBLE_W_RFDETR,
+            strict_spoof_veto=True,
+        )
+        ens_latency_ms = (time.time() - t_ens) * 1000
+
+        # Tìm detection khớp nhất với Primary Face
         best_spoof = None
         primary_spoof_iou = 0.0
-        if primary_face and spoof_detections:
-            for sd in spoof_detections:
-                iou = calculate_iou(primary_face["bbox"], sd["bbox"])
-                if iou > primary_spoof_iou:
-                    primary_spoof_iou = iou
-                    best_spoof = sd
+        if primary_face and all_ensemble_dets:
+            matching_spoofs = [
+                sd for sd in all_ensemble_dets
+                if calculate_iou(primary_face["bbox"], sd["bbox"]) > 0.15
+            ]
+            if matching_spoofs:
+                best_spoof = max(matching_spoofs, key=lambda x: x["confidence"])
+                primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
+            else:
+                best_spoof = max(all_ensemble_dets, key=lambda x: x["confidence"])
+                primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
 
-        if best_spoof is None and spoof_detections:
-            best_spoof = spoof_detections[0]
+        if best_spoof is None and all_ensemble_dets:
+            best_spoof = all_ensemble_dets[0]
 
-        has_any_spoof_in_frame = any(not sd["is_real"] for sd in spoof_detections) if spoof_detections else False
+        has_any_spoof = any(not sd["is_real"] for sd in all_ensemble_dets) if all_ensemble_dets else False
         is_primary_real = bool(best_spoof["is_real"]) if best_spoof else False
 
-        # 6. Đánh giá Final Decision theo chuẩn 6 tiêu chí
+        # 6. Đánh giá Final Decision — 7 tiêu chí
         c_face = (primary_face is not None)
         c_single = (num_faces == 1)
         c_pose = pose_valid
         c_spoof = is_primary_real
+        # Tiêu chí mới: Cả 2 model phải đồng thuận
+        c_both_detected = bool(best_spoof.get("both_detected", False)) if best_spoof else False
         c_blink = blink_passed
         c_head = head_movement_passed
 
@@ -503,17 +566,27 @@ class EKYCPipelineServer:
         if not c_pose:
             reasons.append(f"Góc mặt ảnh chụp bị nghiêng/lệch ({pose_msg})")
 
-        if not c_spoof:
-            reasons.append("Phát hiện giả mạo Anti-Spoof (Fake/Spoof)")
+        if best_spoof is None:
+            reasons.append("Không phát hiện được đặc trưng chống giả mạo (Anti-Spoof None)")
+        elif not c_both_detected:
+            reasons.append(
+                f"Chỉ có 1 model nhận diện ({best_spoof.get('source')}) "
+                f"— Lược bỏ ảnh (Thiếu sự đồng thuận cả 2 model)"
+            )
+        elif not c_spoof:
+            reasons.append(f"Phát hiện giả mạo (SPOOF) với độ tin cậy {best_spoof['confidence']*100:.1f}%")
 
         if not c_blink:
             reasons.append("Chưa hoàn thành chớp mắt (Blink)")
         if not c_head:
             reasons.append("Chưa hoàn thành cử động đầu (Head Movement)")
 
-        final_pass = bool(c_face and c_single and c_pose and c_spoof and c_blink and c_head)
+        final_pass = bool(
+            c_face and c_single and c_pose and c_spoof
+            and c_both_detected and c_blink and c_head
+        )
 
-        # Xây dựng cấu trúc kết quả chi tiết
+        # Xây dựng kết quả chi tiết
         result_report = {
             "image_id": img_id,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -527,6 +600,7 @@ class EKYCPipelineServer:
                 "single_face": bool(c_single),
                 "pose_valid": bool(c_pose),
                 "anti_spoof_real": bool(c_spoof),
+                "both_models_detected": bool(c_both_detected),
                 "blink_passed": bool(c_blink),
                 "head_movement_passed": bool(c_head)
             },
@@ -544,12 +618,35 @@ class EKYCPipelineServer:
                 "pitch": round(float(pose_dict["pitch"]), 2) if pose_dict else 0.0,
                 "roll": round(float(pose_dict["roll"]), 2) if pose_dict else 0.0
             },
-            "anti_spoof_yolo": {
+            "ensemble_anti_spoof": {
                 "label": best_spoof["label"] if best_spoof else "NO_DATA",
                 "is_real": is_primary_real,
                 "confidence": round(float(best_spoof["confidence"]), 4) if best_spoof else 0.0,
                 "primary_iou": round(float(primary_spoof_iou), 4),
-                "has_any_spoof_in_frame": bool(has_any_spoof_in_frame)
+                "has_any_spoof_in_frame": bool(has_any_spoof),
+                "source": best_spoof.get("source") if best_spoof else "NONE",
+                "yolo_detail": best_spoof.get("yolo_res") if best_spoof else "N/A",
+                "rfdetr_detail": best_spoof.get("rfdetr_res") if best_spoof else "N/A",
+                "agreement": best_spoof.get("agreement") if best_spoof else False,
+                "both_detected": bool(c_both_detected),
+                "latency_ms": round(ens_latency_ms, 1),
+                "models_used": {
+                    "model_1": "YOLO_4 (Anti_Spoof_YOLO_4.pt)",
+                    "model_2": "RF-DETR Small (Transformer)"
+                },
+                "all_ensemble_detections": [
+                    {
+                        "bbox": sd["bbox"],
+                        "is_real": sd["is_real"],
+                        "label": sd["label"],
+                        "confidence": round(float(sd["confidence"]), 4),
+                        "source": sd.get("source", ""),
+                        "yolo_res": sd.get("yolo_res", "N/A"),
+                        "rfdetr_res": sd.get("rfdetr_res", "N/A"),
+                        "both_detected": sd.get("both_detected", False),
+                    }
+                    for sd in all_ensemble_dets
+                ]
             },
             "active_liveness": {
                 "blink_passed": bool(blink_passed),
@@ -575,7 +672,7 @@ class EKYCPipelineServer:
                 if c_img.size > 0:
                     cv2.imwrite(os.path.join(all_faces_dir, f"face_{idx_f}.jpg"), c_img)
 
-            # 1: Ảnh khuôn mặt sạch đã annotate (Bounding box, landmarks tinh tế, không có bảng HUD che)
+            # 1: Ảnh khuôn mặt annotated sạch (không bị che khuất bởi HUD)
             clean_img = frame.copy()
             for f_it in faces:
                 bx1, by1, bx2, by2 = f_it["bbox"]
@@ -589,23 +686,35 @@ class EKYCPipelineServer:
             if landmarks:
                 clean_img = draw_landmarks(clean_img, landmarks)
 
-            if spoof_detections:
-                for sd in spoof_detections:
-                    sx1, sy1, sx2, sy2 = sd["bbox"]
-                    scol = (0, 255, 0) if sd["is_real"] else (0, 0, 255)
-                    cv2.rectangle(clean_img, (sx1, sy1), (sx2, sy2), scol, 2)
-                    cv2.putText(clean_img, f"{sd['label']} {sd['confidence']*100:.1f}%",
-                                (sx1, max(25, sy1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.60, scol, 2)
+            # Vẽ Ensemble detection boxes
+            for sd in all_ensemble_dets:
+                sx1, sy1, sx2, sy2 = sd["bbox"]
+                if not sd.get("both_detected", False):
+                    scol = (0, 165, 255)   # Cam: Thiếu đồng thuận
+                    tag = f"DISCARD: 1 Model ({sd['confidence']*100:.1f}%)"
+                elif sd["is_real"]:
+                    scol = (0, 255, 0)     # Xanh: Real
+                    tag = f"REAL {sd['confidence']*100:.1f}% (Ensemble)"
+                else:
+                    scol = (0, 0, 255)     # Đỏ: Spoof
+                    tag = f"SPOOF {sd['confidence']*100:.1f}% (Ensemble)"
+
+                cv2.rectangle(clean_img, (sx1, sy1), (sx2, sy2), scol, 2)
+                cv2.putText(clean_img, tag, (sx1, max(20, sy1 - 8)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, scol, 1, cv2.LINE_AA)
+                sub_tag = f"YOLO: {sd.get('yolo_res', 'N/A')} | RF: {sd.get('rfdetr_res', 'N/A')}"
+                cv2.putText(clean_img, sub_tag, (sx1, sy2 + 16),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, (220, 220, 220), 1, cv2.LINE_AA)
 
             verdict_badge = "eKYC: APPROVED" if final_pass else "eKYC: REJECTED"
             badge_col = (0, 255, 0) if final_pass else (0, 0, 255)
-            badge_w = 210
-            cv2.rectangle(clean_img, (w_f - badge_w - 15, 12), (w_f - 15, 48), (15, 18, 24), -1)
-            cv2.rectangle(clean_img, (w_f - badge_w - 15, 12), (w_f - 15, 48), badge_col, 2)
-            cv2.putText(clean_img, verdict_badge, (w_f - badge_w - 2, 36),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, badge_col, 2, cv2.LINE_AA)
+            badge_w = 240
+            cv2.rectangle(clean_img, (w_f - badge_w - 15, 12), (w_f - 15, 52), (15, 18, 24), -1)
+            cv2.rectangle(clean_img, (w_f - badge_w - 15, 12), (w_f - 15, 52), badge_col, 2)
+            cv2.putText(clean_img, verdict_badge, (w_f - badge_w - 2, 38),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.58, badge_col, 2, cv2.LINE_AA)
 
-            # 2: Tạo Canvas bảng thông số Dashboard độc lập (Window 2)
+            # 2: Dashboard Panel
             dashboard_img = create_pipeline_result_dashboard(
                 img_idx=img_id,
                 face_info=primary_face,
@@ -624,57 +733,59 @@ class EKYCPipelineServer:
                 target_height=h_f
             )
 
-            # 3: Tạo ảnh ghép 2 Window song song cạnh nhau (Side-by-Side)
+            # 3: Side-by-Side
             side_by_side_img = create_side_by_side_result(clean_img, dashboard_img)
 
-            # File 1A: 1_pipeline_result_clean.jpg (Khuôn mặt rõ ràng, không bị che khuất)
+            # Lưu file
             cv2.imwrite(os.path.join(sess_out_dir, "1_pipeline_result_clean.jpg"), clean_img)
-
-            # File 1B: 1_dashboard_panel.jpg (Bảng thông số độc lập độ phân giải cao)
             cv2.imwrite(os.path.join(sess_out_dir, "1_dashboard_panel.jpg"), dashboard_img)
-
-            # File 1C: 1_pipeline_side_by_side.jpg (Ghép 2 window cạnh nhau, trực quan)
             cv2.imwrite(os.path.join(sess_out_dir, "1_pipeline_side_by_side.jpg"), side_by_side_img)
-
-            # File 1: 1_pipeline_result.jpg (Mặc định xuất dạng 2 window song song để không che mặt)
             cv2.imwrite(os.path.join(sess_out_dir, "1_pipeline_result.jpg"), side_by_side_img)
 
-            # 2: 2_face_crop_224.jpg
             if face_crop_224 is not None:
                 cv2.imwrite(os.path.join(sess_out_dir, "2_face_crop_224.jpg"), face_crop_224)
 
-            # 0: 0_raw_image.jpg (Lưu ảnh gốc đầu vào phục vụ đối soát)
             cv2.imwrite(os.path.join(sess_out_dir, "0_raw_image.jpg"), frame)
 
-            # 3: 3_aligned_full.jpg
             if aligned_img is not None:
                 cv2.imwrite(os.path.join(sess_out_dir, "3_aligned_full.jpg"), aligned_img)
 
-            # 4: 4_report.json
+            # 4_report.json
             report_file_path = os.path.join(sess_out_dir, "4_report.json")
             with open(report_file_path, "w", encoding="utf-8") as f_rep:
                 json.dump(result_report, f_rep, ensure_ascii=False, indent=2, default=json_serialize_helper)
 
-            # 5: Cập nhật file tổng kết batch_summary_v4.csv
-            batch_csv_path = os.path.join(output_dir, "batch_summary_v4.csv")
+            # Cập nhật batch_summary_ensemble.csv
+            batch_csv_path = os.path.join(output_dir, "batch_summary_ensemble.csv")
             csv_exists = os.path.exists(batch_csv_path)
             with open(batch_csv_path, "a", newline="", encoding="utf-8-sig") as f_csv:
                 writer = csv.writer(f_csv)
                 if not csv_exists:
                     writer.writerow([
-                        "Image ID", "Verdict", "Num Faces", "Primary Spoof", "Spoof Conf",
-                        "IoU", "Pose Valid", "Blink", "Head Movement", "Reasons", "Output Folder"
+                        "Image ID", "Verdict", "Num Faces",
+                        "Ensemble Label", "Ensemble Conf",
+                        "YOLO Detail", "RF-DETR Detail",
+                        "Both Detected", "Agreement",
+                        "IoU", "Pose Valid",
+                        "Blink", "Head Movement",
+                        "Latency (ms)", "Reasons", "Output Folder"
                     ])
+                ens_info = result_report["ensemble_anti_spoof"]
                 writer.writerow([
                     f"{img_id}.jpg" if not str(img_id).endswith(".jpg") else str(img_id),
                     result_report["final_decision"]["verdict"],
                     num_faces,
-                    best_spoof["label"] if best_spoof else "NONE",
-                    best_spoof["confidence"] if best_spoof else 0.0,
+                    ens_info["label"],
+                    ens_info["confidence"],
+                    ens_info["yolo_detail"],
+                    ens_info["rfdetr_detail"],
+                    "YES" if ens_info["both_detected"] else "NO",
+                    "YES" if ens_info["agreement"] else "NO",
                     f"{primary_spoof_iou:.2f}",
                     "PASS" if pose_valid else "FAIL",
                     "PASS" if blink_passed else "FAIL",
                     f"PASS ({head_action_name})" if head_movement_passed else f"FAIL ({head_action_name})",
+                    f"{ens_latency_ms:.1f}",
                     "; ".join(reasons) if reasons else "None",
                     sess_out_dir
                 ])

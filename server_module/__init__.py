@@ -1,10 +1,11 @@
 """
-E-KYC Server Module Package.
+E-KYC Server Module Package — Ensemble Edition.
 Gói module xử lý Computer Vision & Deep Learning chuẩn ngân hàng cho Server.
-Sử dụng YOLO Face Detection và YOLO Anti-Spoofing theo chuẩn test_pipeline_full.
+Sử dụng Ensemble Anti-Spoofing (YOLO_4 + RF-DETR Small) theo chuẩn test_pipeline_ensemble_full.
 """
 
 from .pipeline_server import EKYCPipelineServer
+from .ensemble_anti_spoof import EnsembleAntiSpoofDetector
 from .anti_spoof_yolo import AntiSpoofYoloDetector
 from .utils import (
     load_image,
@@ -20,14 +21,21 @@ from .utils import (
 from .config import (
     FACE_DETECTION_MODEL_PATH,
     ANTI_SPOOF_YOLO_MODEL_PATH,
+    ANTI_SPOOF_YOLO4_MODEL_PATH,
     FACE_LANDMARKER_MODEL_PATH,
+    RFDETR_MODEL_ID,
     CONF_THRESHOLD_FACE,
-    CONF_THRESHOLD_ANTI_SPOOF
+    ENSEMBLE_CONF_THRESHOLD,
+    ENSEMBLE_IOU_THRESHOLD,
 )
 
 __all__ = [
+    # Core Pipeline
     "EKYCPipelineServer",
+    # Anti-Spoof Detectors
+    "EnsembleAntiSpoofDetector",
     "AntiSpoofYoloDetector",
+    # Utilities
     "load_image",
     "image_to_base64",
     "calculate_iou",
@@ -37,11 +45,15 @@ __all__ = [
     "create_pipeline_result_dashboard",
     "create_side_by_side_result",
     "show_dual_window_result",
+    # Config
     "FACE_DETECTION_MODEL_PATH",
     "ANTI_SPOOF_YOLO_MODEL_PATH",
+    "ANTI_SPOOF_YOLO4_MODEL_PATH",
     "FACE_LANDMARKER_MODEL_PATH",
+    "RFDETR_MODEL_ID",
     "CONF_THRESHOLD_FACE",
-    "CONF_THRESHOLD_ANTI_SPOOF",
+    "ENSEMBLE_CONF_THRESHOLD",
+    "ENSEMBLE_IOU_THRESHOLD",
 ]
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
