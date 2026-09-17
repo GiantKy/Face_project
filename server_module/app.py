@@ -534,6 +534,116 @@ async def check_anti_spoof(
     )
 
 
+# -----------------------------------------------------------------------------
+# 4. ACTIVE LIVENESS CHALLENGES: BLINK & HEAD MOVEMENT
+# -----------------------------------------------------------------------------
+@app.post(
+    "/api/v1/liveness/blink-frame",
+    summary="Đánh giá chỉ số EAR và trạng thái chớp mắt trên từng frame"
+)
+async def evaluate_blink_frame_endpoint(
+    request: Request,
+    file: Optional[UploadFile] = File(None, description="Frame ảnh"),
+    blink_counter: Optional[int] = Form(0, description="Số lần chớp mắt hiện tại"),
+    blink_state: Optional[bool] = Form(False, description="Trạng thái mắt đang nhắm")
+):
+    """Phục vụ Web Client gửi frame đo chỉ số EAR và đếm số lần chớp mắt tự nhiên."""
+    pipeline: EKYCPipelineServer = request.app.state.pipeline
+
+    image_input = None
+    if file is not None:
+        image_input = await file.read()
+    else:
+        try:
+            body = await request.json()
+            image_input = body.get("image_base64")
+            blink_counter = body.get("blink_counter", blink_counter)
+            blink_state = body.get("blink_state", blink_state)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Vui lòng cung cấp file ảnh hoặc trường 'image_base64'."
+            )
+
+    if not image_input:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dữ liệu ảnh rỗng."
+        )
+
+    try:
+        res = pipeline.evaluate_blink_frame(
+            frame_input=image_input,
+            current_blink_counter=int(blink_counter),
+            current_blink_state=bool(blink_state)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Lỗi kiểm tra chớp mắt: {str(e)}"
+        )
+
+    return {"success": True, **res}
+
+
+@app.post(
+    "/api/v1/liveness/start-head",
+    summary="Khởi tạo thử thách quay đầu ngẫu nhiên mới (Head Movement Challenge)"
+)
+async def start_head_challenge_endpoint(request: Request):
+    """Bắt đầu thử thách quay đầu ngẫu nhiên: TURN_LEFT, TURN_RIGHT, LOOK_UP, LOOK_DOWN."""
+    pipeline: EKYCPipelineServer = request.app.state.pipeline
+    try:
+        res = pipeline.start_head_challenge()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Không thể khởi tạo thử thách: {str(e)}"
+        )
+    return {"success": True, **res}
+
+
+@app.post(
+    "/api/v1/liveness/update-head",
+    summary="Cập nhật frame và kiểm tra góc quay đầu theo thử thách"
+)
+async def update_head_challenge_endpoint(
+    request: Request,
+    file: Optional[UploadFile] = File(None, description="Frame ảnh")
+):
+    """Nhận frame từ Web Client để tính toán góc Euler 3D và tiến trình quay đầu."""
+    pipeline: EKYCPipelineServer = request.app.state.pipeline
+
+    image_input = None
+    if file is not None:
+        image_input = await file.read()
+    else:
+        try:
+            body = await request.json()
+            image_input = body.get("image_base64")
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Vui lòng cung cấp file ảnh hoặc trường 'image_base64'."
+            )
+
+    if not image_input:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dữ liệu ảnh rỗng."
+        )
+
+    try:
+        res = pipeline.update_head_challenge(image_input)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Lỗi cập nhật thử thách quay đầu: {str(e)}"
+        )
+
+    return {"success": True, **res}
+
+
 # =============================================================================
 # RUNNER ENTRY POINT
 # =============================================================================

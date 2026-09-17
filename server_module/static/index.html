@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>eKYC AI Scanner & Biometric Verification Portal</title>
+  <title>eKYC AI Biometric & Active Liveness Challenge Engine</title>
   <!-- Google Fonts: Outfit, Plus Jakarta Sans, JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg-main: #06080d;
@@ -23,6 +23,8 @@
       --rose-glow: rgba(244, 63, 94, 0.35);
       --amber: #f59e0b;
       --amber-glow: rgba(245, 158, 11, 0.35);
+      --purple: #8b5cf6;
+      --purple-glow: rgba(139, 92, 246, 0.4);
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
       --text-dim: #64748b;
@@ -74,8 +76,8 @@
     }
 
     .brand-icon {
-      width: 42px;
-      height: 42px;
+      width: 44px;
+      height: 44px;
       background: linear-gradient(135deg, #06b6d4, #3b82f6);
       border-radius: 12px;
       display: flex;
@@ -85,8 +87,8 @@
     }
 
     .brand-icon svg {
-      width: 24px;
-      height: 24px;
+      width: 26px;
+      height: 26px;
       fill: white;
     }
 
@@ -117,7 +119,7 @@
       display: inline-flex;
       align-items: center;
       gap: 0.45rem;
-      padding: 0.32rem 0.75rem;
+      padding: 0.35rem 0.8rem;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--border-color);
       border-radius: 999px;
@@ -143,7 +145,7 @@
     /* Main Container */
     main {
       max-width: 1440px;
-      margin: 1.5rem auto;
+      margin: 1.25rem auto;
       padding: 0 1.5rem 3rem;
     }
 
@@ -151,14 +153,14 @@
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
-      margin-bottom: 1.5rem;
+      margin-bottom: 1.25rem;
       flex-wrap: wrap;
       gap: 1rem;
     }
 
     .hero-strip h1 {
       font-family: var(--font-heading);
-      font-size: 1.65rem;
+      font-size: 1.6rem;
       font-weight: 700;
       color: #fff;
     }
@@ -189,10 +191,92 @@
       font-size: 0.75rem;
     }
 
+    /* Stepper Container: 4 Bước eKYC Chuẩn */
+    .stepper-bar {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    @media (max-width: 860px) {
+      .stepper-bar {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .step-node {
+      background: rgba(15, 21, 35, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 0.65rem 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      transition: all 0.3s ease;
+    }
+
+    .step-node.active {
+      border-color: var(--cyan);
+      background: rgba(6, 182, 212, 0.12);
+      box-shadow: 0 0 16px var(--cyan-glow);
+    }
+
+    .step-node.completed {
+      border-color: var(--emerald);
+      background: rgba(16, 185, 129, 0.12);
+    }
+
+    .step-index-badge {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-dim);
+      font-family: var(--font-heading);
+      font-weight: 700;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+    }
+
+    .step-node.active .step-index-badge {
+      background: var(--cyan);
+      color: #06080d;
+      box-shadow: 0 0 10px var(--cyan);
+    }
+
+    .step-node.completed .step-index-badge {
+      background: var(--emerald);
+      color: #06080d;
+    }
+
+    .step-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .step-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .step-desc {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+
+    .step-node.active .step-desc {
+      color: #a5f3fc;
+    }
+
     /* Two-Column Grid */
     .app-grid {
       display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
+      grid-template-columns: 1.18fr 0.82fr;
       gap: 1.5rem;
     }
 
@@ -207,11 +291,11 @@
       background: var(--bg-card);
       border: 1px solid var(--border-color);
       border-radius: 18px;
-      padding: 1.5rem;
+      padding: 1.35rem;
       box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
       display: flex;
       flex-direction: column;
-      gap: 1.25rem;
+      gap: 1.15rem;
     }
 
     .panel-header {
@@ -220,6 +304,8 @@
       align-items: center;
       border-bottom: 1px solid var(--border-color);
       padding-bottom: 0.85rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
     }
 
     .panel-title {
@@ -244,7 +330,7 @@
       background: transparent;
       border: none;
       color: var(--text-muted);
-      padding: 0.4rem 0.9rem;
+      padding: 0.38rem 0.85rem;
       font-size: 0.82rem;
       font-family: var(--font-body);
       font-weight: 600;
@@ -259,21 +345,55 @@
       box-shadow: 0 0 12px var(--cyan-glow);
     }
 
+    /* Mode Segmented Control: Liveness vs Quick */
+    .mode-segmented {
+      display: flex;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 4px;
+      gap: 4px;
+    }
+
+    .seg-btn {
+      flex: 1;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      padding: 0.45rem 0.8rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      transition: all 0.2s;
+    }
+
+    .seg-btn.active {
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(59, 130, 246, 0.25));
+      border: 1px solid var(--cyan);
+      color: #ffffff;
+      box-shadow: 0 0 15px rgba(6, 182, 212, 0.2);
+    }
+
     /* =========================================================================
-       CAPTURE STAGE & BOKEH BLUR OVERLAY (Làm mờ ngoại vi trừ oval ở giữa)
+       CAPTURE BOX & BOKEH BLUR OVERLAY (Làm mờ ngoại vi trừ oval ở giữa)
        ========================================================================= */
     .capture-box {
       position: relative;
       width: 100%;
-      height: 480px;
+      height: 500px;
       background: #090d16;
-      border-radius: 14px;
+      border-radius: 16px;
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
       border: 1px solid rgba(255, 255, 255, 0.1);
-      box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
+      box-shadow: inset 0 0 45px rgba(0, 0, 0, 0.7);
     }
 
     #webcamVideo {
@@ -291,15 +411,15 @@
       display: none;
     }
 
-    /* Bokeh Blur Overlay: Làm mờ ngoại vi, vùng Oval ở giữa giữ trong suốt tuyệt đối */
+    /* Live Bokeh Blur Overlay: Làm mờ ngoại vi, vùng Oval ở giữa giữ nét 100% */
     .bokeh-blur-overlay {
       position: absolute;
       inset: 0;
       pointer-events: none;
       backdrop-filter: blur(14px) brightness(0.42);
       -webkit-backdrop-filter: blur(14px) brightness(0.42);
-      mask-image: radial-gradient(ellipse 135px 185px at center 50%, transparent 97%, black 100%);
-      -webkit-mask-image: radial-gradient(ellipse 135px 185px at center 50%, transparent 97%, black 100%);
+      mask-image: radial-gradient(ellipse 140px 190px at center 50%, transparent 97%, black 100%);
+      -webkit-mask-image: radial-gradient(ellipse 140px 190px at center 50%, transparent 97%, black 100%);
       transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
       display: none;
       z-index: 5;
@@ -326,17 +446,16 @@
     }
 
     .face-guide-oval {
-      width: 270px;
-      height: 370px;
+      width: 280px;
+      height: 380px;
       border-radius: 50% / 46%;
       position: relative;
       transition: all 0.35s ease;
-      /* Trạng thái mặc định: Cyan */
       border: 3px dashed var(--cyan);
       box-shadow: 0 0 25px var(--cyan-glow), inset 0 0 20px rgba(6, 182, 212, 0.12);
     }
 
-    /* Trạng thái ALIGNED: Xanh lá phát sáng */
+    /* State: Aligned */
     .face-guide-oval.state-aligned {
       border: 3.5px solid var(--emerald) !important;
       box-shadow: 0 0 35px var(--emerald-glow), 0 0 60px rgba(16, 185, 129, 0.25), inset 0 0 25px rgba(16, 185, 129, 0.2) !important;
@@ -348,16 +467,22 @@
       100% { transform: scale(1.02); }
     }
 
-    /* Trạng thái WARNING: Vàng hổ phách */
+    /* State: Warning */
     .face-guide-oval.state-warning {
       border: 3px solid var(--amber) !important;
       box-shadow: 0 0 25px var(--amber-glow), inset 0 0 15px rgba(245, 158, 11, 0.15) !important;
     }
 
-    /* Trạng thái REJECTED / SPOOF: Đỏ */
+    /* State: Rejected */
     .face-guide-oval.state-rejected {
       border: 3px solid var(--rose) !important;
       box-shadow: 0 0 30px var(--rose-glow), inset 0 0 20px rgba(244, 63, 94, 0.2) !important;
+    }
+
+    /* State: Challenge In Progress (Cyan / Emerald Glow) */
+    .face-guide-oval.state-challenge {
+      border: 3.5px solid #38bdf8 !important;
+      box-shadow: 0 0 35px rgba(56, 189, 248, 0.5), inset 0 0 30px rgba(56, 189, 248, 0.2) !important;
     }
 
     /* Scan Radar Laser */
@@ -372,7 +497,8 @@
       animation: scanAnim 2.2s ease-in-out infinite alternate;
     }
 
-    .face-guide-oval.state-aligned .radar-line {
+    .face-guide-oval.state-aligned .radar-line,
+    .face-guide-oval.state-challenge .radar-line {
       background: linear-gradient(90deg, transparent, var(--emerald), transparent);
       box-shadow: 0 0 18px var(--emerald);
     }
@@ -386,11 +512,11 @@
     /* Real-time Guidance Pill */
     .oval-feedback-pill {
       position: absolute;
-      bottom: 22px;
-      background: rgba(10, 14, 24, 0.85);
+      bottom: 24px;
+      background: rgba(10, 14, 24, 0.88);
       border: 1px solid var(--border-color);
       backdrop-filter: blur(8px);
-      padding: 0.45rem 1.1rem;
+      padding: 0.48rem 1.15rem;
       border-radius: 999px;
       display: flex;
       align-items: center;
@@ -398,7 +524,7 @@
       font-size: 0.84rem;
       font-weight: 600;
       color: var(--text-main);
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
       transition: all 0.3s ease;
     }
 
@@ -442,12 +568,175 @@
       pointer-events: none;
       display: none;
       animation: countPop 0.8s ease-out infinite;
+      z-index: 25;
     }
 
     @keyframes countPop {
       0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
       50% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
       100% { transform: translate(-50%, -50%) scale(1); opacity: 0.85; }
+    }
+
+    /* =========================================================================
+       ACTIVE LIVENESS CHALLENGE HUD (Blink & Head Movement Interactive Cards)
+       ========================================================================= */
+    .challenge-card-overlay {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      right: 14px;
+      background: rgba(10, 16, 28, 0.92);
+      border: 1.5px solid var(--cyan);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px var(--cyan-glow);
+      backdrop-filter: blur(12px);
+      border-radius: 14px;
+      padding: 0.85rem 1.25rem;
+      display: none;
+      flex-direction: column;
+      gap: 0.6rem;
+      z-index: 30;
+      animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slideDown {
+      from { transform: translateY(-20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .challenge-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .challenge-stage-tag {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .challenge-timer-tag {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #fbbf24;
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      padding: 0.2rem 0.75rem;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .challenge-timer-tag.urgent {
+      color: #f43f5e;
+      background: rgba(244, 63, 94, 0.2);
+      border-color: #f43f5e;
+      animation: pulseUrgent 0.6s infinite alternate;
+    }
+
+    @keyframes pulseUrgent {
+      0% { transform: scale(1); }
+      100% { transform: scale(1.06); }
+    }
+
+    .challenge-action-center {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+    }
+
+    .challenge-direction-icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      box-shadow: 0 0 15px rgba(2, 132, 199, 0.5);
+      flex-shrink: 0;
+      animation: bounceIcon 1.2s infinite alternate;
+    }
+
+    @keyframes bounceIcon {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(4px); }
+    }
+
+    .challenge-main-prompt {
+      font-family: var(--font-heading);
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+      line-height: 1.25;
+    }
+
+    .challenge-sub-hint {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    /* Challenge Progress Bar */
+    .challenge-progress-box {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .challenge-progress-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.74rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+
+    .challenge-progress-track {
+      width: 100%;
+      height: 9px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .challenge-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #06b6d4, #10b981);
+      border-radius: 999px;
+      box-shadow: 0 0 12px var(--emerald-glow);
+      transition: width 0.15s ease-out;
+    }
+
+    /* Challenge Bottom Status Banner */
+    .challenge-status-strip {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      background: rgba(10, 15, 26, 0.92);
+      border: 1px solid var(--border-color);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 0.55rem 1rem;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 30;
+      font-size: 0.8rem;
     }
 
     /* Flash Screen Animation on Capture */
@@ -551,7 +840,7 @@
     }
 
     .btn {
-      padding: 0.8rem 1.5rem;
+      padding: 0.8rem 1.4rem;
       font-family: var(--font-body);
       font-weight: 600;
       font-size: 0.92rem;
@@ -577,6 +866,18 @@
       transform: translateY(-1px);
     }
 
+    .btn-challenge {
+      background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+      color: white;
+      box-shadow: 0 0 20px var(--purple-glow);
+      flex: 1.25;
+    }
+
+    .btn-challenge:hover:not(:disabled) {
+      box-shadow: 0 0 30px rgba(139, 92, 246, 0.6);
+      transform: translateY(-1px);
+    }
+
     .btn-secondary {
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid var(--border-color);
@@ -585,6 +886,16 @@
 
     .btn-secondary:hover:not(:disabled) {
       background: rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-danger-outline {
+      background: rgba(244, 63, 94, 0.12);
+      border: 1px solid rgba(244, 63, 94, 0.4);
+      color: #fda4af;
+    }
+
+    .btn-danger-outline:hover:not(:disabled) {
+      background: rgba(244, 63, 94, 0.25);
     }
 
     .btn:disabled {
@@ -797,7 +1108,7 @@
       border: 1px solid var(--border-color);
     }
 
-    /* Raw JSON Modal / Section */
+    /* Raw JSON Accordion */
     .json-toggle-btn {
       background: transparent;
       border: 1px dashed var(--border-color);
@@ -858,8 +1169,8 @@
           </svg>
         </div>
         <div>
-          <div class="brand-title">eKYC AI Scanner & Biometric Engine</div>
-          <div class="brand-subtitle">Ensemble Dual-Model: YOLO_4 + RF-DETR Small &bull; Oval Bokeh Masking</div>
+          <div class="brand-title">eKYC AI Biometric & Active Liveness Portal</div>
+          <div class="brand-subtitle">Interactive Liveness: Blink & Head Turn &bull; Ensemble: YOLO_4 + RF-DETR Small</div>
         </div>
       </div>
       <div class="nav-badges">
@@ -877,13 +1188,46 @@
   <main>
     <div class="hero-strip">
       <div>
-        <h1>Xác Thực Sinh Trắc Học eKYC Trực Tuyến</h1>
-        <p>Hệ thống tự động làm mờ bối cảnh ngoại vi, tập trung quét khuôn mặt bên trong khung Oval theo 7 tiêu chí chuẩn ngân hàng.</p>
+        <h1>Xác Thực Sinh Trắc Học & Thử Thách Liveness Trực Tiếp</h1>
+        <p>Hệ thống hỗ trợ kiểm tra thực thể sống 2 bước (Chớp mắt + Quay đầu) và thẩm định khuôn mặt Ensemble với hiệu ứng làm mờ Bokeh ngoại vi.</p>
       </div>
       <div class="shortcuts-pill">
         <span>Phím tắt:</span>
-        <span class="kbd">SPACE</span> hoặc <span class="kbd">C</span>: Chụp ngay &bull;
-        <span class="kbd">A</span>: Bật/Tắt Auto-Capture
+        <span class="kbd">SPACE</span>: Bắt đầu Thử thách &bull;
+        <span class="kbd">S</span>: Chụp nhanh 1-Shot &bull;
+        <span class="kbd">ESC</span>: Hủy
+      </div>
+    </div>
+
+    <!-- Stepper 4 Bước Quy Trình -->
+    <div class="stepper-bar">
+      <div class="step-node active" id="stepNode1">
+        <div class="step-index-badge" id="stepBadge1">1</div>
+        <div class="step-info">
+          <div class="step-title">Định Vị Oval</div>
+          <div class="step-desc" id="stepDesc1">Nhìn thẳng, đúng cự ly</div>
+        </div>
+      </div>
+      <div class="step-node" id="stepNode2">
+        <div class="step-index-badge" id="stepBadge2">2</div>
+        <div class="step-info">
+          <div class="step-title">Chớp Mắt</div>
+          <div class="step-desc" id="stepDesc2">Đo chỉ số EAR tự nhiên</div>
+        </div>
+      </div>
+      <div class="step-node" id="stepNode3">
+        <div class="step-index-badge" id="stepBadge3">3</div>
+        <div class="step-info">
+          <div class="step-title">Quay Đầu 3D</div>
+          <div class="step-desc" id="stepDesc3">Xoay mặt theo chỉ định</div>
+        </div>
+      </div>
+      <div class="step-node" id="stepNode4">
+        <div class="step-index-badge" id="stepBadge4">4</div>
+        <div class="step-info">
+          <div class="step-title">Thẩm Định Ensemble</div>
+          <div class="step-desc" id="stepDesc4">7 tiêu chí chuẩn ngân hàng</div>
+        </div>
       </div>
     </div>
 
@@ -894,10 +1238,23 @@
           <div class="panel-title">
             <span>Kênh Thu Nhận Hình Ảnh</span>
           </div>
+
           <div class="tabs">
-            <button class="tab-btn active" id="tabWebcamBtn" onclick="switchMode('webcam')">Webcam Trực Tiếp</button>
-            <button class="tab-btn" id="tabUploadBtn" onclick="switchMode('upload')">Tải File Lên</button>
+            <button class="tab-btn active" id="tabWebcamBtn" onclick="switchInputMode('webcam')">Webcam Trực Tiếp</button>
+            <button class="tab-btn" id="tabUploadBtn" onclick="switchInputMode('upload')">Tải File Lên</button>
           </div>
+        </div>
+
+        <!-- Mode Segmented Control: Challenge Mode vs Quick 1-Shot -->
+        <div class="mode-segmented" id="workflowSegmented">
+          <button class="seg-btn active" id="segChallengeBtn" onclick="setWorkflowMode('challenge')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+            <span>Chuỗi Thử Thách Liveness (Chớp mắt + Quay đầu)</span>
+          </button>
+          <button class="seg-btn" id="segQuickBtn" onclick="setWorkflowMode('quick')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
+            <span>Thẩm Định Nhanh 1-Shot</span>
+          </button>
         </div>
 
         <!-- Capture Box with Bokeh Blur Overlay & Oval Guide -->
@@ -929,6 +1286,37 @@
             <div class="countdown-badge" id="countdownBadge">3</div>
           </div>
 
+          <!-- Interactive Active Liveness Challenge HUD -->
+          <div class="challenge-card-overlay" id="challengeCardOverlay">
+            <div class="challenge-header-row">
+              <span class="challenge-stage-tag" id="challengeStageTag">
+                <span class="status-dot" style="background:#38bdf8; box-shadow:0 0 8px #38bdf8;"></span>
+                <span id="challengeStageText">BƯỚC 1/2: THỬ THÁCH CHỚP MẮT</span>
+              </span>
+              <span class="challenge-timer-tag" id="challengeTimerTag">
+                ⏱️ <span id="challengeTimeVal">7.0s</span>
+              </span>
+            </div>
+
+            <div class="challenge-action-center">
+              <div class="challenge-direction-icon" id="challengeActionIcon">👁️</div>
+              <div>
+                <div class="challenge-main-prompt" id="challengeMainPrompt">VUI LÒNG CHỚP MẮT TỰ NHIÊN</div>
+                <div class="challenge-sub-hint" id="challengeSubHint">Hệ thống đang đo lường chỉ số mở mắt EAR thời gian thực</div>
+              </div>
+            </div>
+
+            <div class="challenge-progress-box">
+              <div class="challenge-progress-labels">
+                <span id="challengeTelemetryText">EAR: 0.00 | Mắt: Mở</span>
+                <span id="challengeProgressPercent">0%</span>
+              </div>
+              <div class="challenge-progress-track">
+                <div class="challenge-progress-fill" id="challengeProgressFill"></div>
+              </div>
+            </div>
+          </div>
+
           <!-- Screen Flash Effect on Capture -->
           <div class="flash-overlay" id="flashOverlay"></div>
 
@@ -951,7 +1339,7 @@
               <input type="checkbox" id="chkAutoCapture" checked>
               <span class="toggle-slider"></span>
             </div>
-            <span><strong>Tự động chụp khi mặt đúng chuẩn trong Oval</strong> (Auto-Capture)</span>
+            <span><strong>Tự động kích hoạt khi mặt chuẩn trong Oval</strong></span>
           </label>
 
           <label class="toggle-label">
@@ -969,9 +1357,16 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
             <span id="camToggleBtnText">Bật Camera</span>
           </button>
-          <button class="btn btn-primary" id="verifyBtn" onclick="submitVerification()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-            <span id="verifyBtnText">Chụp & Xác Thực eKYC</span>
+
+          <!-- Dynamic Action Button: Start Challenge vs Quick Verify -->
+          <button class="btn btn-challenge" id="mainActionBtn" onclick="handleMainActionClick()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+            <span id="mainActionBtnText">Bắt Đầu Thử Thách Liveness</span>
+          </button>
+
+          <!-- Cancel Challenge Button (Shown only when in active challenge) -->
+          <button class="btn btn-danger-outline" id="cancelChallengeBtn" style="display: none;" onclick="cancelActiveChallenge()">
+            <span>✕ Hủy</span>
           </button>
         </div>
       </div>
@@ -1067,11 +1462,11 @@
               <span class="pill idle" id="critBoth">--</span>
             </div>
             <div class="criteria-row">
-              <span>6. Hoàn thành kiểm tra chớp mắt</span>
+              <span>6. Hoàn thành kiểm tra chớp mắt (Blink)</span>
               <span class="pill idle" id="critBlink">--</span>
             </div>
             <div class="criteria-row">
-              <span>7. Hoàn thành cử động quay đầu</span>
+              <span>7. Hoàn thành cử động quay đầu (Head Turn)</span>
               <span class="pill idle" id="critHead">--</span>
             </div>
           </div>
@@ -1090,17 +1485,40 @@
 
   <script>
     const API_BASE_URL = window.location.origin;
-    let currentMode = 'webcam';
+
+    // States
+    const APP_STATE = {
+      IDLE: 'IDLE',
+      PREVIEW_ALIGN: 'PREVIEW_ALIGN',
+      CAPTURING_BASE: 'CAPTURING_BASE',
+      CHALLENGE_BLINK: 'CHALLENGE_BLINK',
+      CHALLENGE_HEAD: 'CHALLENGE_HEAD',
+      FINAL_VERIFYING: 'FINAL_VERIFYING'
+    };
+
+    let currentState = APP_STATE.IDLE;
+    let inputMode = 'webcam'; // 'webcam' | 'upload'
+    let workflowMode = 'challenge'; // 'challenge' | 'quick'
     let webcamStream = null;
     let selectedFileBlob = null;
-    let isVerifying = false;
 
-    // Real-time Pose & Oval Alignment Loop
+    // Active Liveness Session variables
+    let baseFrameBlob = null; // Captured when face is well-aligned for final Ensemble verify
+    let blinkCounter = 0;
+    let blinkState = false;
+    let blinkPassed = false;
+
+    let headChallengeAction = 'turn_left';
+    let headChallengePrompt = 'QUAY MẶT SANG TRÁI';
+    let headPassed = false;
+    let headTimeoutSeconds = 7.0;
+
+    // Intervals & Loops
     let poseCheckInterval = null;
+    let challengeLoopInterval = null;
     let consecutiveGoodFrames = 0;
-    let autoCaptureTriggered = false;
+    let autoTriggerBlocked = false;
     let countdownTimer = null;
-    let lastJsonResponse = null;
 
     // Healthcheck on load
     window.addEventListener('DOMContentLoaded', async () => {
@@ -1114,12 +1532,17 @@
         console.warn('Health check failed:', err);
       }
 
-      // Keyboard Shortcuts: Space or C to capture, A for auto-capture toggle
+      // Keyboard Shortcuts
       window.addEventListener('keydown', (e) => {
         if (e.target.tagName === 'INPUT') return;
-        if (e.code === 'Space' || e.key.toLowerCase() === 'c') {
+        if (e.code === 'Space') {
           e.preventDefault();
-          if (webcamStream && !isVerifying) submitVerification();
+          handleMainActionClick();
+        } else if (e.key.toLowerCase() === 's') {
+          e.preventDefault();
+          quickSnapshotBypass();
+        } else if (e.key.toLowerCase() === 'escape') {
+          cancelActiveChallenge();
         } else if (e.key.toLowerCase() === 'a') {
           const chk = document.getElementById('chkAutoCapture');
           chk.checked = !chk.checked;
@@ -1127,11 +1550,14 @@
       });
     });
 
-    // Mode Switcher
-    function switchMode(mode) {
-      currentMode = mode;
+    // =========================================================================
+    // NAVIGATION & WORKFLOW SWITCHERS
+    // =========================================================================
+    function switchInputMode(mode) {
+      inputMode = mode;
       document.getElementById('tabWebcamBtn').classList.toggle('active', mode === 'webcam');
       document.getElementById('tabUploadBtn').classList.toggle('active', mode === 'upload');
+      document.getElementById('workflowSegmented').style.display = (mode === 'webcam') ? 'flex' : 'none';
 
       if (mode === 'webcam') {
         document.getElementById('previewImg').style.display = 'none';
@@ -1141,22 +1567,67 @@
           document.getElementById('scannerOverlay').style.display = 'flex';
           document.getElementById('bokehBlurOverlay').style.display = 'block';
         }
+        updateMainActionButtonText();
       } else {
         stopWebcam();
         document.getElementById('webcamVideo').style.display = 'none';
         document.getElementById('scannerOverlay').style.display = 'none';
         document.getElementById('bokehBlurOverlay').style.display = 'none';
+        hideChallengeHUD();
         if (!selectedFileBlob) {
           document.getElementById('uploadPlaceholder').style.display = 'block';
         } else {
           document.getElementById('previewImg').style.display = 'block';
         }
+        document.getElementById('mainActionBtnText').textContent = 'Thẩm Định File Ảnh';
       }
     }
 
-    // Toggle Webcam
+    function setWorkflowMode(mode) {
+      if (currentState === APP_STATE.CHALLENGE_BLINK || currentState === APP_STATE.CHALLENGE_HEAD) {
+        cancelActiveChallenge();
+      }
+      workflowMode = mode;
+      document.getElementById('segChallengeBtn').classList.toggle('active', mode === 'challenge');
+      document.getElementById('segQuickBtn').classList.toggle('active', mode === 'quick');
+      updateMainActionButtonText();
+    }
+
+    function updateMainActionButtonText() {
+      const btnText = document.getElementById('mainActionBtnText');
+      const btn = document.getElementById('mainActionBtn');
+      if (inputMode === 'upload') {
+        btnText.textContent = 'Thẩm Định File Ảnh';
+        btn.className = 'btn btn-primary';
+      } else if (workflowMode === 'challenge') {
+        btnText.textContent = 'Bắt Đầu Thử Thách Liveness';
+        btn.className = 'btn btn-challenge';
+      } else {
+        btnText.textContent = 'Chụp Nhanh & Thẩm Định';
+        btn.className = 'btn btn-primary';
+      }
+    }
+
+    function setStepStatus(stepNum, status) {
+      // status: 'idle' | 'active' | 'completed'
+      const node = document.getElementById(`stepNode${stepNum}`);
+      if (!node) return;
+      node.classList.remove('active', 'completed');
+      if (status === 'active') node.classList.add('active');
+      if (status === 'completed') node.classList.add('completed');
+    }
+
+    function resetAllSteps() {
+      setStepStatus(1, 'active');
+      setStepStatus(2, 'idle');
+      setStepStatus(3, 'idle');
+      setStepStatus(4, 'idle');
+    }
+
+    // =========================================================================
+    // WEBCAM LIFECYCLE
+    // =========================================================================
     async function toggleWebcam() {
-      const btn = document.getElementById('camToggleBtn');
       const btnText = document.getElementById('camToggleBtnText');
       if (webcamStream) {
         stopWebcam();
@@ -1180,6 +1651,8 @@
           document.getElementById('bokehBlurOverlay').style.display = bokehEnabled ? 'block' : 'none';
 
           btnText.textContent = 'Tắt Camera';
+          currentState = APP_STATE.PREVIEW_ALIGN;
+          resetAllSteps();
           startPoseCheckLoop();
         } catch (err) {
           alert('Không thể truy cập camera: ' + err.message);
@@ -1193,9 +1666,12 @@
         webcamStream = null;
       }
       stopPoseCheckLoop();
+      stopChallengeLoop();
+      currentState = APP_STATE.IDLE;
       document.getElementById('webcamVideo').style.display = 'none';
       document.getElementById('scannerOverlay').style.display = 'none';
       document.getElementById('bokehBlurOverlay').style.display = 'none';
+      hideChallengeHUD();
       document.getElementById('camToggleBtnText').textContent = 'Bật Camera';
     }
 
@@ -1206,21 +1682,20 @@
     }
 
     // =========================================================================
-    // REAL-TIME OVAL ALIGNMENT & AUTO-CAPTURE PIPELINE
+    // PREVIEW & OVAL ALIGNMENT LOOP (Bước 1: Canh Oval)
     // =========================================================================
     function startPoseCheckLoop() {
       stopPoseCheckLoop();
       consecutiveGoodFrames = 0;
-      autoCaptureTriggered = false;
+      autoTriggerBlocked = false;
 
       poseCheckInterval = setInterval(async () => {
-        if (!webcamStream || isVerifying || autoCaptureTriggered) return;
+        if (!webcamStream || currentState !== APP_STATE.PREVIEW_ALIGN || autoTriggerBlocked) return;
 
         const video = document.getElementById('webcamVideo');
         if (video.readyState < 2) return;
 
         try {
-          // Tạo frame thumbnail nhỏ để gửi validate pose cực nhanh (<50ms)
           const blob = await captureThumbnailBlob(video, 480, 360);
           if (!blob) return;
 
@@ -1237,9 +1712,9 @@
             updateOvalGuideUI(data);
           }
         } catch (e) {
-          // Bỏ qua lỗi kết nối tạm thời ở preview
+          // Ignore transient preview network errors
         }
-      }, 260); // 4 lần / giây
+      }, 260); // 4 FPS for preview loop
     }
 
     function stopPoseCheckLoop() {
@@ -1260,8 +1735,7 @@
       const text = document.getElementById('ovalFeedbackText');
       const autoCaptureEnabled = document.getElementById('chkAutoCapture').checked;
 
-      // Xóa các class trạng thái cũ
-      oval.classList.remove('state-aligned', 'state-warning', 'state-rejected');
+      oval.classList.remove('state-aligned', 'state-warning', 'state-rejected', 'state-challenge');
       pill.classList.remove('state-aligned', 'state-warning', 'state-rejected');
 
       if (!data.has_face) {
@@ -1272,17 +1746,20 @@
       }
 
       if (data.is_aligned_good) {
-        // Mặt đã nằm chuẩn trong oval và nhìn thẳng
         oval.classList.add('state-aligned');
         pill.classList.add('state-aligned');
-        text.textContent = 'MẶT ĐÃ CHUẨN TRONG OVAL! GIỮ YÊN...';
+        text.textContent = 'MẶT ĐÃ CHUẨN TRONG OVAL! GIỮ NGUYÊN...';
         consecutiveGoodFrames++;
 
-        if (autoCaptureEnabled && consecutiveGoodFrames >= 3 && !autoCaptureTriggered) {
-          startCountdownAndCapture();
+        // Lưu trước frame chất lượng cao khi mặt đang nhìn thẳng và chuẩn trong oval
+        if (currentState === APP_STATE.PREVIEW_ALIGN) {
+          captureFullFrameBlob().then(b => { baseFrameBlob = b; });
+        }
+
+        if (autoCaptureEnabled && consecutiveGoodFrames >= 3 && !autoTriggerBlocked) {
+          triggerAutoWorkflow();
         }
       } else {
-        // Có mặt nhưng lệch hoặc sai tư thế / khoảng cách
         consecutiveGoodFrames = 0;
         cancelCountdown();
 
@@ -1303,10 +1780,18 @@
       }
     }
 
-    function startCountdownAndCapture() {
-      if (autoCaptureTriggered) return;
-      autoCaptureTriggered = true;
+    function triggerAutoWorkflow() {
+      autoTriggerBlocked = true;
+      if (workflowMode === 'challenge') {
+        // Auto-start Liveness Challenge sequence
+        startLivenessChallenge();
+      } else {
+        // Auto countdown for quick 1-shot capture
+        startCountdownAndQuickCapture();
+      }
+    }
 
+    function startCountdownAndQuickCapture() {
       const badge = document.getElementById('countdownBadge');
       badge.style.display = 'block';
       let count = 2;
@@ -1320,8 +1805,7 @@
           clearInterval(countdownTimer);
           countdownTimer = null;
           badge.style.display = 'none';
-          // Trigger capture
-          submitVerification();
+          executeQuickVerification();
         }
       }, 700);
     }
@@ -1332,100 +1816,357 @@
         countdownTimer = null;
       }
       document.getElementById('countdownBadge').style.display = 'none';
-      autoCaptureTriggered = false;
     }
 
-    // Capture Thumbnail for Fast Pose Validation
-    function captureThumbnailBlob(video, targetW, targetH) {
-      return new Promise((resolve) => {
-        const canvas = document.getElementById('hiddenCanvas');
-        canvas.width = targetW;
-        canvas.height = targetH;
-        const ctx = canvas.getContext('2d');
-        ctx.save();
-        ctx.scale(-1, 1); // Unmirror
-        ctx.drawImage(video, -targetW, 0, targetW, targetH);
-        ctx.restore();
-        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.80);
+    // =========================================================================
+    // ACTIVE LIVENESS CHALLENGE WORKFLOW (Blink + Head Movement)
+    // =========================================================================
+    async function handleMainActionClick() {
+      if (inputMode === 'upload') {
+        executeQuickVerification();
+        return;
+      }
+
+      if (!webcamStream) {
+        await toggleWebcam();
+        return;
+      }
+
+      if (workflowMode === 'challenge') {
+        startLivenessChallenge();
+      } else {
+        executeQuickVerification();
+      }
+    }
+
+    function quickSnapshotBypass() {
+      if (!webcamStream) {
+        alert('Vui lòng bật Camera trước!');
+        return;
+      }
+      cancelActiveChallenge();
+      executeQuickVerification();
+    }
+
+    async function startLivenessChallenge() {
+      if (!webcamStream) {
+        alert('Vui lòng bật camera để bắt đầu thử thách!');
+        return;
+      }
+
+      stopPoseCheckLoop();
+      cancelCountdown();
+
+      // Show Cancel button
+      document.getElementById('cancelChallengeBtn').style.display = 'inline-flex';
+      document.getElementById('mainActionBtn').disabled = true;
+
+      // Bước 1: Chụp ngay frame chuẩn (Base High-Res Frame) khi mặt đang thẳng trong Oval
+      triggerScreenFlash();
+      baseFrameBlob = await captureFullFrameBlob();
+
+      setStepStatus(1, 'completed');
+      setStepStatus(2, 'active');
+
+      // Bước 2: Bắt đầu Thử Thách Chớp Mắt (Blink Challenge)
+      currentState = APP_STATE.CHALLENGE_BLINK;
+      blinkCounter = 0;
+      blinkState = false;
+      blinkPassed = false;
+
+      showChallengeHUD();
+      updateChallengeHUD({
+        stageText: 'BƯỚC 1/2: THỬ THÁCH CHỚP MẮT',
+        icon: '👁️',
+        prompt: 'VUI LÒNG CHỚP MẮT TỰ NHIÊN',
+        hint: 'Nhìn vào camera và chớp mắt 1 lần tự nhiên',
+        timerText: 'Chờ Chớp Mắt',
+        isTimerUrgent: false,
+        telemetry: 'EAR: Đang đo lường...',
+        percent: '0%',
+        fillWidth: '0%'
       });
+
+      const oval = document.getElementById('faceGuideOval');
+      oval.className = 'face-guide-oval state-challenge';
+
+      startBlinkChallengeLoop();
     }
 
-    // Capture Full Resolution Frame
-    function captureFullFrameBlob() {
-      return new Promise((resolve) => {
+    function startBlinkChallengeLoop() {
+      stopChallengeLoop();
+      let framesCount = 0;
+      const maxFramesTimeout = 100; // ~10s
+
+      challengeLoopInterval = setInterval(async () => {
+        if (currentState !== APP_STATE.CHALLENGE_BLINK) return;
+
         const video = document.getElementById('webcamVideo');
-        const canvas = document.getElementById('hiddenCanvas');
-        const vw = video.videoWidth || 1280;
-        const vh = video.videoHeight || 720;
-        canvas.width = vw;
-        canvas.height = vh;
-        const ctx = canvas.getContext('2d');
-        ctx.save();
-        ctx.scale(-1, 1); // Unmirror
-        ctx.drawImage(video, -vw, 0, vw, vh);
-        ctx.restore();
-        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.95);
+        if (video.readyState < 2) return;
+
+        framesCount++;
+        if (framesCount > maxFramesTimeout) {
+          // Timeout chớp mắt -> chuyển tiếp với blink_passed = false
+          blinkPassed = false;
+          proceedToHeadMovementChallenge();
+          return;
+        }
+
+        try {
+          const frameBlob = await captureThumbnailBlob(video, 480, 360);
+          const formData = new FormData();
+          formData.append('file', frameBlob, 'frame.jpg');
+          formData.append('blink_counter', blinkCounter);
+          formData.append('blink_state', blinkState);
+
+          const res = await fetch(`${API_BASE_URL}/api/v1/liveness/blink-frame`, {
+            method: 'POST',
+            body: formData
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            blinkCounter = data.blink_counter;
+            blinkState = data.blink_state;
+            const earVal = data.ear_avg.toFixed(2);
+            const pct = Math.round((data.progress || 0) * 100);
+
+            updateChallengeHUD({
+              stageText: 'BƯỚC 1/2: THỬ THÁCH CHỚP MẮT',
+              icon: blinkState ? '😉' : '👁️',
+              prompt: data.passed ? 'ĐÃ XÁC NHẬN CHỚP MẮT THÀNH CÔNG!' : (blinkState ? 'ĐANG NHẮM MẮT... GIỮ NGUYÊN' : 'VUI LÒNG CHỚP MẮT TỰ NHIÊN'),
+              hint: `Chỉ số EAR: ${earVal} | Mục tiêu: Nhắm (<0.18) -> Mở (>=0.22)`,
+              timerText: `${blinkCounter}/1 Lần`,
+              isTimerUrgent: false,
+              telemetry: `EAR: ${earVal} | Trạng thái: ${data.label || ''}`,
+              percent: `${pct}%`,
+              fillWidth: `${pct}%`
+            });
+
+            if (data.passed) {
+              blinkPassed = true;
+              stopChallengeLoop();
+              // Chờ 600ms hiển thị badge thành công rồi chuyển sang Bước 2: Quay Đầu
+              setTimeout(() => {
+                proceedToHeadMovementChallenge();
+              }, 600);
+            }
+          }
+        } catch (e) {
+          console.warn('Liveness blink error:', e);
+        }
+      }, 100); // 10 FPS
+    }
+
+    async function proceedToHeadMovementChallenge() {
+      setStepStatus(2, 'completed');
+      setStepStatus(3, 'active');
+      currentState = APP_STATE.CHALLENGE_HEAD;
+
+      // Gọi server lấy thử thách ngẫu nhiên mới
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/liveness/start-head`, {
+          method: 'POST'
+        });
+        if (res.ok) {
+          const data = await res.json();
+          headChallengeAction = data.action;
+          headChallengePrompt = data.prompt;
+          headTimeoutSeconds = data.timeout_seconds || 7.0;
+        }
+      } catch (err) {
+        console.warn('Failed to start head challenge:', err);
+      }
+
+      // Xác định icon hướng
+      let dirIcon = '🔄';
+      if (headChallengeAction.includes('left')) dirIcon = '⬅️';
+      else if (headChallengeAction.includes('right')) dirIcon = '➡️';
+      else if (headChallengeAction.includes('up')) dirIcon = '⬆️';
+      else if (headChallengeAction.includes('down')) dirIcon = '⬇️';
+
+      updateChallengeHUD({
+        stageText: 'BƯỚC 2/2: THỬ THÁCH QUAY ĐẦU',
+        icon: dirIcon,
+        prompt: headChallengePrompt.toUpperCase(),
+        hint: `Quay đầu từ từ theo hướng mũi tên đến khi đạt 100%`,
+        timerText: `${headTimeoutSeconds.toFixed(1)}s`,
+        isTimerUrgent: false,
+        telemetry: `Góc quay mục tiêu: 16°`,
+        percent: '0%',
+        fillWidth: '0%'
+      });
+
+      startHeadChallengeLoop();
+    }
+
+    function startHeadChallengeLoop() {
+      stopChallengeLoop();
+
+      challengeLoopInterval = setInterval(async () => {
+        if (currentState !== APP_STATE.CHALLENGE_HEAD) return;
+
+        const video = document.getElementById('webcamVideo');
+        if (video.readyState < 2) return;
+
+        try {
+          const frameBlob = await captureThumbnailBlob(video, 480, 360);
+          const formData = new FormData();
+          formData.append('file', frameBlob, 'frame.jpg');
+
+          const res = await fetch(`${API_BASE_URL}/api/v1/liveness/update-head`, {
+            method: 'POST',
+            body: formData
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const pct = Math.min(100, Math.round((data.progress || 0) * 100));
+            const timeLeft = data.time_left !== undefined ? data.time_left : 0.0;
+            const isUrgent = timeLeft < 2.5;
+
+            let dirIcon = '🔄';
+            if (headChallengeAction.includes('left')) dirIcon = '⬅️';
+            else if (headChallengeAction.includes('right')) dirIcon = '➡️';
+            else if (headChallengeAction.includes('up')) dirIcon = '⬆️';
+            else if (headChallengeAction.includes('down')) dirIcon = '⬇️';
+
+            let telemetry = `Tiến trình: ${pct}%`;
+            if (data.pose) {
+              telemetry = `Yaw: ${data.pose.yaw}° | Pitch: ${data.pose.pitch}° | ${telemetry}`;
+            }
+
+            updateChallengeHUD({
+              stageText: 'BƯỚC 2/2: THỬ THÁCH QUAY ĐẦU',
+              icon: dirIcon,
+              prompt: data.prompt ? data.prompt.toUpperCase() : headChallengePrompt.toUpperCase(),
+              hint: `Giữ tư thế quay đầu đến khi đầy thanh tiến trình`,
+              timerText: `${timeLeft.toFixed(1)}s`,
+              isTimerUrgent: isUrgent,
+              telemetry: telemetry,
+              percent: `${pct}%`,
+              fillWidth: `${pct}%`
+            });
+
+            if (data.passed) {
+              headPassed = true;
+              stopChallengeLoop();
+              updateChallengeHUD({
+                stageText: 'THÀNH CÔNG!',
+                icon: '✅',
+                prompt: 'HOÀN THÀNH TẤT CẢ THỬ THÁCH LIVENESS!',
+                hint: 'Đang gửi dữ liệu thẩm định Dual-Model Ensemble...',
+                timerText: 'PASS',
+                isTimerUrgent: false,
+                telemetry: 'Đạt chuẩn 100%',
+                percent: '100%',
+                fillWidth: '100%'
+              });
+
+              setTimeout(() => {
+                finishLivenessAndSubmitVerify();
+              }, 700);
+            } else if (data.state === 'FAILED') {
+              headPassed = false;
+              stopChallengeLoop();
+              updateChallengeHUD({
+                stageText: 'HẾT THỜI GIAN',
+                icon: '⚠️',
+                prompt: 'CHƯA HOÀN THÀNH QUAY ĐẦU ĐÚNG HẠN',
+                hint: 'Đang tổng hợp báo cáo eKYC...',
+                timerText: '0.0s',
+                isTimerUrgent: true,
+                telemetry: 'Quá thời gian quy định',
+                percent: `${pct}%`,
+                fillWidth: `${pct}%`
+              });
+
+              setTimeout(() => {
+                finishLivenessAndSubmitVerify();
+              }, 900);
+            }
+          }
+        } catch (e) {
+          console.warn('Liveness head error:', e);
+        }
+      }, 110); // ~9 FPS
+    }
+
+    function stopChallengeLoop() {
+      if (challengeLoopInterval) {
+        clearInterval(challengeLoopInterval);
+        challengeLoopInterval = null;
+      }
+    }
+
+    function cancelActiveChallenge() {
+      stopChallengeLoop();
+      hideChallengeHUD();
+      document.getElementById('cancelChallengeBtn').style.display = 'none';
+      document.getElementById('mainActionBtn').disabled = false;
+      currentState = APP_STATE.PREVIEW_ALIGN;
+      resetAllSteps();
+      startPoseCheckLoop();
+    }
+
+    function showChallengeHUD() {
+      document.getElementById('challengeCardOverlay').style.display = 'flex';
+      document.getElementById('ovalFeedbackPill').style.display = 'none';
+    }
+
+    function hideChallengeHUD() {
+      document.getElementById('challengeCardOverlay').style.display = 'none';
+      document.getElementById('ovalFeedbackPill').style.display = 'flex';
+    }
+
+    function updateChallengeHUD({ stageText, icon, prompt, hint, timerText, isTimerUrgent, telemetry, percent, fillWidth }) {
+      if (stageText) document.getElementById('challengeStageText').textContent = stageText;
+      if (icon) document.getElementById('challengeActionIcon').textContent = icon;
+      if (prompt) document.getElementById('challengeMainPrompt').textContent = prompt;
+      if (hint) document.getElementById('challengeSubHint').textContent = hint;
+      if (timerText) document.getElementById('challengeTimeVal').textContent = timerText;
+
+      const timerTag = document.getElementById('challengeTimerTag');
+      timerTag.classList.toggle('urgent', !!isTimerUrgent);
+
+      if (telemetry) document.getElementById('challengeTelemetryText').textContent = telemetry;
+      if (percent) document.getElementById('challengeProgressPercent').textContent = percent;
+      if (fillWidth) document.getElementById('challengeProgressFill').style.width = fillWidth;
+    }
+
+    // =========================================================================
+    // SUBMISSION & FINAL ENSEMBLE VERIFY (Bước 4: Thẩm Định)
+    // =========================================================================
+    async function finishLivenessAndSubmitVerify() {
+      setStepStatus(3, 'completed');
+      setStepStatus(4, 'active');
+      currentState = APP_STATE.FINAL_VERIFYING;
+
+      hideChallengeHUD();
+      document.getElementById('cancelChallengeBtn').style.display = 'none';
+
+      // Submit baseFrameBlob with actual liveness results
+      await sendVerificationPayload({
+        fileToSend: baseFrameBlob,
+        blink_passed: blinkPassed,
+        blink_count: blinkCounter,
+        head_passed: headPassed,
+        head_action: headChallengeAction
       });
     }
 
-    // Screen Flash Effect
-    function triggerScreenFlash() {
-      const flash = document.getElementById('flashOverlay');
-      flash.classList.add('flash-active');
-      setTimeout(() => flash.classList.remove('flash-active'), 180);
-    }
-
-    // Drag & Drop
-    const box = document.getElementById('captureBox');
-    box.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      if (currentMode === 'upload') box.style.borderColor = 'var(--cyan)';
-    });
-    box.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      if (currentMode === 'upload') box.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-    });
-    box.addEventListener('drop', (e) => {
-      e.preventDefault();
-      box.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-      if (currentMode === 'upload' && e.dataTransfer.files.length > 0) {
-        processFile(e.dataTransfer.files[0]);
-      }
-    });
-
-    function handleFileSelected(e) {
-      if (e.target.files.length > 0) {
-        processFile(e.target.files[0]);
-      }
-    }
-
-    function processFile(file) {
-      selectedFileBlob = file;
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        const preview = document.getElementById('previewImg');
-        preview.src = evt.target.result;
-        preview.style.display = 'block';
-        document.getElementById('uploadPlaceholder').style.display = 'none';
-      };
-      reader.readAsDataURL(file);
-    }
-
-    // =========================================================================
-    // MAIN VERIFICATION PIPELINE SUBMISSION
-    // =========================================================================
-    async function submitVerification() {
-      if (isVerifying) return;
-      isVerifying = true;
-
-      const verifyBtn = document.getElementById('verifyBtn');
-      const verifyBtnText = document.getElementById('verifyBtnText');
+    async function executeQuickVerification() {
+      setStepStatus(1, 'completed');
+      setStepStatus(2, 'completed');
+      setStepStatus(3, 'completed');
+      setStepStatus(4, 'active');
+      currentState = APP_STATE.FINAL_VERIFYING;
 
       let fileToSend = null;
-      if (currentMode === 'webcam') {
+      if (inputMode === 'webcam') {
         if (!webcamStream) {
-          alert('Vui lòng bật Camera trước khi quét!');
-          isVerifying = false;
+          alert('Vui lòng bật Camera trước!');
+          currentState = APP_STATE.IDLE;
           return;
         }
         triggerScreenFlash();
@@ -1433,21 +2174,35 @@
       } else {
         if (!selectedFileBlob) {
           alert('Vui lòng chọn hoặc kéo thả một file ảnh!');
-          isVerifying = false;
+          currentState = APP_STATE.IDLE;
           return;
         }
         fileToSend = selectedFileBlob;
       }
 
-      // UI Loading State
-      verifyBtn.disabled = true;
-      verifyBtnText.innerHTML = '<span class="spinner"></span> Đang thẩm định AI...';
+      await sendVerificationPayload({
+        fileToSend: fileToSend,
+        blink_passed: true,
+        blink_count: 1,
+        head_passed: true,
+        head_action: 'QUICK_PASS'
+      });
+    }
+
+    async function sendVerificationPayload({ fileToSend, blink_passed, blink_count, head_passed, head_action }) {
+      const mainBtn = document.getElementById('mainActionBtn');
+      const mainBtnText = document.getElementById('mainActionBtnText');
+
+      mainBtn.disabled = true;
+      mainBtnText.innerHTML = '<span class="spinner"></span> Đang thẩm định AI Ensemble...';
 
       const formData = new FormData();
       formData.append('file', fileToSend, 'ekyc_capture.jpg');
       formData.append('img_id', 'WEB_' + Date.now());
-      formData.append('blink_passed', true);
-      formData.append('head_passed', true);
+      formData.append('blink_passed', blink_passed);
+      formData.append('blink_count', blink_count);
+      formData.append('head_passed', head_passed);
+      formData.append('head_action', head_action);
       formData.append('return_crop_image', true);
       formData.append('return_annotated_image', true);
       formData.append('apply_oval_mask', document.getElementById('chkOvalBokeh').checked);
@@ -1468,24 +2223,31 @@
         }
 
         const data = await res.json();
-        lastJsonResponse = data;
         renderResults(data);
+        setStepStatus(4, 'completed');
       } catch (err) {
         alert('Lỗi xác thực eKYC: ' + err.message);
       } finally {
-        isVerifying = false;
-        verifyBtn.disabled = false;
-        verifyBtnText.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Chụp & Xác Thực eKYC';
-        
-        // Reset countdown trigger after a short delay
+        mainBtn.disabled = false;
+        updateMainActionButtonText();
+
+        // Reset to preview state after 2 seconds
         setTimeout(() => {
-          autoCaptureTriggered = false;
-          consecutiveGoodFrames = 0;
-        }, 1500);
+          if (webcamStream) {
+            currentState = APP_STATE.PREVIEW_ALIGN;
+            autoTriggerBlocked = false;
+            consecutiveGoodFrames = 0;
+            startPoseCheckLoop();
+          } else {
+            currentState = APP_STATE.IDLE;
+          }
+        }, 2000);
       }
     }
 
-    // Render Results
+    // =========================================================================
+    // RENDER RESULTS ON RIGHT PANEL
+    // =========================================================================
     function renderResults(data) {
       const banner = document.getElementById('verdictBanner');
       const badge = document.getElementById('verdictBadge');
@@ -1498,7 +2260,7 @@
         banner.className = 'verdict-banner approved';
         badge.className = 'verdict-badge approved';
         badge.textContent = 'eKYC APPROVED';
-        sub.textContent = `Hợp chuẩn sinh trắc học &bull; Độ tin cậy Real: ${(data.confidence * 100).toFixed(1)}%`;
+        sub.textContent = `Hợp chuẩn sinh trắc học 7/7 tiêu chí &bull; Real: ${(data.confidence * 100).toFixed(1)}%`;
         icon.textContent = '🎯';
         reasonsBox.style.display = 'none';
       } else {
@@ -1573,6 +2335,76 @@
     function toggleJsonView() {
       const box = document.getElementById('jsonBox');
       box.style.display = (box.style.display === 'block') ? 'none' : 'block';
+    }
+
+    // =========================================================================
+    // UTILITIES: CAPTURE BLOBS & FLASH
+    // =========================================================================
+    function captureThumbnailBlob(video, targetW, targetH) {
+      return new Promise((resolve) => {
+        const canvas = document.getElementById('hiddenCanvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, targetW, targetH);
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.85);
+      });
+    }
+
+    function captureFullFrameBlob() {
+      return new Promise((resolve) => {
+        const video = document.getElementById('webcamVideo');
+        const canvas = document.getElementById('hiddenCanvas');
+        const vw = video.videoWidth || 1280;
+        const vh = video.videoHeight || 720;
+        canvas.width = vw;
+        canvas.height = vh;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, vw, vh);
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.95);
+      });
+    }
+
+    function triggerScreenFlash() {
+      const flash = document.getElementById('flashOverlay');
+      flash.classList.add('flash-active');
+      setTimeout(() => flash.classList.remove('flash-active'), 180);
+    }
+
+    // File Drag & Drop
+    const box = document.getElementById('captureBox');
+    box.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (inputMode === 'upload') box.style.borderColor = 'var(--cyan)';
+    });
+    box.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      if (inputMode === 'upload') box.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+    });
+    box.addEventListener('drop', (e) => {
+      e.preventDefault();
+      box.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+      if (inputMode === 'upload' && e.dataTransfer.files.length > 0) {
+        processFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    function handleFileSelected(e) {
+      if (e.target.files.length > 0) {
+        processFile(e.target.files[0]);
+      }
+    }
+
+    function processFile(file) {
+      selectedFileBlob = file;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const preview = document.getElementById('previewImg');
+        preview.src = evt.target.result;
+        preview.style.display = 'block';
+        document.getElementById('uploadPlaceholder').style.display = 'none';
+      };
+      reader.readAsDataURL(file);
     }
   </script>
 </body>

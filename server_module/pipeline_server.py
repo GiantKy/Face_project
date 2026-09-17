@@ -117,6 +117,14 @@ except (ImportError, ValueError):
         get_oval_masked_frame,
         draw_oval_face_guide
     )
+try:
+    from src.illumination import check_illumination_quality, enhance_low_light
+except (ImportError, ValueError):
+    try:
+        from illumination import check_illumination_quality, enhance_low_light
+    except (ImportError, ValueError):
+        check_illumination_quality = None
+        enhance_low_light = None
 
 
 class EKYCPipelineServer:
@@ -447,6 +455,7 @@ class EKYCPipelineServer:
         frame = load_image(frame_input)
         landmarks = self.landmark_detector.detect(frame)
 
+        has_face = bool(landmarks is not None and len(landmarks) >= 468)
         ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks) if landmarks else (0.0, 0.0, 0.0)
 
         new_counter = current_blink_counter
@@ -461,14 +470,23 @@ class EKYCPipelineServer:
                 new_state = False
 
         passed = (new_counter >= MIN_BLINKS_REQUIRED)
+        progress = 1.0 if passed else (0.5 if new_state else 0.0)
+        label = (
+            "Đã xác nhận chớp mắt (100%)"
+            if passed
+            else ("Đang chớp mắt... (50%)" if new_state else "Đang đợi chớp mắt... (0%)")
+        )
 
         return {
+            "has_face": has_face,
             "ear_left": round(ear_l, 4),
             "ear_right": round(ear_r, 4),
             "ear_avg": round(ear_avg, 4),
             "blink_counter": new_counter,
             "blink_state": new_state,
-            "passed": bool(passed)
+            "passed": bool(passed),
+            "progress": progress,
+            "label": label
         }
 
     def start_head_challenge(self) -> Dict[str, Any]:
@@ -493,7 +511,26 @@ class EKYCPipelineServer:
             _, _, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point)
 
         status = self.head_movement_detector.update(pose_dict)
-        return status
+        clean_status = {
+            "state": str(status.get("state", "")),
+            "action": str(status.get("action", "")),
+            "passed": bool(status.get("passed", False)),
+            "prompt": str(status.get("prompt", "")),
+            "time_left": float(status.get("time_left", 0.0)),
+            "progress": float(status.get("progress", 0.0)),
+            "current_angle": float(status.get("current_angle", 0.0)),
+            "target_threshold": float(status.get("target_threshold", 0.0)),
+            "is_matched": bool(status.get("is_matched", False))
+        }
+        if pose_dict:
+            clean_status["pose"] = {
+                "yaw": round(float(pose_dict.get("yaw", 0.0)), 2),
+                "pitch": round(float(pose_dict.get("pitch", 0.0)), 2),
+                "roll": round(float(pose_dict.get("roll", 0.0)), 2),
+            }
+        else:
+            clean_status["pose"] = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+        return clean_status
 
     # =========================================================================
     # 4. QUY TRÌNH TOÀN DIỆN — FULL VERIFY PIPELINE (ENSEMBLE)
@@ -534,8 +571,8 @@ class EKYCPipelineServer:
         else:
             processed_frame = frame
 
-        # 1. Face Detection
-        raw_faces = self.detector.detect(processed_frame)
+        # 1. Face Detection (chạy trên frame tự nhiên)
+        raw_faces = self.detector.detect(frame)
         num_faces = len(raw_faces)
 
         # Ưu tiên các khuôn mặt nằm trong oval
@@ -557,11 +594,8 @@ class EKYCPipelineServer:
         # Kiểm tra mặt có trong oval
         face_in_oval = bool(primary_face and is_face_in_oval(primary_face["bbox"], oval_center, oval_axes))
 
-        # 2. Landmarks
-        landmarks = self.landmark_detector.detect(processed_frame)
-        if not landmarks and apply_oval_mask:
-            # Dự phòng thử detect trên frame gốc nếu masked bị khuyết
-            landmarks = self.landmark_detector.detect(frame)
+        # 2. Landmarks (chạy trên frame tự nhiên)
+        landmarks = self.landmark_detector.detect(frame)
 
         # 3. 3D Pose
         pose_valid = False
@@ -595,10 +629,21 @@ class EKYCPipelineServer:
         if aligned_img is None:
             aligned_img = frame.copy()
 
-        # 5. ENSEMBLE Anti-Spoofing (YOLO_4 + RF-DETR Small) chạy trên processed_frame
+        # 5. ENSEMBLE Anti-Spoofing (YOLO_4 + RF-DETR Small)
+        # QUAN TRỌNG: Chạy trên ảnh tự nhiên (frame gốc hoặc qua CLAHE nếu thiếu sáng),
+        # KHÔNG chạy trên processed_frame vì hiệu ứng mờ nhân tạo (Oval Blur) sẽ làm RF-DETR hiểu nhầm là giả mạo (SPOOF).
+        if check_illumination_quality is not None and primary_face:
+            captured_light = check_illumination_quality(frame, bbox=primary_face["bbox"])
+            if captured_light.get("mean_luminance", 100.0) < 75.0 and enhance_low_light is not None:
+                input_spoof = enhance_low_light(frame)
+            else:
+                input_spoof = frame
+        else:
+            input_spoof = frame
+
         t_ens = time.time()
         all_ensemble_dets, yolo_dets, rfdetr_dets = self.ensemble_anti_spoof.predict_ensemble(
-            processed_frame,
+            input_spoof,
             conf_threshold=ENSEMBLE_CONF_THRESHOLD,
             iou_thresh=ENSEMBLE_IOU_THRESHOLD,
             w_yolo=ENSEMBLE_W_YOLO,

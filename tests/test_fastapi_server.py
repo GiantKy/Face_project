@@ -47,7 +47,7 @@ def run_test():
         res_ui = client.get("/")
         print(f"Status Code: {res_ui.status_code}")
         assert res_ui.status_code == 200
-        assert "<title>eKYC AI Scanner" in res_ui.text
+        assert "<title>eKYC AI" in res_ui.text
         print(" -> Giao diện HTML được phục vụ thành công!")
 
         # TEST 3: Validate Pose (Multipart)
@@ -114,8 +114,37 @@ def run_test():
         assert res_json.status_code == 200
         print(f" -> Verdict: {res_json.json()['verdict']}, Latency: {res_json.json()['processing_time_ms']} ms")
 
+        # TEST 6: Active Liveness - Blink Frame
+        print("\n[TEST 6] POST /api/v1/liveness/blink-frame")
+        with open(sample_img_path, "rb") as f:
+            res_blink = client.post(
+                "/api/v1/liveness/blink-frame",
+                files={"file": ("0.jpg", f, "image/jpeg")},
+                data={"blink_counter": 0, "blink_state": "false"}
+            )
+        print(f"Status Code: {res_blink.status_code}")
+        assert res_blink.status_code == 200
+        blink_data = res_blink.json()
+        print(f" -> Has Face: {blink_data.get('has_face')}, EAR Avg: {blink_data.get('ear_avg')}, Passed: {blink_data.get('passed')}")
+
+        # TEST 7: Active Liveness - Head Challenge
+        print("\n[TEST 7] POST /api/v1/liveness/start-head & update-head")
+        res_start_head = client.post("/api/v1/liveness/start-head")
+        assert res_start_head.status_code == 200
+        head_start_data = res_start_head.json()
+        print(f" -> Started Head Action: {head_start_data.get('action')}, Prompt: {head_start_data.get('prompt')}")
+
+        with open(sample_img_path, "rb") as f:
+            res_update_head = client.post(
+                "/api/v1/liveness/update-head",
+                files={"file": ("0.jpg", f, "image/jpeg")}
+            )
+        assert res_update_head.status_code == 200
+        head_upd_data = res_update_head.json()
+        print(f" -> Head Progress: {head_upd_data.get('progress')}, Time Left: {head_upd_data.get('time_left')}s, Passed: {head_upd_data.get('passed')}")
+
     print("\n" + "=" * 70)
-    print("      TẤT CẢ 5 BƯỚC KIỂM THỬ FASTAPI SERVER ĐÃ THÀNH CÔNG!")
+    print("      TẤT CẢ 7 BƯỚC KIỂM THỬ FASTAPI SERVER ĐÃ THÀNH CÔNG!")
     print("=" * 70)
 
 if __name__ == "__main__":

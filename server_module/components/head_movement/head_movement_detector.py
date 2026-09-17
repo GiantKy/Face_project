@@ -247,13 +247,13 @@ class HeadMovementDetector:
         return {
             "state": self.state.value,
             "action": self.current_action.value,
-            "passed": self.state == ChallengeState.COMPLETED,
+            "passed": bool(self.state == ChallengeState.COMPLETED),
             "prompt": self.get_prompt() if self.state != ChallengeState.COMPLETED else "HOAN THANH CU DONG!",
-            "time_left": round(time_left, 1),
-            "progress": round(progress, 2),
-            "current_angle": round(current_angle, 1),
-            "target_threshold": target_threshold,
-            "is_matched": is_matched
+            "time_left": round(float(time_left), 1),
+            "progress": round(float(progress), 2),
+            "current_angle": round(float(current_angle), 1),
+            "target_threshold": float(target_threshold),
+            "is_matched": bool(is_matched)
         }
 
     def _get_status_text(self) -> str:
