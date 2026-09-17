@@ -22,6 +22,7 @@ class VerifyJsonRequest(BaseModel):
     head_action: str = Field(default="TURN_LEFT", description="Hành động quay đầu: TURN_LEFT, TURN_RIGHT, NOD_UP, NOD_DOWN")
     return_annotated_image: bool = Field(default=True, description="Có trả về ảnh Base64 đã vẽ HUD/khung nhận diện hay không")
     return_crop_image: bool = Field(default=True, description="Có trả về ảnh khuôn mặt đã crop 224x224 Base64 hay không")
+    apply_oval_mask: bool = Field(default=True, description="Làm mờ bối cảnh ngoại vi trừ khung Oval ở giữa")
     output_dir: Optional[str] = Field(default=None, description="Đường dẫn thư mục lưu ảnh/báo cáo trên ổ cứng server (nếu muốn lưu)")
 
 
@@ -125,6 +126,7 @@ class VerifyResponse(BaseModel):
     active_liveness: ActiveLivenessDetail = Field(..., description="Dữ liệu kiểm tra cử động")
     crop_face_base64: Optional[str] = Field(None, description="Ảnh khuôn mặt crop 224x224 Base64 chuẩn hóa (lưu DB)")
     annotated_image_base64: Optional[str] = Field(None, description="Ảnh đã vẽ HUD và khung nhận diện (hiển thị UI)")
+    oval_guide: Optional[Dict[str, Any]] = Field(None, description="Tọa độ và thông tin khung oval hướng dẫn")
     processing_time_ms: float = Field(..., description="Tổng thời gian xử lý toàn bộ quy trình (ms)")
 
 
@@ -132,8 +134,14 @@ class PoseValidateResponse(BaseModel):
     success: bool = True
     has_face: bool
     is_valid: bool
+    face_in_oval: bool = False
+    is_aligned_good: bool = False
     face_size_h: int
     is_too_far: bool
+    is_too_close: bool = False
+    is_off_center: bool = False
+    off_center_hint: str = ""
+    oval_guide: Optional[Dict[str, Any]] = None
     pose: Dict[str, Any]
     message: str
     guide: str

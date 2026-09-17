@@ -132,6 +132,111 @@ def compute_eye_aspect_ratio(landmarks: List[Tuple[int, int]]) -> Tuple[float, f
     return float(ear_left), float(ear_right), float(ear_avg)
 
 
+def get_default_oval_params(w: int, h: int) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    """
+    Tính tọa độ tâm và 2 bán trục của khung Oval tiêu chuẩn theo tỷ lệ khung hình:
+    - Tâm: (w // 2, int(h * 0.505))
+    - Bán trục dọc: int(h * 0.38)
+    - Bán trục ngang: int(ay * 0.65)
+    """
+    cx = w // 2
+    cy = int(h * 0.505)
+    ay = int(h * 0.38)
+    ax = int(ay * 0.65)
+    return (cx, cy), (ax, ay)
+
+
+def is_point_in_oval(pt: Tuple[float, float], center: Tuple[int, int], axes: Tuple[int, int], tolerance: float = 1.0) -> bool:
+    """Kiểm tra một điểm (x, y) có nằm trong hình ellipse/oval hay không."""
+    cx, cy = center
+    ax, ay = axes
+    if ax <= 0 or ay <= 0:
+        return False
+    norm_x = (float(pt[0]) - cx) / float(ax * tolerance)
+    norm_y = (float(pt[1]) - cy) / float(ay * tolerance)
+    return (norm_x ** 2 + norm_y ** 2) <= 1.0
+
+
+def is_face_in_oval(bbox: Union[List[int], Tuple[int, ...]], center: Tuple[int, int], axes: Tuple[int, int], tolerance: float = 1.08) -> bool:
+    """Kiểm tra tâm khuôn mặt có nằm gọn trong khung Oval hay không."""
+    x1, y1, x2, y2 = bbox
+    face_cx = (x1 + x2) / 2.0
+    face_cy = (y1 + y2) / 2.0
+    return is_point_in_oval((face_cx, face_cy), center, axes, tolerance=tolerance)
+
+
+def get_oval_masked_frame(
+    frame: np.ndarray,
+    center: Optional[Tuple[int, int]] = None,
+    axes: Optional[Tuple[int, int]] = None,
+    blur_ksize: int = 45,
+    dim_factor: float = 0.35
+) -> np.ndarray:
+    """
+    Làm mờ bối cảnh ngoại vi và giảm độ sáng xung quanh, chỉ giữ rõ nét vùng khuôn mặt bên trong khung Oval.
+    Áp dụng công thức làm mờ Gaussian Bokeh từ test_pipeline_ensemble_full.py.
+    """
+    h, w = frame.shape[:2]
+    if center is None or axes is None:
+        center, axes = get_default_oval_params(w, h)
+
+    cx, cy = center
+    ax, ay = axes
+
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.ellipse(mask, (cx, cy), (ax, ay), 0, 0, 360, 255, -1)
+    outside_mask = (mask == 0)
+
+    masked = frame.copy()
+    ksize = blur_ksize if blur_ksize % 2 == 1 else blur_ksize + 1
+    blurred = cv2.GaussianBlur(masked, (ksize, ksize), 0)
+    masked[outside_mask] = (blurred[outside_mask] * dim_factor).astype(np.uint8)
+    return masked
+
+
+def draw_oval_face_guide(
+    image: np.ndarray,
+    center: Optional[Tuple[int, int]] = None,
+    axes: Optional[Tuple[int, int]] = None,
+    is_aligned: bool = False,
+    is_detected: bool = False,
+    color: Tuple[int, int, int] = (0, 255, 127)
+) -> np.ndarray:
+    """
+    Vẽ khung Oval hướng dẫn lên ảnh:
+    - Làm mờ và làm tối bối cảnh bên ngoài oval (Bokeh effect).
+    - Vẽ viền phát sáng (Glow aura) 2 lớp xung quanh oval.
+    - Vẽ viền chính của oval với màu sắc trạng thái (Xanh lá, Đỏ, Vàng hoặc Cyan).
+    """
+    h, w = image.shape[:2]
+    if center is None or axes is None:
+        center, axes = get_default_oval_params(w, h)
+
+    cx, cy = center
+    ax, ay = axes
+
+    # Mask oval
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.ellipse(mask, (cx, cy), (ax, ay), 0, 0, 360, 255, -1)
+    outside_mask = (mask == 0)
+
+    # Làm mờ bokeh ngoại vi
+    blurred = cv2.GaussianBlur(image, (35, 35), 0)
+    image[outside_mask] = (blurred[outside_mask] * 0.60).astype(np.uint8)
+
+    # Viền glow
+    glow_color = (int(color[0] * 0.35), int(color[1] * 0.35), int(color[2] * 0.35))
+    cv2.ellipse(image, (cx, cy), (ax + 3, ay + 3), 0, 0, 360, glow_color, 1, cv2.LINE_AA)
+    cv2.ellipse(image, (cx, cy), (max(10, ax - 3), max(10, ay - 3)), 0, 0, 360, glow_color, 1, cv2.LINE_AA)
+
+    # Viền oval chính
+    thickness = 3 if is_aligned else 2
+    cv2.ellipse(image, (cx, cy), (ax, ay), 0, 0, 360, color, thickness, cv2.LINE_AA)
+
+    return image
+
+
+
 def json_serialize_helper(obj: Any) -> Any:
     """Chuyển đổi kiểu dữ liệu numpy/OpenCV sang Python native types để xuất JSON sạch."""
     if isinstance(obj, (np.bool_, bool)):

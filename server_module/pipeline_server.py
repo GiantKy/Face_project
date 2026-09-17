@@ -59,7 +59,12 @@ try:
         draw_pipeline_result_hud,
         create_pipeline_result_dashboard,
         create_side_by_side_result,
-        remove_vietnamese_accents
+        remove_vietnamese_accents,
+        get_default_oval_params,
+        is_point_in_oval,
+        is_face_in_oval,
+        get_oval_masked_frame,
+        draw_oval_face_guide
     )
 except (ImportError, ValueError):
     from components import (
@@ -105,7 +110,12 @@ except (ImportError, ValueError):
         draw_pipeline_result_hud,
         create_pipeline_result_dashboard,
         create_side_by_side_result,
-        remove_vietnamese_accents
+        remove_vietnamese_accents,
+        get_default_oval_params,
+        is_point_in_oval,
+        is_face_in_oval,
+        get_oval_masked_frame,
+        draw_oval_face_guide
     )
 
 
@@ -206,36 +216,86 @@ class EKYCPipelineServer:
                 "guide": "Vui lòng đưa khuôn mặt vào giữa khung hình"
             }
 
-        # Đánh giá kích thước khuôn mặt
+        # Tọa độ khung Oval trung tâm
+        oval_center, oval_axes = get_default_oval_params(w, h)
+        oval_cx, oval_cy = oval_center
+        oval_ax, oval_ay = oval_axes
+
+        # Đánh giá kích thước và tọa độ khuôn mặt
+        xs = [p[0] for p in landmarks]
         ys = [p[1] for p in landmarks]
+        f_cx = (min(xs) + max(xs)) / 2.0
+        f_cy = (min(ys) + max(ys)) / 2.0
         face_size_h = max(ys) - min(ys)
-        is_too_far = (face_size_h < MIN_FACE_HEIGHT)
+
+        face_in_oval = is_point_in_oval((f_cx, f_cy), oval_center, oval_axes, tolerance=1.05)
+        ideal_h = oval_ay * 1.55
+        is_too_far = (face_size_h < ideal_h * 0.62) or (face_size_h < MIN_FACE_HEIGHT)
+        is_too_close = (face_size_h > ideal_h * 1.35)
+
+        dx = f_cx - oval_cx
+        dy = f_cy - oval_cy
+        is_off_center = False
+        off_center_hint = ""
+        if abs(dx) > oval_ax * 0.35 or abs(dy) > oval_ay * 0.35:
+            is_off_center = True
+            hints = []
+            if dx > oval_ax * 0.35:
+                hints.append("Qua Trai")
+            elif dx < -oval_ax * 0.35:
+                hints.append("Qua Phai")
+            if dy > oval_ay * 0.35:
+                hints.append("Len Tren")
+            elif dy < -oval_ay * 0.35:
+                hints.append("Xuong Duoi")
+            off_center_hint = f"Dich mat {' + '.join(hints)} vao tam oval"
 
         # Đánh giá góc nghiêng 3D Pose
         pose_valid, text_status, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point)
         pose_data = pose_dict if pose_dict else {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
 
-        is_valid_overall = (pose_valid and not is_too_far)
+        is_valid_overall = (
+            face_in_oval and
+            pose_valid and
+            not is_too_far and
+            not is_too_close and
+            not is_off_center
+        )
 
-        if is_too_far:
-            guide_msg = "Vui lòng tiến lại gần camera hơn (Khuôn mặt quá nhỏ)"
+        if not face_in_oval:
+            guide_msg = "Vui lòng đưa khuôn mặt vào trong khung oval"
+        elif is_off_center:
+            guide_msg = off_center_hint
+        elif is_too_far:
+            guide_msg = "Vui lòng tiến lại gần camera hơn"
+        elif is_too_close:
+            guide_msg = "Vui lòng lùi xa camera một chút"
         elif not pose_valid:
             guide_msg = f"Vui lòng nhìn thẳng vào camera ({text_status})"
         else:
-            guide_msg = "Tư thế khuôn mặt đạt chuẩn!"
+            guide_msg = "Khuôn mặt chuẩn trong khung Oval!"
 
         return {
             "has_face": True,
             "is_valid": bool(is_valid_overall),
+            "face_in_oval": bool(face_in_oval),
+            "is_aligned_good": bool(is_valid_overall),
             "face_size_h": int(face_size_h),
             "is_too_far": bool(is_too_far),
+            "is_too_close": bool(is_too_close),
+            "is_off_center": bool(is_off_center),
+            "off_center_hint": off_center_hint,
+            "oval_guide": {
+                "center": [oval_cx, oval_cy],
+                "axes": [oval_ax, oval_ay]
+            },
             "pose": {
                 "yaw": round(float(pose_data.get("yaw", 0.0)), 2),
                 "pitch": round(float(pose_data.get("pitch", 0.0)), 2),
                 "roll": round(float(pose_data.get("roll", 0.0)), 2),
                 "status_text": text_status
             },
-            "message": text_status,
+            "message": text_status if not is_valid_overall else "OK",
             "guide": guide_msg
         }
 
@@ -447,25 +507,40 @@ class EKYCPipelineServer:
         head_movement_passed: bool = True,
         head_action_name: str = "TURN_LEFT",
         output_dir: Optional[str] = None,
-        save_visuals: bool = True
+        save_visuals: bool = True,
+        apply_oval_mask: bool = True
     ) -> Dict[str, Any]:
         """
         Thực thi toàn diện quy trình kiểm tra eKYC tĩnh & tổng hợp quyết định:
-        - Face Detection & trích xuất khuôn mặt chính
+        - Khung Oval hướng dẫn & làm mờ bối cảnh xung quanh (Bokeh Effect)
+        - Face Detection & trích xuất khuôn mặt chính trong Oval
         - MediaPipe 478 Landmark Detection
         - 3D Head Pose Validation
         - Face Alignment & 224x224 Crop
         - ENSEMBLE Anti-Spoofing (YOLO_4 + RF-DETR Small) với IoU Matching
-        - Tổng hợp quyết định cuối cùng (7 tiêu chí: Face, Single, Pose, Spoof, BothModels, Blink, Head)
+        - Tổng hợp quyết định cuối cùng (7 tiêu chí chuẩn ngân hàng)
         - Lưu artifacts nếu có output_dir
         """
         self._ensure_models_loaded()
         frame = load_image(image_input)
         h_f, w_f = frame.shape[:2]
 
+        # Tọa độ khung Oval trung tâm
+        oval_center, oval_axes = get_default_oval_params(w_f, h_f)
+
+        # 0. Làm mờ bối cảnh ngoại vi trừ khung oval nếu apply_oval_mask=True
+        if apply_oval_mask:
+            processed_frame = get_oval_masked_frame(frame, oval_center, oval_axes, blur_ksize=45, dim_factor=0.35)
+        else:
+            processed_frame = frame
+
         # 1. Face Detection
-        faces = self.detector.detect(frame)
-        num_faces = len(faces)
+        raw_faces = self.detector.detect(processed_frame)
+        num_faces = len(raw_faces)
+
+        # Ưu tiên các khuôn mặt nằm trong oval
+        faces_in_oval = [f for f in raw_faces if is_face_in_oval(f["bbox"], oval_center, oval_axes)]
+        faces = faces_in_oval if faces_in_oval else raw_faces
 
         # Chọn Primary Face
         primary_face = None
@@ -474,13 +549,19 @@ class EKYCPipelineServer:
                 bx1, by1, bx2, by2 = f["bbox"]
                 area = (bx2 - bx1) * (by2 - by1)
                 cx, cy = (bx1 + bx2) / 2.0, (by1 + by2) / 2.0
-                dist_center = math.hypot(cx - w_f / 2.0, cy - h_f / 2.0)
+                dist_center = math.hypot(cx - oval_center[0], cy - oval_center[1])
                 return area - (dist_center * 10)
 
             primary_face = max(faces, key=get_face_priority)
 
+        # Kiểm tra mặt có trong oval
+        face_in_oval = bool(primary_face and is_face_in_oval(primary_face["bbox"], oval_center, oval_axes))
+
         # 2. Landmarks
-        landmarks = self.landmark_detector.detect(frame)
+        landmarks = self.landmark_detector.detect(processed_frame)
+        if not landmarks and apply_oval_mask:
+            # Dự phòng thử detect trên frame gốc nếu masked bị khuyết
+            landmarks = self.landmark_detector.detect(frame)
 
         # 3. 3D Pose
         pose_valid = False
@@ -514,10 +595,10 @@ class EKYCPipelineServer:
         if aligned_img is None:
             aligned_img = frame.copy()
 
-        # 5. ENSEMBLE Anti-Spoofing (YOLO_4 + RF-DETR Small)
+        # 5. ENSEMBLE Anti-Spoofing (YOLO_4 + RF-DETR Small) chạy trên processed_frame
         t_ens = time.time()
         all_ensemble_dets, yolo_dets, rfdetr_dets = self.ensemble_anti_spoof.predict_ensemble(
-            frame,
+            processed_frame,
             conf_threshold=ENSEMBLE_CONF_THRESHOLD,
             iou_thresh=ENSEMBLE_IOU_THRESHOLD,
             w_yolo=ENSEMBLE_W_YOLO,
@@ -526,40 +607,46 @@ class EKYCPipelineServer:
         )
         ens_latency_ms = (time.time() - t_ens) * 1000
 
+        # Lọc spoof detections trong oval
+        spoofs_in_oval = [sd for sd in all_ensemble_dets if is_face_in_oval(sd["bbox"], oval_center, oval_axes)]
+        target_spoofs = spoofs_in_oval if spoofs_in_oval else all_ensemble_dets
+
         # Tìm detection khớp nhất với Primary Face
         best_spoof = None
         primary_spoof_iou = 0.0
-        if primary_face and all_ensemble_dets:
+        if primary_face and target_spoofs:
             matching_spoofs = [
-                sd for sd in all_ensemble_dets
+                sd for sd in target_spoofs
                 if calculate_iou(primary_face["bbox"], sd["bbox"]) > 0.15
             ]
             if matching_spoofs:
                 best_spoof = max(matching_spoofs, key=lambda x: x["confidence"])
                 primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
             else:
-                best_spoof = max(all_ensemble_dets, key=lambda x: x["confidence"])
+                best_spoof = max(target_spoofs, key=lambda x: x["confidence"])
                 primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
 
-        if best_spoof is None and all_ensemble_dets:
-            best_spoof = all_ensemble_dets[0]
+        if best_spoof is None and target_spoofs:
+            best_spoof = target_spoofs[0]
 
         has_any_spoof = any(not sd["is_real"] for sd in all_ensemble_dets) if all_ensemble_dets else False
         is_primary_real = bool(best_spoof["is_real"]) if best_spoof else False
 
         # 6. Đánh giá Final Decision — 7 tiêu chí
-        c_face = (primary_face is not None)
+        c_face = (primary_face is not None) and face_in_oval
         c_single = (num_faces == 1)
         c_pose = pose_valid
         c_spoof = is_primary_real
-        # Tiêu chí mới: Cả 2 model phải đồng thuận
+        # Tiêu chí: Cả 2 model phải đồng thuận
         c_both_detected = bool(best_spoof.get("both_detected", False)) if best_spoof else False
         c_blink = blink_passed
         c_head = head_movement_passed
 
         reasons = []
-        if not c_face:
+        if primary_face is None:
             reasons.append("Không tìm thấy khuôn mặt trong ảnh")
+        elif not face_in_oval:
+            reasons.append("Khuôn mặt nằm ngoài khung oval hướng dẫn")
         elif not c_single:
             reasons.append(f"Phát hiện {num_faces} người trong khung hình (Yêu cầu 1 người duy nhất)")
 
@@ -653,6 +740,11 @@ class EKYCPipelineServer:
                 "blink_count": int(blink_count),
                 "head_movement_passed": bool(head_movement_passed),
                 "head_action": str(head_action_name)
+            },
+            "oval_guide": {
+                "center": [oval_center[0], oval_center[1]],
+                "axes": [oval_axes[0], oval_axes[1]],
+                "face_in_oval": bool(face_in_oval)
             }
         }
 
@@ -672,8 +764,20 @@ class EKYCPipelineServer:
                 if c_img.size > 0:
                     cv2.imwrite(os.path.join(all_faces_dir, f"face_{idx_f}.jpg"), c_img)
 
-            # 1: Ảnh khuôn mặt annotated sạch (không bị che khuất bởi HUD)
-            clean_img = frame.copy()
+            # 1: Ảnh khuôn mặt annotated sạch (Làm mờ bối cảnh ngoại vi trừ khung Oval)
+            if apply_oval_mask:
+                clean_img = get_oval_masked_frame(frame, oval_center, oval_axes, blur_ksize=45, dim_factor=0.35)
+                guide_color = (0, 255, 127) if final_pass else (0, 0, 255)
+                clean_img = draw_oval_face_guide(
+                    clean_img,
+                    center=oval_center,
+                    axes=oval_axes,
+                    is_aligned=final_pass,
+                    is_detected=bool(primary_face),
+                    color=guide_color
+                )
+            else:
+                clean_img = frame.copy()
             for f_it in faces:
                 bx1, by1, bx2, by2 = f_it["bbox"]
                 is_p = (primary_face and f_it["bbox"] == primary_face["bbox"])

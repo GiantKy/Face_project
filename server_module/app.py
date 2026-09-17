@@ -45,6 +45,9 @@ try:
         image_to_base64,
         calculate_iou,
         draw_landmarks,
+        get_default_oval_params,
+        get_oval_masked_frame,
+        draw_oval_face_guide,
         create_pipeline_result_dashboard,
         create_side_by_side_result,
         json_serialize_helper
@@ -65,6 +68,9 @@ except ImportError:
         image_to_base64,
         calculate_iou,
         draw_landmarks,
+        get_default_oval_params,
+        get_oval_masked_frame,
+        draw_oval_face_guide,
         create_pipeline_result_dashboard,
         create_side_by_side_result,
         json_serialize_helper
@@ -160,23 +166,37 @@ def _extract_crop_and_annotation(
 
     if return_annotated:
         try:
-            # Tạo clean annotated image
-            clean_img = frame.copy()
-            num_faces = report["face_detection"].get("num_faces", 0)
+            # Lấy thông tin Oval và làm mờ bối cảnh ngoại vi
+            oval_info = report.get("oval_guide") or {}
+            oval_center = tuple(oval_info.get("center") or (w_f // 2, int(h_f * 0.505)))
+            oval_axes = tuple(oval_info.get("axes") or (int(h_f * 0.38 * 0.65), int(h_f * 0.38)))
+            final_pass = report["final_decision"]["approved"]
 
-            # Vẽ bounding box khuôn mặt
+            # 1. Làm mờ bối cảnh ngoại vi trừ khung Oval (Bokeh Effect)
+            clean_img = get_oval_masked_frame(frame, oval_center, oval_axes, blur_ksize=45, dim_factor=0.35)
+            guide_color = (0, 255, 127) if final_pass else (0, 0, 255)
+            clean_img = draw_oval_face_guide(
+                clean_img,
+                center=oval_center,
+                axes=oval_axes,
+                is_aligned=final_pass,
+                is_detected=bool(primary_face),
+                color=guide_color
+            )
+
+            # 2. Vẽ bounding box khuôn mặt
             if primary_face and primary_face.get("bbox"):
                 bx1, by1, bx2, by2 = primary_face["bbox"]
                 cv2.rectangle(clean_img, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
                 cv2.putText(clean_img, "PRIMARY FACE", (bx1, max(18, by1 - 6)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1, cv2.LINE_AA)
 
-            # Vẽ landmarks nếu có
+            # 3. Vẽ landmarks nếu có
             landmarks = pipeline.landmark_detector.detect(frame)
             if landmarks:
                 clean_img = draw_landmarks(clean_img, landmarks)
 
-            # Vẽ Ensemble spoof detections
+            # 4. Vẽ Ensemble spoof detections
             ens_dets = report["ensemble_anti_spoof"].get("all_ensemble_detections", [])
             for sd in ens_dets:
                 sx1, sy1, sx2, sy2 = sd["bbox"]
@@ -194,8 +214,7 @@ def _extract_crop_and_annotation(
                 cv2.putText(clean_img, tag, (sx1, max(20, sy1 - 8)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.45, scol, 1, cv2.LINE_AA)
 
-            # Badge verdict
-            final_pass = report["final_decision"]["approved"]
+            # 5. Badge verdict góc phải trên
             verdict_badge = "eKYC: APPROVED" if final_pass else "eKYC: REJECTED"
             badge_col = (0, 255, 0) if final_pass else (0, 0, 255)
             badge_w = 230
@@ -270,6 +289,7 @@ async def verify_face(
     head_action: Optional[str] = Form("TURN_LEFT", description="Hành động quay đầu"),
     return_annotated_image: Optional[bool] = Form(True, description="Trả về ảnh vẽ HUD Base64"),
     return_crop_image: Optional[bool] = Form(True, description="Trả về ảnh crop 224x224 Base64"),
+    apply_oval_mask: Optional[bool] = Form(True, description="Làm mờ bối cảnh ngoại vi trừ khung Oval"),
     output_dir: Optional[str] = Form(None, description="Thư mục lưu artifacts (nếu muốn)")
 ):
     """
@@ -307,6 +327,7 @@ async def verify_face(
             head_action = json_req.head_action
             return_annotated_image = json_req.return_annotated_image
             return_crop_image = json_req.return_crop_image
+            apply_oval_mask = getattr(json_req, "apply_oval_mask", True)
             output_dir = json_req.output_dir
         except Exception:
             raise HTTPException(
@@ -339,7 +360,8 @@ async def verify_face(
             head_movement_passed=bool(head_passed),
             head_action_name=str(head_action),
             output_dir=output_dir,
-            save_visuals=bool(output_dir is not None)
+            save_visuals=bool(output_dir is not None),
+            apply_oval_mask=bool(apply_oval_mask)
         )
     except Exception as e:
         raise HTTPException(
@@ -378,6 +400,7 @@ async def verify_face(
         active_liveness=report["active_liveness"],
         crop_face_base64=crop_b64,
         annotated_image_base64=annotated_b64,
+        oval_guide=report.get("oval_guide"),
         processing_time_ms=round(t_total, 2)
     )
 
@@ -433,8 +456,14 @@ async def validate_face_pose(
         success=True,
         has_face=res["has_face"],
         is_valid=res["is_valid"],
+        face_in_oval=res.get("face_in_oval", False),
+        is_aligned_good=res.get("is_aligned_good", False),
         face_size_h=res["face_size_h"],
         is_too_far=res["is_too_far"],
+        is_too_close=res.get("is_too_close", False),
+        is_off_center=res.get("is_off_center", False),
+        off_center_hint=res.get("off_center_hint", ""),
+        oval_guide=res.get("oval_guide"),
         pose=res["pose"],
         message=res["message"],
         guide=res["guide"],

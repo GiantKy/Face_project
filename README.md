@@ -2,6 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11-blue?logo=python" alt="Python Version" />
+  <img src="https://img.shields.io/badge/FastAPI-v0.110+-009688?logo=fastapi" alt="FastAPI" />
   <img src="https://img.shields.io/badge/PyTorch-%3E%3D2.0-orange?logo=pytorch" alt="PyTorch" />
   <img src="https://img.shields.io/badge/OpenCV-%3E%3D4.8-green?logo=opencv" alt="OpenCV" />
   <img src="https://img.shields.io/badge/YOLO-v8%20Face%20%26%20Anti--Spoof%204-yellow" alt="YOLO" />
@@ -15,96 +16,95 @@
   </a>
 </p>
 
-Hệ thống nhận diện danh tính và xác thực sinh trắc học khuôn mặt chuẩn Ngân hàng / FinTech (eKYC). Tích hợp chuỗi xử lý khép kín từ phát hiện khuôn mặt, trích xuất 478 điểm mốc, ước lượng tư thế 3D, căn chỉnh hình học, **phát hiện giả mạo khuôn mặt đa tầng kết hợp Ensemble (YOLO_4 + RF-DETR Small Transformer)**, đến xác thực cử động sống chủ động (Active Liveness Challenge).
+Hệ thống xác thực danh tính và sinh trắc học khuôn mặt chuẩn FinTech / Ngân hàng (**eKYC Face Verification**). Tích hợp chuỗi xử lý khép kín: phát hiện khuôn mặt, trích xuất 478 điểm mốc 3D, căn chỉnh hình học, **phát hiện giả mạo đa tầng kết hợp Ensemble (YOLO_4 + RF-DETR Small Transformer)** và xác thực cử động sống chủ động (Active Liveness).
 
-Dự án cung cấp cả **giao diện tương tác Webcam trực quan** lẫn **Headless Server Module** độc lập không phụ thuộc phần cứng (phục vụ kết nối thiết bị biên IoT / ESP32-S3), hỗ trợ CI/CD kiểm thử tự động trên **GitHub Actions** và **GitLab CI**.
+Hệ thống cung cấp cả **Giao diện Web AI Scanner hiện đại (Làm mờ ngoại vi Oval & Auto-Capture)**, **FastAPI Microservice** chuẩn hóa cho Backend Node.js/Java/Go, và **Script Desktop OpenCV** phục vụ nghiên cứu thực nghiệm.
 
 ---
 
 ## 📑 Mục Lục
 1. [Link Tải Tất Cả Mô Hình AI (Google Drive)](#-link-tải-tất-cả-mô-hình-ai-google-drive)
 2. [Tính Năng Nổi Bật](#-tính-năng-nổi-bật)
-3. [Sơ Đồ Luồng Hoạt Động (Pipeline Workflow)](#-sơ-đồ-luồng-hoạt-động-pipeline-workflow)
+3. [Sơ Đồ Kiến Trúc Pipeline (Workflow)](#-sơ-đồ-kiến-trúc-pipeline-workflow)
 4. [Cấu Trúc Thư Mục Dự Án](#-cấu-trúc-thư-mục-dự-án)
-5. [Yêu Cầu & Cài Đặt Môi Trường](#-yêu-cầu--cài-đặt-môi-trường)
-6. [Chi Tiết Kiến Trúc Ensemble (YOLO_4 + RF-DETR Small)](#-chi-tiết-kiến-trúc-ensemble-yolo_4--rf-detr-small)
-7. [Hệ Thống Trực Quan 2 Window (Dual-Window & Side-by-Side)](#-hệ-thống-trực-quan-2-window-dual-window--side-by-side)
-8. [Hướng Dẫn Sử Dụng & Kiểm Thử](#-hướng-dẫn-sử-dụng--kiểm-thử)
-   - [Pipeline Hoàn Chỉnh Ensemble Mới Nhất](#1-chạy-quy-trình-ekyc-ensemble-mới-nhất-yolo_4--rf-detr-small)
-   - [Kiểm Thử Server Module (Headless)](#2-kiểm-thử-server-module-headless-chế-độ-chuẩn-máy-chủ)
-   - [Công Cụ Xem Kết Quả 2 Cửa Sổ](#3-công-cụ-xem-kết-quả-2-window-toolsview_resultspy)
-   - [Kiểm Thử Từng Model Anti-Spoof](#4-kiểm-thử-từng-model-anti-spoof)
-9. [Tích Hợp Server Module & Kết Nối Thiết Bị Biên (ESP32-S3)](#-tích-hợp-server-module--kết-nối-thiết-bị-biên-esp32-s3)
-10. [Bảng Phím Tắt Điều Khiển (Hotkeys)](#-bảng-phím-tắt-điều-khiển-hotkeys)
+5. [Cài Đặt Môi Trường](#-cài-đặt-môi-trường)
+6. [Cơ Chế Ensemble Anti-Spoofing & Veto Rule](#-cơ-chế-ensemble-anti-spoofing--veto-rule)
+7. [Khung Oval Bokeh Masking & Web Live Pipeline](#-khung-oval-bokeh-masking--web-live-pipeline)
+8. [Hướng Dẫn Sử Dụng & Khởi Chạy](#-hướng-dẫn-sử-dụng--khởi-chạy)
+   - [Cách 1: Khởi chạy FastAPI AI Server & Web Portal](#1-khởi-chạy-fastapi-ai-server--web-portal-khuyên-dùng)
+   - [Cách 2: Chạy kiểm thử tự động Test Suite](#2-chạy-kiểm-thử-tự-động-test-suite)
+   - [Cách 3: Chạy bằng CLI Runner (Node.js IPC Bridge)](#3-chạy-bằng-cli-runner-nodejs-ipc-bridge)
+   - [Cách 4: Chạy Pipeline Webcam Desktop OpenCV](#4-chạy-pipeline-webcam-desktop-opencv)
+9. [Tài Liệu API Endpoints (FastAPI)](#-tài-liệu-api-endpoints-fastapi)
+10. [Tích Hợp Backend Node.js](#-tích-hợp-backend-nodejs)
 11. [Khắc Phục Sự Cố Thường Gặp (Troubleshooting)](#-khắc-phục-sự-cố-thường-gặp-troubleshooting)
 
 ---
 
 ## 📦 Link Tải Tất Cả Mô Hình AI (Google Drive)
 
-Toàn bộ trọng số mô hình đã được huấn luyện và tối ưu được lưu trữ tại Google Drive:
+Toàn bộ trọng số mô hình đã huấn luyện được lưu trữ tại Google Drive:
 
-* 🔗 **Google Drive Repository:** [Google Drive - Face Project Models Folder](https://drive.google.com/drive/folders/1O7lqzhpJ8DE9x2AFzMyrd3M2-8sNdYBn) *(Thư mục lưu trữ toàn bộ weights: YOLO_1 đến YOLO_4, Face Detection, RF-DETR ONNX, MiniFASNet, MobileNetV2)*.
+* 🔗 **Google Drive Repository:** [Google Drive - Face Project Models Folder](https://drive.google.com/drive/folders/1O7lqzhpJ8DE9x2AFzMyrd3M2-8sNdYBn)
 
-### Danh mục các file trong thư mục `models/`:
-| Tên File Model | Kiến trúc / Nguồn | Kích thước | Chức năng chính |
+### Bảng đối chiếu model sử dụng:
+| Tên File Model | Vị trí trong Project | Kích thước | Chức năng chính |
 |:---|:---|:---:|:---|
-| `Face_Detection.pt` | YOLO Face Detection | ~19 MB | Phát hiện vị trí khuôn mặt tốc độ cao |
-| `face_landmarker.task` | Google MediaPipe Tasks | ~3.7 MB | Trích xuất 478 điểm mốc 3D khuôn mặt |
-| `Anti_Spoof_YOLO_4.pt` | YOLOv8 Custom Face Anti-Spoof | ~6.2 MB | Phân loại Real vs Spoof (v4 tối ưu nhất) |
-| `Anti_Spoof_YOLO.pt` / `_1.pt`, `_2.pt`, `_3.pt` | YOLOv8 Checkpoints | 6 MB - 24 MB | Các phiên bản checkpoint huấn luyện trước |
-| `models/roboflow/**/weights.onnx` | RF-DETR Small (Roboflow Transformer) | ~108.9 MB | Trích xuất đặc trưng sâu, vân màn hình/giấy in |
-| `Anti_Spoof_minifasnet.pth` | MiniFASNetV2 PyTorch | ~240 KB | CNN siêu nhẹ chống giả mạo trên crop mặt |
-| `2.7_80x80_MiniFASNetV2.pth` | MiniFASNetV2 Official | ~1.8 MB | Model chính thức nhận diện đa quy mô |
-| `4_0_0_80x80_MiniFASNetV1SE.pth` | MiniFASNetV1SE Official | ~1.8 MB | Model phụ trợ tính năng Squeeze-and-Excitation |
-| `Model_MobilenetV2/model.safetensors` | MobileNetV2 Safetensors | ~9 MB | Phân loại Real/Spoof trên crop 224x224 |
+| `Face_Detection.pt` | `server_module/models/` & `models/` | ~19 MB | YOLO Face Detection tốc độ cao |
+| `face_landmarker.task` | `server_module/models/` & `models/` | ~3.7 MB | Google MediaPipe Tasks 478 Landmarks |
+| `Anti_Spoof_YOLO_4.pt` | `server_module/models/` & `models/` | ~6.2 MB | Model 1: YOLOv8 Face Anti-Spoof |
+| `roboflow/**/weights.onnx` | `server_module/models/` & `models/` | ~108.9 MB | Model 2: RF-DETR Small Transformer |
+| `Anti_Spoof_minifasnet.pth` | `models/` | ~240 KB | CNN MiniFASNetV2 PyTorch |
+| `Model_MobilenetV2/` | `models/` | ~9 MB | MobileNetV2 Safetensors |
 
 > [!NOTE]
-> Sau khi tải về từ Google Drive, hãy giải nén và đặt các file vào thư mục `models/` của project theo đúng cấu trúc thư mục.
+> Thư mục `server_module/models/` đã được đóng gói tự chứa (self-contained) sẵn các model trọng số chính để máy chủ AI có thể chạy độc lập ngay mà không phụ thuộc thư mục gốc.
 
 ---
 
 ## 🌟 Tính Năng Nổi Bật
 
 - **Lõi Ensemble 2 Model Độc Lập (YOLO_4 + RF-DETR Small):**
-  - Kết hợp sức mạnh nhận diện siêu nhanh của **CNN/YOLOv8** và khả năng trích xuất vân ảnh sâu của **Detection Transformer (RF-DETR Small)**.
-  - **IoU Bounding Box Matching ($\ge 0.40$):** Đảm bảo cả 2 mô hình cùng xác thực trên cùng một vị trí khuôn mặt.
-  - **Cơ chế Strict Spoof Veto ($\ge 68\%$):** Khi một trong hai model phát hiện dấu hiệu giả mạo với độ tự tin $\ge 68\%$, hệ thống lập tức phủ quyết (Veto) thành **SPOOF** để bảo vệ an ninh tuyệt đối.
-  - **Consensus Filtering (Lược bỏ ảnh khi thiếu đồng thuận):** Khi chỉ có duy nhất 1 model phát hiện được khuôn mặt (model còn lại `N/A`), hệ thống tự động loại bỏ ảnh (`DISCARD_NO_CONSENSUS`) và yêu cầu chụp lại thay vì phán đoán bừa.
-- **Bộ Lọc Chất Lượng Ảnh (OpenCV Quality Filter):**
-  - Kiểm tra độ sắc nét bằng phương sai Laplacian (`Var >= 70`) loại bỏ ảnh rung/nhòe.
-  - Kiểm tra độ sáng kênh V trong HSV (`55 <= Luminance <= 225`) chống ảnh quá tối hoặc lóa đèn.
-- **Khung Oval Biometric Ticks & Gaussian Blur Bokeh:**
-  - Khung elip định vị khuôn mặt chuẩn eKYC, làm mờ ngoại vi giúp thuật toán chỉ tập trung vào người trong Oval và loại bỏ người xung quanh.
-- **Xác Thực Cử Động Sống Động (Active Liveness):**
-  - Đo tỉ lệ co giãn mí mắt (**Blink EAR**) để kiểm tra chớp mắt tự nhiên.
-  - Đưa ra thử thách quay đầu ngẫu nhiên (**Head Movement Challenge**) với góc Euler Yaw/Pitch/Roll 3D.
-- **Giao Diện Side-by-Side Dashboard Dark Theme:** Tách rời ảnh mặt sạch và bảng kết quả thông số kỹ thuật, xuất báo cáo JSON/CSV tự động.
+  - **IoU Bounding Box Matching ($\ge 0.40$):** Khớp nối vị trí khuôn mặt giữa mô hình CNN và Transformer.
+  - **Quy tắc Phủ Quyết An Ninh (Strict Spoof Veto $\ge 68\%$):** Khi một trong 2 mô hình phát hiện dấu hiệu giả mạo với độ tự tin $\ge 68\%$, hệ thống lập tức phủ quyết thành **SPOOF** để ngăn chặn gian lận.
+  - **Consensus Filtering (Lọc Đồng Thuận):** Khi chỉ có duy nhất 1 mô hình phát hiện mặt (mô hình kia `N/A`), hệ thống tự động loại bỏ ảnh (`DISCARD_NO_CONSENSUS`) và yêu cầu chụp lại.
+- **Khung Oval Bokeh Masking (Làm Mờ Ngoại Vi Trừ Oval Ở Giữa):**
+  - Làm mờ quang học (Gaussian Blur Bokeh 14px) và giảm sáng toàn bộ bối cảnh xung quanh, chỉ giữ sắc nét vùng khuôn mặt bên trong khung Oval.
+  - Loại bỏ hoàn toàn sự can thiệp của người đứng sau hoặc các màn hình/ảnh giả mạo ngoại vi.
+- **Quy Trình Pipeline Trực Tiếp Trên Web (Web Live Pipeline):**
+  - Hỗ trợ xem trực tiếp camera trên trình duyệt.
+  - Tự động đánh giá góc mặt 3D, khoảng cách và căn giữa oval real-time.
+  - Tự động chụp (**Auto-Capture Countdown**) khi khuôn mặt đạt chuẩn trong 1.5 giây.
+- **FastAPI AI Server Chuẩn Hóa:**
+  - Cung cấp RESTful API, tự động sinh tài liệu tương tác **Swagger UI** và **ReDoc**.
+  - Tiếp nhận cả Multipart Form-Data (File ảnh) lẫn JSON Base64 payload.
+  - Trả về kết quả JSON chuẩn hóa gồm 7 tiêu chí, ảnh crop 224x224 và ảnh HUD annotated.
 
 ---
 
-## 🔄 Sơ Đồ Luồng Hoạt Động (Pipeline Workflow)
+## 🔄 Sơ Đồ Kiến Trúc Pipeline (Workflow)
 
 ```mermaid
 flowchart TD
-    A[📷 ESP32-S3 / Webcam Preview] --> B[Khung Oval Biometric & Lọc Sáng/Mờ]
-    B -->|Bấm SPACE / Tự Động| C[📸 Chụp Ảnh Gốc -> data_raw/<id>.jpg]
-    C --> D[1. Face Detection - YOLO]
-    D --> E[2. Landmarks 478 & Pose 3D Yaw/Pitch/Roll]
-    E --> F[3. Face Alignment & Crop 224x224]
-    F --> G{4. Ensemble Anti-Spoofing}
-    G --> G1[Model 1: Anti_Spoof_YOLO_4.pt]
-    G --> G2[Model 2: RF-DETR Small Transformer]
-    G1 & G2 --> H[IoU Matching & Consensus Check]
-    H -->|Chỉ 1 Model Bắt Được| X1[⚠️ DISCARD: Thiếu Đồng Thuận -> Chụp Lại]
-    H -->|Cả 2 Bắt Được| I{Kiểm Tra Strict Veto}
-    I -->|Có Bên Spoof >= 68%| X2[❌ SPOOF: Kích Hoạt Quyền Phủ Quyết]
-    I -->|Không Có Veto| J[Soft-Voting: Trung Bình Xác Suất Real]
-    J -->|Real >= 50%| K[5. Active Liveness: Chớp Mắt & Quay Đầu]
-    J -->|Real < 50%| X2
-    K -->|Thành Công| L[🎯 eKYC APPROVED - Người Thật]
-    K -->|Thất Bại| X3[❌ eKYC REJECTED]
-    L & X2 & X3 --> M[💾 Xuất 1_pipeline_result.jpg & 4_report.json]
+    A[📷 Web Client / Camera Stream] --> B[Khung Oval Hướng Dẫn & Làm Mờ Bối Cảnh Bokeh]
+    B -->|Mặt Chuẩn / Tự Động Đếm Ngược| C[📸 Chụp Ảnh Gốc]
+    C --> D[1. Khung Oval Masking & Lọc Vùng Mặt]
+    D --> E[2. Phát Hiện Mặt YOLO & Căn Chỉnh Hình Học]
+    E --> F[3. Trích Xuất 478 Landmarks & Pose 3D Yaw/Pitch/Roll]
+    F --> G[4. Cắt Chuẩn Hóa BBox 224x224]
+    G --> H{5. Chạy Cụm Ensemble Anti-Spoof}
+    H --> H1[Model 1: Anti_Spoof_YOLO_4]
+    H --> H2[Model 2: RF-DETR Small Transformer]
+    H1 & H2 --> I[Khớp BBox IoU >= 0.40]
+    I -->|Chỉ 1 Bên Bắt Được| J1[⚠️ DISCARD: Thiếu Đồng Thuận -> Chụp Lại]
+    I -->|Cả 2 Cùng Bắt Được| J2{Có Bên Nào Báo Spoof >= 68%?}
+    J2 -->|CÓ| K1[❌ VETO: Phủ Quyết -> Chốt SPOOF]
+    J2 -->|KHÔNG| K2[Soft-Voting: Trung Bình Xác Suất Real]
+    K2 -->|Real >= 50%| L[6. Active Liveness: Chớp Mắt & Quay Đầu]
+    K2 -->|Real < 50%| K1
+    L -->|Đạt 7/7 Tiêu Chí| M[🎯 eKYC APPROVED - Người Thật]
+    L -->|Không Đạt| N[❌ eKYC REJECTED]
+    M & K1 & N --> O[💾 Trả Về JSON + Base64 Crop 224x224 + Ảnh HUD]
 ```
 
 ---
@@ -113,53 +113,61 @@ flowchart TD
 
 ```
 Face-Project/
-├── models/                     # Thư mục chứa trọng số AI (Tải từ Google Drive)
-│   ├── Anti_Spoof_YOLO_4.pt    # Model YOLOv4 Face Anti-Spoof
-│   ├── Face_Detection.pt       # Model YOLO Face Detection
-│   ├── face_landmarker.task    # Google MediaPipe 478 Landmarks
-│   ├── Anti_Spoof_minifasnet.pth
-│   └── roboflow/               # Trọng số RF-DETR Small ONNX
-│       └── face-spoof-detection-liika-owgrl-1-rfdetr-small-t1/
-│           ├── class_names.txt
-│           ├── environment.json
-│           ├── model_type.json
-│           └── weights.onnx    # RF-DETR Transformer ONNX (~109MB)
-├── data_raw/                   # Lưu ảnh gốc chụp từ Webcam / ESP32-S3
-├── server_module/              # Module AI Headless triển khai trên Server Backend
-│   ├── pipeline.py
-│   └── utils.py
-├── src/                        # Thư viện thuật toán cốt lõi
-│   ├── anti_spoof/             # MobileNetV2 & MiniFASNet
-│   ├── face_alignment_crop/    # Affine transform & crop
-│   ├── face_detection/         # YOLO Face Detector
-│   ├── head_movement/          # Active Liveness quay đầu
-│   ├── illumination/           # Đo sáng & CLAHE tiền xử lý
-│   ├── landmark_detection/     # MediaPipe Face Landmarker
-│   └── pose_validation/        # 3D Euler angle estimation
-├── tests/                      # Kịch bản kiểm thử
-│   ├── test_pipeline_ensemble_full.py  # ⭐ Pipeline eKYC hoàn chỉnh mới nhất
-│   ├── test_ensemble_yolo_rfdetr.py    # Test độc lập Ensemble 2 model
-│   ├── test_pipeline_full.py           # Pipeline eKYC YOLO đơn lẻ
-│   ├── test_anti_spoof.py              # Test YOLO Anti-Spoof
-│   ├── test_anti_spoof_rfdetr_small.py # Test RF-DETR Small
-│   └── output/                 # Thư mục lưu kết quả xuất ra theo từng ID
-├── tools/                      # Script hỗ trợ download và view kết quả
-├── requirements.txt            # Danh sách dependencies
-└── README.md
+├── run_api_server.py                 # ⭐ Điểm khởi chạy FastAPI AI Server
+├── requirements.txt                  # Danh sách dependencies đã chuẩn hóa
+├── README.md                         # Tài liệu hướng dẫn dự án
+├── TEST_NOTES.md                     # Sổ tay ghi chú kiểm thử chi tiết
+│
+├── server_module/                    # 🚀 MODULE AI SERVER & MICROSERVICE
+│   ├── __init__.py                   # Export module API & version
+│   ├── app.py                        # FastAPI Server & Routes definition
+│   ├── config.py                     # Cấu hình ngưỡng AI & paths nội bộ
+│   ├── ensemble_anti_spoof.py        # Cụm Ensemble (YOLO_4 + RF-DETR Small)
+│   ├── anti_spoof_yolo.py            # Detector fallback YOLO
+│   ├── pipeline_server.py            # Core Pipeline Headless (EKYCPipelineServer)
+│   ├── runner.py                     # CLI Runner & Node.js IPC Bridge
+│   ├── schemas.py                    # Pydantic V2 Schemas (Request/Response)
+│   ├── utils.py                      # Oval Masking, Bokeh, IoU, Base64 & HUD
+│   ├── nodejs_client_example.js      # Script mẫu gọi API từ Node.js
+│   ├── models/                       # Thư mục trọng số tự chứa của server_module
+│   │   ├── Anti_Spoof_YOLO_4.pt
+│   │   ├── Face_Detection.pt
+│   │   ├── face_landmarker.task
+│   │   └── roboflow/.../weights.onnx
+│   └── static/                       # 🌐 Giao diện Web Client Scanner
+│       └── index.html                # Web App Oval Bokeh Blur & Auto-Capture
+│
+├── models/                           # Kho weights gốc phục vụ kiểm thử mở rộng
+├── src/                              # Thư viện thuật toán cốt lõi
+│   ├── face_detection/               # YOLO Face Detector
+│   ├── landmark_detection/           # MediaPipe Landmarker
+│   ├── pose_validation/              # 3D Euler Angles estimation
+│   ├── face_alignment_crop/          # Affine transformation
+│   └── head_movement/                # Liveness quay đầu
+│
+├── tests/                            # Bộ kiểm thử tích hợp & Unit Tests
+│   ├── test_fastapi_server.py        # Test toàn diện 5 endpoint FastAPI
+│   ├── test_server_module.py         # Test pipeline_server logic
+│   ├── test_pipeline_ensemble_full.py# Test pipeline webcam OpenCV
+│   └── ...                           # Các test case đơn lẻ khác
+└── output/                           # Thư mục xuất artifacts & báo cáo JSON
 ```
 
 ---
 
-## ⚙️ Yêu Cầu & Cài Đặt Môi Trường
+## ⚙️ Cài Đặt Môi Trường
 
-Khuyến nghị sử dụng **Python 3.10 hoặc 3.11** trên Windows / Linux.
+Khuyến nghị sử dụng **Python 3.10 hoặc 3.11** trên Windows hoặc Linux.
 
 ```bash
 # 1. Tạo môi trường ảo
 python -m venv venv
 
-# 2. Kích hoạt môi trường (Windows PowerShell)
+# 2. Kích hoạt môi trường
+# Trên Windows PowerShell:
 venv\Scripts\Activate.ps1
+# Trên Linux / macOS:
+source venv/bin/activate
 
 # 3. Nâng cấp pip và cài đặt thư viện
 python -m pip install --upgrade pip
@@ -168,86 +176,187 @@ pip install -r requirements.txt
 
 ---
 
-## 🧠 Chi Tiết Kiến Trúc Ensemble (YOLO_4 + RF-DETR Small)
+## 🧠 Cơ Chế Ensemble Anti-Spoofing & Veto Rule
 
-Hệ thống giải quyết triệt để điểm yếu của các giải pháp nhận diện đơn lẻ:
+Cụm Ensemble giải quyết triệt để các trường hợp giả mạo tinh vi (ảnh in chất lượng cao, màn hình OLED/4K, video replay):
 
 1. **Khớp nối Bounding Box (IoU Matching):**
-   * Tính $\text{IoU} = \frac{\text{Area}(\text{Box}_{YOLO} \cap \text{Box}_{RFDETR})}{\text{Area}(\text{Box}_{YOLO} \cup \text{Box}_{RFDETR})}$.
-   * Nếu $\text{IoU} \ge 0.40$: Xác nhận cả hai mô hình đang cùng thẩm định một khuôn mặt.
+   $$\text{IoU} = \frac{\text{Area}(\text{Box}_{YOLO} \cap \text{Box}_{RFDETR})}{\text{Area}(\text{Box}_{YOLO} \cup \text{Box}_{RFDETR})} \ge 0.40$$
 2. **Quy tắc Phủ Quyết An Ninh (Strict Spoof Veto):**
-   * Nếu bất kỳ model nào có $\text{Conf}_{\text{SPOOF}} \ge 0.68$: Lập tức **phủ quyết** toàn bộ kết quả, hủy bỏ việc tính trung bình và đánh dấu là **SPOOF** ngay lập tức.
-3. **Quy tắc Đồng Thuận (Consensus Rule):**
-   * Nếu chỉ có 1 model phát hiện (ví dụ YOLO bắt được nhưng RF-DETR là `N/A`), hệ thống coi đây là sai số camera/nhiễu góc chụp $\rightarrow$ **Lược bỏ ảnh (`DISCARD_NO_CONSENSUS`)**, tuyệt đối không đoán mò.
+   $$\text{Nếu } \max(\text{Conf}_{\text{YOLO\_Spoof}}, \text{Conf}_{\text{RFDETR\_Spoof}}) \ge 0.68 \implies \textbf{SPOOF (VETO)}$$
+3. **Soft-Voting (Khi không kích hoạt Veto):**
+   $$P_{\text{Real}} = 0.50 \times P_{\text{YOLO\_Real}} + 0.50 \times P_{\text{RFDETR\_Real}}$$
+4. **Tiêu Chí Đồng Thuận (Dual-Model Agreement):** Cả 2 mô hình phải đồng thời nhận diện được khuôn mặt trong khung hình thì kết quả mới hợp lệ.
 
 ---
 
-## 🚀 Hướng Dẫn Sử Dụng & Kiểm Thử
+## 🎯 Khung Oval Bokeh Masking & Web Live Pipeline
 
-### 1. Chạy Quy Trình eKYC Ensemble Mới Nhất (YOLO_4 + RF-DETR Small)
+* **Làm mờ ngoại vi trên Web Client:** Sử dụng CSS Backdrop-filter kết hợp SVG Radial Masking, làm mờ 14px toàn bộ bối cảnh ngoại vi trong thời gian thực (60 FPS), giữ vùng oval trong suốt rõ nét.
+* **Làm mờ ngoại vi trên AI Server:** Hàm `get_oval_masked_frame()` áp dụng bộ lọc Gaussian Blur ($k=45$) và làm tối bối cảnh ($\times 0.35$), giúp mô hình AI chỉ tập trung suy luận vào khuôn mặt bên trong oval.
+* **Auto-Capture Countdown:** Khi người dùng đưa mặt đúng vào giữa oval và góc mặt nhìn thẳng trong 1.5 giây, hệ thống tự động đếm ngược 3-2-1 và chụp ảnh thẩm định.
 
-* **Chạy đầy đủ (Webcam + Chụp ảnh + AI Ensemble + Active Liveness):**
-  ```bash
-  python tests/test_pipeline_ensemble_full.py --cam 0
-  ```
-* **Chạy chế độ chụp nhanh (Chụp là có kết quả Ensemble ngay, bỏ qua Liveness):**
-  ```bash
-  python tests/test_pipeline_ensemble_full.py --cam 0 --static
-  ```
+---
 
-### 2. Kiểm Thử Độc Lập Ensemble 2 Model (Snapshot & OpenCV Quality Filter)
+## 🚀 Hướng Dẫn Sử Dụng & Khởi Chạy
 
-* **Test trên Webcam:**
-  ```bash
-  python tests/test_ensemble_yolo_rfdetr.py --cam 0
-  ```
-* **Test trên 1 ảnh tĩnh bất kỳ:**
-  ```bash
-  python tests/test_ensemble_yolo_rfdetr.py --image data_raw/0.jpg
-  ```
+### 1. Khởi chạy FastAPI AI Server & Web Portal *(Khuyên dùng)*
 
-### 3. Công Cụ Xem Kết Quả 2 Cửa Sổ (`tools/view_results.py`)
-
-Sau khi chạy xong, xem lại toàn bộ lịch sử các phiên eKYC đã lưu trong `output/`:
+Khởi động máy chủ AI bằng script launcher:
 ```bash
-python tools/view_results.py
+python run_api_server.py
 ```
+Sau khi khởi động:
+* **Giao diện Web eKYC Scanner:** Truy cập [http://127.0.0.1:8000/](http://127.0.0.1:8000/) trên trình duyệt.
+* **Tài liệu API Swagger UI:** Truy cập [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
+* **Tài liệu API ReDoc:** Truy cập [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc).
 
 ---
 
-## 📡 Tích Hợp Server Module & Kết Nối Thiết Bị Biên (ESP32-S3)
+### 2. Chạy kiểm thử tự động Test Suite
 
-Khi kết nối với vi điều khiển ESP32-S3 / ESP-CAM:
-1. **ESP32-S3** chụp chùm 3-5 frame và thực hiện lọc thô độ nét Laplacian variance trước khi gửi.
-2. ESP32-S3 truyền ảnh JPEG qua HTTP POST `/api/verify` hoặc WebSocket lên Server.
-3. Server gọi hàm xử lý Headless trong `server_module/pipeline.py`:
-   ```python
-   from server_module import run_ekyc_pipeline
-   
-   # Nhận mảng bytes hoặc ảnh numpy từ ESP32-S3
-   result = run_ekyc_pipeline(image_bytes)
-   print("Kết quả:", result["final_verdict"])
-   ```
+* **Kiểm thử toàn bộ endpoint của FastAPI Server:**
+  ```bash
+  python tests/test_fastapi_server.py
+  ```
+* **Kiểm thử logic xử lý tĩnh của Server Module:**
+  ```bash
+  python tests/test_server_module.py
+  ```
 
 ---
 
-## ⌨️ Bảng Phím Tắt Điều Khiển (Hotkeys)
+### 3. Chạy bằng CLI Runner (Node.js IPC Bridge)
 
-| Phím Tắt | Chức Năng |
-|:---:|:---|
-| **SPACE** hoặc **c** | Chụp ảnh và chạy Full quy trình eKYC (AI + Active Liveness) |
-| **s** | **Chụp nhanh & Lưu ngay** (Chạy Ensemble AI -> Xuất báo cáo không cần đợi Liveness) |
-| **a** | Bật / Tắt chế độ tự động chụp khi khuôn mặt đạt chuẩn trong Oval |
-| **r** | Khởi tạo phiên eKYC mới (ảnh tiếp theo) |
-| **q** hoặc **ESC** | Thoát chương trình |
+Chạy trực tiếp từ dòng lệnh hoặc gọi từ tiến trình con (child_process):
+
+* **Thẩm định eKYC toàn diện:**
+  ```bash
+  python server_module/runner.py --action full_verify --input "data_raw/0.jpg"
+  ```
+* **Kiểm tra riêng cụm Ensemble Anti-Spoof:**
+  ```bash
+  python server_module/runner.py --action check_antispoof --input "data_raw/0.jpg"
+  ```
+* **Kiểm tra góc mặt & tư thế (Pose):**
+  ```bash
+  python server_module/runner.py --action validate_pose --input "data_raw/0.jpg"
+  ```
+
+---
+
+### 4. Chạy Pipeline Webcam Desktop OpenCV
+
+Dành cho thử nghiệm tương tác truyền thống có cửa sổ OpenCV:
+```bash
+python tests/test_pipeline_ensemble_full.py --cam 0
+```
+* **Phím tắt:** `SPACE` hoặc `c` để chụp; `a` bật/tắt tự động chụp; `q` thoát.
+
+---
+
+## 📡 Tài Liệu API Endpoints (FastAPI)
+
+### 1. `POST /api/v1/verify` (Xác thực eKYC toàn diện)
+Hỗ trợ cả Multipart Form-Data lẫn JSON Base64 payload:
+
+* **Tham số Request:**
+  - `file`: File ảnh khuôn mặt (Multipart) hoặc `image_base64`: Chuỗi Base64 ảnh (JSON).
+  - `img_id`: Mã phiên giao dịch (mặc định: `"1"`).
+  - `apply_oval_mask`: `true` (mặc định) để làm mờ bối cảnh ngoại vi trừ oval.
+  - `return_crop_image`: `true` để nhận ảnh crop 224x224 Base64.
+  - `return_annotated_image`: `true` để nhận ảnh HUD Base64.
+* **Cấu trúc JSON Response:**
+  ```json
+  {
+    "success": true,
+    "image_id": "WEB_1726543891",
+    "timestamp": "2026-09-17 10:15:30",
+    "approved": true,
+    "verdict": "APPROVED",
+    "is_real": true,
+    "confidence": 0.842,
+    "reasons": [],
+    "criteria": {
+      "face_detected": true,
+      "single_face": true,
+      "pose_valid": true,
+      "anti_spoof_real": true,
+      "both_models_detected": true,
+      "blink_passed": true,
+      "head_movement_passed": true
+    },
+    "face_detection": { "num_faces": 1, "primary_face": { "bbox": [180, 95, 460, 430], "confidence": 0.94 } },
+    "pose_3d": { "is_valid": true, "yaw": -2.4, "pitch": 3.1, "roll": 0.8 },
+    "ensemble_anti_spoof": {
+      "label": "REAL",
+      "is_real": true,
+      "confidence": 0.842,
+      "source": "ENSEMBLE",
+      "agreement": true,
+      "both_detected": true
+    },
+    "crop_face_base64": "data:image/jpeg;base64,...",
+    "annotated_image_base64": "data:image/jpeg;base64,...",
+    "processing_time_ms": 1780.5
+  }
+  ```
+
+### 2. `POST /api/v1/validate-pose` (Kiểm tra góc mặt & căn chỉnh Oval)
+Dành cho Web Client gửi frame thumbnail liên tục (4-5 lần/giây) để định vị khuôn mặt trước khi chụp.
+
+### 3. `GET /api/v1/health` (Giám sát trạng thái máy chủ AI)
+Trả về trạng thái sức khỏe máy chủ, tình trạng nạp model (`models_loaded: true`) và thiết bị tính toán (`device: "cpu"` hoặc `"cuda"`).
+
+---
+
+## 💻 Tích Hợp Backend Node.js
+
+Node.js Backend có thể giao tiếp với AI Server qua HTTP API cực kỳ đơn giản:
+
+```javascript
+const axios = require('axios');
+const fs = require('fs');
+const FormData = require('form-data');
+
+async function verifyEKYC(imageFilePath) {
+  const form = new FormData();
+  form.append('file', fs.createReadStream(imageFilePath));
+  form.append('img_id', 'TXN_' + Date.now());
+  form.append('apply_oval_mask', 'true');
+
+  const response = await axios.post('http://127.0.0.1:8000/api/v1/verify', form, {
+    headers: form.getHeaders(),
+    timeout: 10000
+  });
+
+  const result = response.data;
+  console.log('eKYC Result:', result.verdict); // APPROVED hoặc REJECTED
+  console.log('Is Real:', result.is_real);
+  console.log('Confidence:', (result.confidence * 100).toFixed(1) + '%');
+
+  // Lưu ảnh crop khuôn mặt 224x224 vào Database/Storage
+  const cropBase64 = result.crop_face_base64;
+  return result;
+}
+```
+*(Tham khảo thêm script mẫu đầy đủ tại [`server_module/nodejs_client_example.js`](server_module/nodejs_client_example.js)).*
 
 ---
 
 ## 🛠️ Khắc Phục Sự Cố Thường Gặp (Troubleshooting)
 
-1. **Lỗi `DISCARD_NO_CONSENSUS` (Chỉ 1 model nhận diện):**
-   * *Nguyên nhân:* Khuôn mặt bị quay quá nghiêng hoặc ánh sáng phòng quá gắt làm 1 trong 2 model bị mất dấu.
-   * *Khắc phục:* Canh chỉnh khuôn mặt ngay ngắn vào giữa khung Oval và chụp lại.
-2. **Kích hoạt nhầm VETO `SPOOF (95%)` trên mặt thật:**
-   * *Nguyên nhân:* Ánh sáng đèn LED chiếu thẳng làm lóa bóng vùng trán (giống phản chiếu màn hình điện thoại) hoặc camera tự động làm mịn da.
-   * *Khắc phục:* Giảm bớt đèn rọi trực diện hoặc tắt tính năng làm đẹp (beauty filter) trên webcam.
+1. **Lỗi `ModuleNotFoundError: No module named 'numpy'`:**
+   * *Nguyên nhân:* Môi trường dòng lệnh đang trỏ tới bản Python mặc định chưa kích hoạt `venv`.
+   * *Khắc phục:* Kích hoạt đúng môi trường ảo (`venv\Scripts\activate`) hoặc chỉ định đường dẫn tuyệt đối tới bản Python 3.11 chứa thư viện.
+2. **Cảnh báo `Specified provider 'CUDAExecutionProvider' is not in available provider names`:**
+   * *Hiện tượng:* Máy tính chạy trên CPU hoặc Windows DirectML mà không có GPU NVIDIA.
+   * *Khắc phục:* Đây chỉ là cảnh báo thông tin; hệ thống tự động chuyển sang `DmlExecutionProvider` hoặc `CPUExecutionProvider` hoạt động hoàn toàn bình thường.
+3. **Khuôn mặt bị báo `Khuôn mặt nằm ngoài khung oval hướng dẫn`:**
+   * *Khắc phục:* Canh chỉnh khuôn mặt ngay ngắn vào giữa khung oval trung tâm trên màn hình và giữ yên camera khi chụp.
+
+---
+
+<p align="center">
+  <sub>Phát triển & Tối ưu bởi <strong>GiantKy</strong> &bull; 2026</sub>
+</p>

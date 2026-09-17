@@ -4,24 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>eKYC AI Scanner & Biometric Verification Portal</title>
-  <!-- Google Fonts: Outfit & Plus Jakarta Sans -->
+  <!-- Google Fonts: Outfit, Plus Jakarta Sans, JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-main: #07090E;
-      --bg-card: rgba(18, 24, 38, 0.85);
-      --bg-card-hover: rgba(28, 36, 56, 0.95);
+      --bg-main: #06080d;
+      --bg-card: rgba(15, 21, 35, 0.88);
+      --bg-card-hover: rgba(22, 30, 49, 0.95);
       --border-color: rgba(255, 255, 255, 0.08);
       --border-focus: rgba(6, 182, 212, 0.5);
       --cyan: #06b6d4;
-      --cyan-glow: rgba(6, 182, 212, 0.25);
+      --cyan-glow: rgba(6, 182, 212, 0.35);
       --emerald: #10b981;
-      --emerald-glow: rgba(16, 185, 129, 0.25);
+      --emerald-glow: rgba(16, 185, 129, 0.45);
       --rose: #f43f5e;
-      --rose-glow: rgba(244, 63, 94, 0.25);
+      --rose-glow: rgba(244, 63, 94, 0.35);
       --amber: #f59e0b;
+      --amber-glow: rgba(245, 158, 11, 0.35);
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
       --text-dim: #64748b;
@@ -37,7 +38,7 @@
     }
 
     body {
-      background: radial-gradient(circle at 50% 0%, #111d33 0%, var(--bg-main) 70%);
+      background: radial-gradient(circle at 50% -10%, #11203d 0%, var(--bg-main) 70%);
       color: var(--text-main);
       font-family: var(--font-body);
       min-height: 100vh;
@@ -48,16 +49,16 @@
     /* Header */
     header {
       border-bottom: 1px solid var(--border-color);
-      background: rgba(7, 9, 14, 0.8);
-      backdrop-filter: blur(12px);
+      background: rgba(6, 8, 13, 0.85);
+      backdrop-filter: blur(14px);
       position: sticky;
       top: 0;
       z-index: 100;
-      padding: 1rem 2rem;
+      padding: 0.85rem 2rem;
     }
 
     .header-inner {
-      max-width: 1400px;
+      max-width: 1440px;
       margin: 0 auto;
       display: flex;
       justify-content: space-between;
@@ -69,29 +70,29 @@
     .brand {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.85rem;
     }
 
     .brand-icon {
-      width: 40px;
-      height: 40px;
+      width: 42px;
+      height: 42px;
       background: linear-gradient(135deg, #06b6d4, #3b82f6);
-      border-radius: 10px;
+      border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 0 15px var(--cyan-glow);
+      box-shadow: 0 0 20px var(--cyan-glow);
     }
 
     .brand-icon svg {
-      width: 22px;
-      height: 22px;
+      width: 24px;
+      height: 24px;
       fill: white;
     }
 
     .brand-title {
       font-family: var(--font-heading);
-      font-size: 1.3rem;
+      font-size: 1.35rem;
       font-weight: 700;
       letter-spacing: -0.02em;
       background: linear-gradient(120deg, #ffffff, #a5f3fc);
@@ -100,69 +101,117 @@
     }
 
     .brand-subtitle {
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       color: var(--text-muted);
-      letter-spacing: 0.05em;
       text-transform: uppercase;
+      letter-spacing: 0.08em;
     }
 
-    .server-status {
+    .nav-badges {
       display: flex;
       align-items: center;
-      gap: 0.6rem;
-      padding: 0.4rem 0.9rem;
+      gap: 0.65rem;
+    }
+
+    .badge-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.32rem 0.75rem;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--border-color);
-      border-radius: 9999px;
-      font-size: 0.8rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
     }
 
     .status-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: var(--text-dim);
-      box-shadow: 0 0 8px currentColor;
-      transition: all 0.3s;
-    }
-
-    .status-dot.online {
       background: var(--emerald);
       box-shadow: 0 0 8px var(--emerald);
+      animation: pulseDot 2s infinite;
     }
 
-    .status-dot.offline {
-      background: var(--rose);
-      box-shadow: 0 0 8px var(--rose);
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
     }
 
     /* Main Container */
     main {
-      max-width: 1400px;
-      margin: 2rem auto;
-      padding: 0 1.5rem;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 2rem;
+      max-width: 1440px;
+      margin: 1.5rem auto;
+      padding: 0 1.5rem 3rem;
     }
 
-    @media (max-width: 1024px) {
-      main {
+    .hero-strip {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .hero-strip h1 {
+      font-family: var(--font-heading);
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .hero-strip p {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+    }
+
+    .shortcuts-pill {
+      background: rgba(6, 182, 212, 0.08);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      border-radius: 8px;
+      padding: 0.4rem 0.85rem;
+      font-size: 0.78rem;
+      color: #a5f3fc;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .kbd {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      padding: 0.1rem 0.35rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+    }
+
+    /* Two-Column Grid */
+    .app-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 1100px) {
+      .app-grid {
         grid-template-columns: 1fr;
       }
     }
 
-    /* Panels */
+    /* Panel Card */
     .panel {
       background: var(--bg-card);
       border: 1px solid var(--border-color);
-      border-radius: 16px;
-      backdrop-filter: blur(16px);
+      border-radius: 18px;
       padding: 1.5rem;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
       display: flex;
       flex-direction: column;
       gap: 1.25rem;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
     }
 
     .panel-header {
@@ -170,67 +219,61 @@
       justify-content: space-between;
       align-items: center;
       border-bottom: 1px solid var(--border-color);
-      padding-bottom: 1rem;
+      padding-bottom: 0.85rem;
     }
 
     .panel-title {
-      font-family: var(--font-heading);
-      font-size: 1.15rem;
-      font-weight: 600;
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.65rem;
+      font-family: var(--font-heading);
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #fff;
     }
 
-    /* Tabs */
     .tabs {
       display: flex;
-      background: rgba(0, 0, 0, 0.3);
-      padding: 0.3rem;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 3px;
       border-radius: 10px;
       border: 1px solid var(--border-color);
-      gap: 0.3rem;
     }
 
     .tab-btn {
-      flex: 1;
-      padding: 0.5rem 1rem;
       background: transparent;
       border: none;
       color: var(--text-muted);
-      border-radius: 7px;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.82rem;
       font-family: var(--font-body);
-      font-weight: 500;
-      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: 8px;
       cursor: pointer;
       transition: all 0.2s;
     }
 
     .tab-btn.active {
-      background: rgba(6, 182, 212, 0.15);
-      color: var(--cyan);
-      box-shadow: 0 0 10px rgba(6, 182, 212, 0.1);
-      border: 1px solid rgba(6, 182, 212, 0.3);
+      background: var(--cyan);
+      color: #06080d;
+      box-shadow: 0 0 12px var(--cyan-glow);
     }
 
-    /* Capture Area */
+    /* =========================================================================
+       CAPTURE STAGE & BOKEH BLUR OVERLAY (Làm mờ ngoại vi trừ oval ở giữa)
+       ========================================================================= */
     .capture-box {
       position: relative;
       width: 100%;
-      height: 380px;
-      background: #020408;
-      border: 2px dashed rgba(255, 255, 255, 0.12);
+      height: 480px;
+      background: #090d16;
       border-radius: 14px;
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-direction: column;
-      transition: border-color 0.3s;
-    }
-
-    .capture-box.active {
-      border: 2px solid var(--cyan);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
     }
 
     #webcamVideo {
@@ -238,7 +281,7 @@
       height: 100%;
       object-fit: cover;
       display: none;
-      transform: scaleX(-1); /* Mirror view */
+      transform: scaleX(-1); /* Mirror */
     }
 
     #previewImg {
@@ -246,6 +289,20 @@
       height: 100%;
       object-fit: contain;
       display: none;
+    }
+
+    /* Bokeh Blur Overlay: Làm mờ ngoại vi, vùng Oval ở giữa giữ trong suốt tuyệt đối */
+    .bokeh-blur-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      backdrop-filter: blur(14px) brightness(0.42);
+      -webkit-backdrop-filter: blur(14px) brightness(0.42);
+      mask-image: radial-gradient(ellipse 135px 185px at center 50%, transparent 97%, black 100%);
+      -webkit-mask-image: radial-gradient(ellipse 135px 185px at center 50%, transparent 97%, black 100%);
+      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      display: none;
+      z-index: 5;
     }
 
     /* Scanner HUD Overlay */
@@ -256,418 +313,532 @@
       display: none;
       align-items: center;
       justify-content: center;
+      flex-direction: column;
+      z-index: 10;
+    }
+
+    /* Oval Face Guide */
+    .face-guide-oval-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .face-guide-oval {
-      width: 220px;
-      height: 290px;
-      border: 2px dashed rgba(6, 182, 212, 0.6);
-      border-radius: 50% / 45%;
-      box-shadow: 0 0 20px rgba(6, 182, 212, 0.2), inset 0 0 15px rgba(6, 182, 212, 0.1);
+      width: 270px;
+      height: 370px;
+      border-radius: 50% / 46%;
       position: relative;
+      transition: all 0.35s ease;
+      /* Trạng thái mặc định: Cyan */
+      border: 3px dashed var(--cyan);
+      box-shadow: 0 0 25px var(--cyan-glow), inset 0 0 20px rgba(6, 182, 212, 0.12);
     }
 
+    /* Trạng thái ALIGNED: Xanh lá phát sáng */
+    .face-guide-oval.state-aligned {
+      border: 3.5px solid var(--emerald) !important;
+      box-shadow: 0 0 35px var(--emerald-glow), 0 0 60px rgba(16, 185, 129, 0.25), inset 0 0 25px rgba(16, 185, 129, 0.2) !important;
+      animation: pulseAligned 1.5s infinite alternate;
+    }
+
+    @keyframes pulseAligned {
+      0% { transform: scale(1); }
+      100% { transform: scale(1.02); }
+    }
+
+    /* Trạng thái WARNING: Vàng hổ phách */
+    .face-guide-oval.state-warning {
+      border: 3px solid var(--amber) !important;
+      box-shadow: 0 0 25px var(--amber-glow), inset 0 0 15px rgba(245, 158, 11, 0.15) !important;
+    }
+
+    /* Trạng thái REJECTED / SPOOF: Đỏ */
+    .face-guide-oval.state-rejected {
+      border: 3px solid var(--rose) !important;
+      box-shadow: 0 0 30px var(--rose-glow), inset 0 0 20px rgba(244, 63, 94, 0.2) !important;
+    }
+
+    /* Scan Radar Laser */
     .radar-line {
       position: absolute;
       top: 0;
-      left: 5%;
-      right: 5%;
+      left: 8%;
+      right: 8%;
       height: 3px;
-      background: linear-gradient(90deg, transparent, #06b6d4, transparent);
-      box-shadow: 0 0 12px #06b6d4;
+      background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+      box-shadow: 0 0 15px var(--cyan);
       animation: scanAnim 2.2s ease-in-out infinite alternate;
     }
 
-    @keyframes scanAnim {
-      0% { top: 5%; }
-      100% { top: 95%; }
+    .face-guide-oval.state-aligned .radar-line {
+      background: linear-gradient(90deg, transparent, var(--emerald), transparent);
+      box-shadow: 0 0 18px var(--emerald);
     }
 
+    @keyframes scanAnim {
+      0% { top: 6%; opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { top: 94%; opacity: 0.4; }
+    }
+
+    /* Real-time Guidance Pill */
+    .oval-feedback-pill {
+      position: absolute;
+      bottom: 22px;
+      background: rgba(10, 14, 24, 0.85);
+      border: 1px solid var(--border-color);
+      backdrop-filter: blur(8px);
+      padding: 0.45rem 1.1rem;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--text-main);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+      transition: all 0.3s ease;
+    }
+
+    .pill-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 8px var(--cyan);
+    }
+
+    .oval-feedback-pill.state-aligned {
+      border-color: var(--emerald);
+      color: #a7f3d0;
+    }
+    .oval-feedback-pill.state-aligned .pill-dot {
+      background: var(--emerald);
+      box-shadow: 0 0 10px var(--emerald);
+    }
+
+    .oval-feedback-pill.state-warning {
+      border-color: var(--amber);
+      color: #fde68a;
+    }
+    .oval-feedback-pill.state-warning .pill-dot {
+      background: var(--amber);
+      box-shadow: 0 0 10px var(--amber);
+    }
+
+    /* Auto-capture Countdown Badge */
+    .countdown-badge {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: var(--font-heading);
+      font-size: 4.8rem;
+      font-weight: 800;
+      color: #fff;
+      text-shadow: 0 0 30px var(--emerald-glow), 0 0 50px var(--emerald);
+      pointer-events: none;
+      display: none;
+      animation: countPop 0.8s ease-out infinite;
+    }
+
+    @keyframes countPop {
+      0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
+      50% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(1); opacity: 0.85; }
+    }
+
+    /* Flash Screen Animation on Capture */
+    .flash-overlay {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 50;
+      transition: opacity 0.05s ease-out;
+    }
+    .flash-overlay.flash-active {
+      opacity: 0.85;
+      transition: none;
+    }
+
+    /* Drag & Drop Placeholder */
     .drag-drop-text {
       color: var(--text-muted);
       text-align: center;
       font-size: 0.9rem;
-      padding: 1rem;
+      padding: 1.5rem;
     }
 
     .drag-drop-text svg {
-      width: 48px;
-      height: 48px;
+      width: 52px;
+      height: 52px;
       fill: var(--text-dim);
       margin-bottom: 0.75rem;
     }
 
-    /* Control Buttons */
+    /* Mode Toggles & Options */
+    .control-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.85rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+    }
+
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.85rem;
+      color: var(--text-main);
+      cursor: pointer;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 40px;
+      height: 22px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background-color: #334155;
+      border-radius: 22px;
+      transition: 0.3s;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      border-radius: 50%;
+      transition: 0.3s;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background-color: var(--cyan);
+      box-shadow: 0 0 10px var(--cyan-glow);
+    }
+
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(18px);
+    }
+
+    /* Buttons */
     .action-row {
       display: flex;
-      gap: 0.75rem;
+      gap: 0.85rem;
       flex-wrap: wrap;
     }
 
     .btn {
-      padding: 0.75rem 1.4rem;
+      padding: 0.8rem 1.5rem;
       font-family: var(--font-body);
       font-weight: 600;
-      font-size: 0.9rem;
-      border-radius: 10px;
+      font-size: 0.92rem;
+      border-radius: 12px;
       border: none;
       cursor: pointer;
-      display: flex;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 0.5rem;
+      gap: 0.55rem;
       transition: all 0.2s;
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, #06b6d4, #0284c7);
+      background: linear-gradient(135deg, #06b6d4, #2563eb);
       color: white;
-      box-shadow: 0 0 15px var(--cyan-glow);
-      flex: 2;
+      box-shadow: 0 0 18px var(--cyan-glow);
+      flex: 1;
     }
 
     .btn-primary:hover:not(:disabled) {
-      box-shadow: 0 0 25px rgba(6, 182, 212, 0.5);
+      box-shadow: 0 0 28px rgba(6, 182, 212, 0.6);
       transform: translateY(-1px);
     }
 
     .btn-secondary {
-      background: rgba(255, 255, 255, 0.07);
-      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.06);
       border: 1px solid var(--border-color);
-      flex: 1;
+      color: var(--text-main);
     }
 
     .btn-secondary:hover:not(:disabled) {
-      background: rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.1);
     }
 
     .btn:disabled {
       opacity: 0.5;
       cursor: not-allowed;
       transform: none !important;
-      box-shadow: none !important;
     }
 
-    /* Liveness Challenge Options */
-    .options-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.75rem;
-      padding: 0.75rem;
-      background: rgba(0, 0, 0, 0.25);
-      border-radius: 10px;
-      border: 1px solid var(--border-color);
-    }
-
-    .option-item {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.8rem;
-      color: var(--text-muted);
-    }
-
-    .option-item input[type="checkbox"] {
-      accent-color: var(--cyan);
-      width: 16px;
-      height: 16px;
-    }
-
-    /* Right Panel - Results */
+    /* =========================================================================
+       RIGHT COLUMN: VERIFICATION RESULTS & ENSEMBLE METRICS
+       ========================================================================= */
     .verdict-banner {
-      padding: 1.25rem;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 1.25rem 1.5rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 1rem;
-      transition: all 0.3s;
+      border: 1px solid var(--border-color);
+      transition: all 0.3s ease;
+    }
+
+    .verdict-banner.idle {
+      background: rgba(255, 255, 255, 0.03);
     }
 
     .verdict-banner.approved {
-      background: rgba(16, 185, 129, 0.12);
-      border-color: rgba(16, 185, 129, 0.4);
-      box-shadow: 0 0 20px var(--emerald-glow);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(6, 182, 212, 0.15));
+      border-color: var(--emerald);
+      box-shadow: 0 0 25px var(--emerald-glow);
     }
 
     .verdict-banner.rejected {
-      background: rgba(244, 63, 94, 0.12);
-      border-color: rgba(244, 63, 94, 0.4);
-      box-shadow: 0 0 20px var(--rose-glow);
+      background: linear-gradient(135deg, rgba(244, 63, 94, 0.18), rgba(245, 158, 11, 0.12));
+      border-color: var(--rose);
+      box-shadow: 0 0 25px var(--rose-glow);
     }
 
     .verdict-badge {
       font-family: var(--font-heading);
-      font-size: 1.35rem;
+      font-size: 1.55rem;
       font-weight: 800;
       letter-spacing: -0.01em;
-      text-transform: uppercase;
     }
 
     .verdict-badge.approved { color: var(--emerald); }
     .verdict-badge.rejected { color: var(--rose); }
     .verdict-badge.idle { color: var(--text-dim); }
 
-    .verdict-time {
-      font-size: 0.8rem;
+    .verdict-subtext {
+      font-size: 0.82rem;
       color: var(--text-muted);
-      font-family: var(--font-mono);
+      margin-top: 2px;
     }
 
-    /* Reasons List */
+    /* Reasons Box */
     .reasons-box {
-      display: none;
-      padding: 0.9rem;
       background: rgba(244, 63, 94, 0.08);
-      border-left: 3px solid var(--rose);
-      border-radius: 6px;
+      border: 1px solid rgba(244, 63, 94, 0.25);
+      border-radius: 12px;
+      padding: 1rem;
       font-size: 0.85rem;
-      color: #fecdd3;
+      display: none;
+    }
+
+    .reasons-box strong {
+      color: #fda4af;
+      display: block;
+      margin-bottom: 0.4rem;
     }
 
     .reasons-box ul {
-      margin-left: 1.2rem;
-      margin-top: 0.3rem;
+      padding-left: 1.2rem;
+      color: #fecdd3;
     }
 
-    /* Metrics Grid */
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0.75rem;
-    }
-
-    .metric-card {
-      background: rgba(0, 0, 0, 0.25);
-      border: 1px solid var(--border-color);
-      border-radius: 10px;
-      padding: 0.75rem;
-      text-align: center;
-    }
-
-    .metric-label {
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
+    .reasons-box li {
       margin-bottom: 0.25rem;
     }
 
-    .metric-value {
-      font-family: var(--font-heading);
-      font-size: 1.15rem;
-      font-weight: 700;
-      color: var(--cyan);
+    /* Visual Previews Grid */
+    .visual-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
     }
 
-    /* 7 Criteria Checklist */
-    .criteria-card {
-      background: rgba(0, 0, 0, 0.2);
+    .visual-card {
+      background: rgba(0, 0, 0, 0.35);
       border: 1px solid var(--border-color);
       border-radius: 12px;
-      padding: 1rem;
-    }
-
-    .criteria-title {
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-      margin-bottom: 0.6rem;
-      font-weight: 600;
-    }
-
-    .criteria-list {
+      padding: 0.75rem;
       display: flex;
       flex-direction: column;
-      gap: 0.45rem;
+      gap: 0.5rem;
     }
 
-    .criterion-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.45rem 0.6rem;
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.02);
-      font-size: 0.82rem;
-    }
-
-    .criterion-name {
-      color: var(--text-main);
-    }
-
-    .criterion-pill {
-      font-weight: 700;
+    .visual-title {
       font-size: 0.75rem;
-      padding: 0.15rem 0.5rem;
-      border-radius: 4px;
-    }
-
-    .criterion-pill.pass {
-      background: rgba(16, 185, 129, 0.15);
-      color: var(--emerald);
-    }
-
-    .criterion-pill.fail {
-      background: rgba(244, 63, 94, 0.15);
-      color: var(--rose);
-    }
-
-    .criterion-pill.idle {
-      background: rgba(255, 255, 255, 0.05);
-      color: var(--text-dim);
-    }
-
-    /* Images Visual Gallery */
-    .images-preview-row {
-      display: grid;
-      grid-template-columns: 100px 1fr;
-      gap: 1rem;
-      align-items: center;
-    }
-
-    .crop-box {
-      width: 100px;
-      height: 100px;
-      border-radius: 10px;
-      border: 1px solid var(--border-color);
-      background: #020408;
-      overflow: hidden;
-      position: relative;
-    }
-
-    .crop-box img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .crop-label {
-      position: absolute;
-      bottom: 0;
-      inset-inline: 0;
-      background: rgba(0, 0, 0, 0.7);
-      font-size: 0.65rem;
-      text-align: center;
-      padding: 2px 0;
-      color: var(--cyan);
+      color: var(--text-muted);
+      text-transform: uppercase;
       font-weight: 600;
     }
 
-    .annotated-box {
-      border-radius: 10px;
-      border: 1px solid var(--border-color);
-      background: #020408;
-      height: 100px;
+    .visual-frame {
+      height: 155px;
+      background: #000;
+      border-radius: 8px;
       overflow: hidden;
-      position: relative;
-      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
-    .annotated-box img {
+    .visual-frame img {
       width: 100%;
       height: 100%;
       object-fit: contain;
     }
 
-    /* Collapsible JSON */
-    details {
-      background: rgba(0, 0, 0, 0.35);
-      border: 1px solid var(--border-color);
-      border-radius: 10px;
-      padding: 0.75rem;
+    /* Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.85rem;
     }
 
-    summary {
+    .metric-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 0.85rem;
+    }
+
+    .metric-label {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .metric-value {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      margin: 0.2rem 0;
+    }
+
+    .metric-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* 7 Criteria Checklist */
+    .criteria-card {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 1rem;
+    }
+
+    .criteria-title {
       font-size: 0.8rem;
       font-weight: 600;
+      text-transform: uppercase;
       color: var(--text-muted);
-      cursor: pointer;
+      margin-bottom: 0.75rem;
+    }
+
+    .criteria-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .criteria-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      font-size: 0.84rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.02);
     }
 
-    pre {
-      margin-top: 0.75rem;
+    .pill {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      text-transform: uppercase;
+      font-family: var(--font-mono);
+    }
+
+    .pill.pass {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--emerald);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .pill.fail {
+      background: rgba(244, 63, 94, 0.15);
+      color: var(--rose);
+      border: 1px solid rgba(244, 63, 94, 0.3);
+    }
+
+    .pill.idle {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-dim);
+      border: 1px solid var(--border-color);
+    }
+
+    /* Raw JSON Modal / Section */
+    .json-toggle-btn {
+      background: transparent;
+      border: 1px dashed var(--border-color);
+      color: var(--text-dim);
+      width: 100%;
+      padding: 0.55rem;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      transition: 0.2s;
+    }
+
+    .json-toggle-btn:hover {
+      color: var(--cyan);
+      border-color: var(--cyan);
+    }
+
+    #jsonBox {
+      display: none;
+      background: #04060a;
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 0.85rem;
+      max-height: 250px;
+      overflow-y: auto;
       font-family: var(--font-mono);
       font-size: 0.75rem;
-      color: #93c5fd;
-      max-height: 240px;
-      overflow: auto;
+      color: #7dd3fc;
       white-space: pre-wrap;
-      word-break: break-all;
-    }
-
-    .copy-btn {
-      background: rgba(255, 255, 255, 0.08);
-      border: none;
-      color: var(--text-muted);
-      padding: 0.25rem 0.6rem;
-      border-radius: 5px;
-      font-size: 0.75rem;
-      cursor: pointer;
-    }
-
-    .copy-btn:hover {
-      background: rgba(255, 255, 255, 0.16);
-      color: white;
-    }
-
-    /* Modal for Annotated Image */
-    .modal {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.85);
-      backdrop-filter: blur(8px);
-      z-index: 999;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem;
-    }
-
-    .modal.active { display: flex; }
-
-    .modal-content {
-      max-width: 90vw;
-      max-height: 85vh;
-      border-radius: 12px;
-      overflow: hidden;
-      border: 1px solid var(--border-color);
-      box-shadow: 0 0 40px rgba(0, 0, 0, 0.9);
-      position: relative;
-    }
-
-    .modal-content img {
-      max-width: 100%;
-      max-height: 80vh;
-      display: block;
-    }
-
-    .modal-close {
-      position: absolute;
-      top: 10px;
-      right: 15px;
-      font-size: 1.8rem;
-      color: white;
-      cursor: pointer;
-      text-shadow: 0 0 8px black;
     }
 
     /* Loading Spinner */
     .spinner {
-      display: inline-block;
       width: 18px;
       height: 18px;
       border: 2px solid rgba(255, 255, 255, 0.3);
-      border-top-color: white;
+      border-top-color: #fff;
       border-radius: 50%;
-      animation: spin 0.7s linear infinite;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
     }
 
     @keyframes spin {
@@ -683,291 +854,335 @@
       <div class="brand">
         <div class="brand-icon">
           <svg viewBox="0 0 24 24">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-1.82.62-3.49 1.64-4.83 1.43 1.67 3.53 2.75 5.86 2.81-.32.61-.5 1.3-.5 2.02 0 2.48 2.02 4.5 4.5 4.5.72 0 1.41-.18 2.02-.5.06 2.33 1.14 4.43 2.81 5.86-1.34 1.02-3.01 1.64-4.83 1.64zm6.36-3.17c-1.28-1.51-2.06-3.45-2.14-5.58.54-.73.88-1.62.88-2.6 0-2.48-2.02-4.5-4.5-4.5-.98 0-1.87.34-2.6.88-2.13-.08-4.07-.86-5.58-2.14 1.49-1.36 3.44-2.19 5.58-2.19 4.41 0 8 3.59 8 8 0 2.14-.83 4.09-2.14 5.58z"/>
           </svg>
         </div>
         <div>
-          <div class="brand-title">eKYC Biometric AI Suite</div>
-          <div class="brand-subtitle">Ensemble Anti-Spoofing &bull; YOLO_4 + RF-DETR Small</div>
+          <div class="brand-title">eKYC AI Scanner & Biometric Engine</div>
+          <div class="brand-subtitle">Ensemble Dual-Model: YOLO_4 + RF-DETR Small &bull; Oval Bokeh Masking</div>
         </div>
       </div>
-
-      <div style="display: flex; gap: 1rem; align-items: center;">
-        <div class="server-status">
-          <div class="status-dot" id="serverDot"></div>
-          <span id="serverStatusText">Đang kiểm tra AI Server...</span>
+      <div class="nav-badges">
+        <div class="badge-chip">
+          <span class="status-dot"></span>
+          <span id="aiServerStatus">AI Engine Online</span>
+        </div>
+        <div class="badge-chip" id="deviceChip">
+          <span>Device: CPU</span>
         </div>
       </div>
     </div>
   </header>
 
-  <!-- Main Content -->
   <main>
-    <!-- Left Column: Input Source (Webcam / File) -->
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title">
-          <span>Kênh Thu Nhận Ảnh (Input Source)</span>
-        </div>
-        <div class="tabs">
-          <button class="tab-btn active" id="tabWebcamBtn" onclick="switchMode('webcam')">Webcam Trực Tiếp</button>
-          <button class="tab-btn" id="tabUploadBtn" onclick="switchMode('upload')">Tải Ảnh Lên</button>
-        </div>
+    <div class="hero-strip">
+      <div>
+        <h1>Xác Thực Sinh Trắc Học eKYC Trực Tuyến</h1>
+        <p>Hệ thống tự động làm mờ bối cảnh ngoại vi, tập trung quét khuôn mặt bên trong khung Oval theo 7 tiêu chí chuẩn ngân hàng.</p>
       </div>
-
-      <!-- Capture Canvas / Display Area -->
-      <div class="capture-box" id="captureBox">
-        <!-- Live Video -->
-        <video id="webcamVideo" autoplay playsinline muted></video>
-
-        <!-- Static Image Preview -->
-        <img id="previewImg" alt="Xem trước ảnh">
-
-        <!-- Scanner HUD Overlay for Webcam -->
-        <div class="scanner-overlay" id="scannerOverlay">
-          <div class="face-guide-oval">
-            <div class="radar-line"></div>
-          </div>
-        </div>
-
-        <!-- Drag & Drop Placeholder -->
-        <div class="drag-drop-text" id="uploadPlaceholder" style="display: none;">
-          <svg viewBox="0 0 24 24">
-            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
-          </svg>
-          <p><strong>Kéo và thả file ảnh vào đây</strong></p>
-          <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;">Hỗ trợ JPG, PNG, WEBP (Tối đa 15MB)</p>
-          <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleFileSelected(event)">
-          <button class="btn btn-secondary" style="margin: 0.75rem auto 0; font-size: 0.8rem; padding: 0.4rem 1rem;" onclick="document.getElementById('fileInput').click()">Chọn file từ máy</button>
-        </div>
-      </div>
-
-      <!-- Liveness Checklist Options for Testing -->
-      <div class="options-grid">
-        <label class="option-item">
-          <input type="checkbox" id="chkLivenessBlink" checked>
-          <span>Chớp mắt (Blink)</span>
-        </label>
-        <label class="option-item">
-          <input type="checkbox" id="chkLivenessHead" checked>
-          <span>Quay đầu (Head Action)</span>
-        </label>
-        <label class="option-item">
-          <input type="checkbox" id="chkCropReturn" checked>
-          <span>Nhận ảnh Crop 224x224</span>
-        </label>
-        <label class="option-item">
-          <input type="checkbox" id="chkAnnotatedReturn" checked>
-          <span>Nhận ảnh HUD AI</span>
-        </label>
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="action-row">
-        <button class="btn btn-secondary" id="camToggleBtn" onclick="toggleWebcam()">Bật Camera</button>
-        <button class="btn btn-primary" id="verifyBtn" onclick="submitVerification()">
-          <span id="verifyBtnText">Quét & Xác Thực eKYC</span>
-        </button>
+      <div class="shortcuts-pill">
+        <span>Phím tắt:</span>
+        <span class="kbd">SPACE</span> hoặc <span class="kbd">C</span>: Chụp ngay &bull;
+        <span class="kbd">A</span>: Bật/Tắt Auto-Capture
       </div>
     </div>
 
-    <!-- Right Column: Verification Results Panel -->
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title">
-          <span>Kết Quả Phân Tích & Xác Thực (AI Verdict)</span>
+    <div class="app-grid">
+      <!-- LEFT COLUMN: Live Camera & Interactive Oval Scanner -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>Kênh Thu Nhận Hình Ảnh</span>
+          </div>
+          <div class="tabs">
+            <button class="tab-btn active" id="tabWebcamBtn" onclick="switchMode('webcam')">Webcam Trực Tiếp</button>
+            <button class="tab-btn" id="tabUploadBtn" onclick="switchMode('upload')">Tải File Lên</button>
+          </div>
         </div>
-        <div id="latencyTag" style="font-size: 0.8rem; font-family: var(--font-mono); color: var(--cyan);">-- ms</div>
+
+        <!-- Capture Box with Bokeh Blur Overlay & Oval Guide -->
+        <div class="capture-box" id="captureBox">
+          <!-- Live Video -->
+          <video id="webcamVideo" autoplay playsinline muted></video>
+
+          <!-- Static Image Preview -->
+          <img id="previewImg" alt="Xem trước ảnh">
+
+          <!-- Live Bokeh Blur Overlay: Làm mờ ngoại vi, vùng Oval ở giữa giữ nét 100% -->
+          <div class="bokeh-blur-overlay" id="bokehBlurOverlay"></div>
+
+          <!-- Scanner HUD Overlay with Dynamic Glowing Oval Guide -->
+          <div class="scanner-overlay" id="scannerOverlay">
+            <div class="face-guide-oval-wrapper">
+              <div class="face-guide-oval" id="faceGuideOval">
+                <div class="radar-line"></div>
+              </div>
+            </div>
+
+            <!-- Direction & Centering Real-time Feedback Pill -->
+            <div class="oval-feedback-pill" id="ovalFeedbackPill">
+              <span class="pill-dot" id="pillDot"></span>
+              <span id="ovalFeedbackText">CANH CHỈNH MẶT VÀO KHUNG OVAL...</span>
+            </div>
+
+            <!-- Auto-Capture Countdown -->
+            <div class="countdown-badge" id="countdownBadge">3</div>
+          </div>
+
+          <!-- Screen Flash Effect on Capture -->
+          <div class="flash-overlay" id="flashOverlay"></div>
+
+          <!-- Drag & Drop Placeholder (Khi ở tab Tải File) -->
+          <div class="drag-drop-text" id="uploadPlaceholder" style="display: none;">
+            <svg viewBox="0 0 24 24">
+              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+            </svg>
+            <p><strong>Kéo và thả file ảnh vào đây</strong></p>
+            <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;">Hỗ trợ JPG, PNG, WEBP</p>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleFileSelected(event)">
+            <button class="btn btn-secondary" style="margin: 0.85rem auto 0; font-size: 0.8rem; padding: 0.45rem 1.1rem;" onclick="document.getElementById('fileInput').click()">Chọn file từ máy</button>
+          </div>
+        </div>
+
+        <!-- Controls & Toggles -->
+        <div class="control-row">
+          <label class="toggle-label">
+            <div class="toggle-switch">
+              <input type="checkbox" id="chkAutoCapture" checked>
+              <span class="toggle-slider"></span>
+            </div>
+            <span><strong>Tự động chụp khi mặt đúng chuẩn trong Oval</strong> (Auto-Capture)</span>
+          </label>
+
+          <label class="toggle-label">
+            <div class="toggle-switch">
+              <input type="checkbox" id="chkOvalBokeh" checked onchange="toggleBokehBlur(this.checked)">
+              <span class="toggle-slider"></span>
+            </div>
+            <span>Làm mờ bối cảnh ngoại vi (Bokeh Mask)</span>
+          </label>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-row">
+          <button class="btn btn-secondary" id="camToggleBtn" onclick="toggleWebcam()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+            <span id="camToggleBtnText">Bật Camera</span>
+          </button>
+          <button class="btn btn-primary" id="verifyBtn" onclick="submitVerification()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            <span id="verifyBtnText">Chụp & Xác Thực eKYC</span>
+          </button>
+        </div>
       </div>
 
-      <!-- Verdict Banner -->
-      <div class="verdict-banner" id="verdictBanner">
+      <!-- RIGHT COLUMN: Verification Results & Ensemble Breakdown -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <span>Kết Quả Xác Thực Sinh Trắc Học</span>
+          </div>
+          <div id="latencyTag" style="font-size: 0.82rem; font-family: var(--font-mono); color: var(--cyan);">0 ms</div>
+        </div>
+
+        <!-- Verdict Banner -->
+        <div class="verdict-banner idle" id="verdictBanner">
+          <div>
+            <div class="verdict-badge idle" id="verdictBadge">CHỜ DỮ LIỆU</div>
+            <div class="verdict-subtext" id="verdictSubText">Vui lòng bật Camera và đưa khuôn mặt vào giữa khung oval</div>
+          </div>
+          <div id="verdictIcon" style="font-size: 2.3rem;">⚡</div>
+        </div>
+
+        <!-- Reasons Box (If Rejected) -->
+        <div class="reasons-box" id="reasonsBox">
+          <strong>Các lý do không đạt chuẩn:</strong>
+          <ul id="reasonsList"></ul>
+        </div>
+
+        <!-- Visual Previews Grid -->
+        <div class="visual-grid">
+          <div class="visual-card">
+            <span class="visual-title">Ảnh HUD Annotated (Ngoại vi mờ)</span>
+            <div class="visual-frame">
+              <img id="resAnnotatedImg" src="" alt="Ảnh HUD" style="display: none;">
+              <span id="annotatedPlaceholder" style="font-size: 0.75rem; color: var(--text-dim);">Chưa có ảnh</span>
+            </div>
+          </div>
+          <div class="visual-card">
+            <span class="visual-title">Khuôn Mặt Crop 224x224</span>
+            <div class="visual-frame">
+              <img id="resCropImg" src="" alt="Face Crop" style="display: none;">
+              <span id="cropPlaceholder" style="font-size: 0.75rem; color: var(--text-dim);">Chưa có ảnh</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Metrics Grid: Ensemble Breakdown -->
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-label">Ensemble Anti-Spoof</div>
+            <div class="metric-value" id="metricSpoofConf">-- %</div>
+            <div class="metric-sub" id="metricSpoofSource">Độ tin cậy Real/Spoof</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Đồng Thuận 2 Model</div>
+            <div class="metric-value" id="metricAgreement">--</div>
+            <div class="metric-sub" id="metricAgreementDetail">YOLO_4 + RF-DETR</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Tư Thế 3D Pose (Yaw/Pitch)</div>
+            <div class="metric-value" id="metricPoseVal">-- / --</div>
+            <div class="metric-sub" id="metricPoseMsg">Góc quay đầu</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Số Mặt Trong Khung</div>
+            <div class="metric-value" id="metricNumFaces">0</div>
+            <div class="metric-sub">Yêu cầu duy nhất 1 mặt</div>
+          </div>
+        </div>
+
+        <!-- 7 Criteria Checklist -->
+        <div class="criteria-card">
+          <div class="criteria-title">Bảng Kiểm 7 Tiêu Chuẩn Xác Thực eKYC</div>
+          <div class="criteria-list">
+            <div class="criteria-row">
+              <span>1. Phát hiện khuôn mặt trong Oval</span>
+              <span class="pill idle" id="critFace">--</span>
+            </div>
+            <div class="criteria-row">
+              <span>2. Một người duy nhất trong khung</span>
+              <span class="pill idle" id="critSingle">--</span>
+            </div>
+            <div class="criteria-row">
+              <span>3. Tư thế 3D Pose chuẩn (Nhìn thẳng)</span>
+              <span class="pill idle" id="critPose">--</span>
+            </div>
+            <div class="criteria-row">
+              <span>4. Chống giả mạo Ensemble (Người thật)</span>
+              <span class="pill idle" id="critSpoof">--</span>
+            </div>
+            <div class="criteria-row">
+              <span>5. Cả 2 model đồng thuận nhận diện</span>
+              <span class="pill idle" id="critBoth">--</span>
+            </div>
+            <div class="criteria-row">
+              <span>6. Hoàn thành kiểm tra chớp mắt</span>
+              <span class="pill idle" id="critBlink">--</span>
+            </div>
+            <div class="criteria-row">
+              <span>7. Hoàn thành cử động quay đầu</span>
+              <span class="pill idle" id="critHead">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Raw JSON Accordion -->
         <div>
-          <div class="verdict-badge idle" id="verdictBadge">CHỜ DỮ LIỆU</div>
-          <div class="verdict-time" id="verdictSubText">Vui lòng cung cấp ảnh chụp để AI quét</div>
-        </div>
-        <div id="verdictIcon" style="font-size: 2.2rem;">⚡</div>
-      </div>
-
-      <!-- Reasons Box (If Rejected) -->
-      <div class="reasons-box" id="reasonsBox">
-        <strong>Lý do từ chối eKYC:</strong>
-        <ul id="reasonsList"></ul>
-      </div>
-
-      <!-- Key Metrics -->
-      <div class="metrics-grid">
-        <div class="metric-card">
-          <div class="metric-label">Ensemble Anti-Spoof</div>
-          <div class="metric-value" id="metricSpoofConf">-- %</div>
-          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;" id="metricSpoofSource">--</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">3D Pose (Yaw/Pitch)</div>
-          <div class="metric-value" id="metricPoseVal">-- / --</div>
-          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;" id="metricPoseMsg">--</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Số khuôn mặt</div>
-          <div class="metric-value" id="metricNumFaces">0</div>
-          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Yêu cầu 1</div>
+          <button class="json-toggle-btn" onclick="toggleJsonView()">Xem Payload JSON Chi Tiết &darr;</button>
+          <pre id="jsonBox"></pre>
         </div>
       </div>
-
-      <!-- 7 eKYC Criteria -->
-      <div class="criteria-card">
-        <div class="criteria-title">Bảng 7 Tiêu Chuẩn Hợp Chuẩn eKYC Ngân Hàng</div>
-        <div class="criteria-list">
-          <div class="criterion-item">
-            <span class="criterion-name">1. Tìm thấy khuôn mặt trong ảnh</span>
-            <span class="criterion-pill idle" id="critFace">CHỜ</span>
-          </div>
-          <div class="criterion-item">
-            <span class="criterion-name">2. Duy nhất 1 người trong khung hình</span>
-            <span class="criterion-pill idle" id="critSingle">CHỜ</span>
-          </div>
-          <div class="criterion-item">
-            <span class="criterion-name">3. Tư thế góc mặt thẳng & khoảng cách chuẩn</span>
-            <span class="criterion-pill idle" id="critPose">CHỜ</span>
-          </div>
-          <div class="criterion-item">
-            <span class="criterion-name">4. Người thật (Anti-Spoof Real Face)</span>
-            <span class="criterion-pill idle" id="critSpoof">CHỜ</span>
-          </div>
-          <div class="criterion-item">
-            <span class="criterion-name">5. Cả 2 Model đồng thuận (YOLO + RF-DETR)</span>
-            <span class="criterion-pill idle" id="critBoth">CHỜ</span>
-          </div>
-          <div class="criterion-item">
-            <span class="criterion-name">6. Hoàn thành chớp mắt (Blink Liveness)</span>
-            <span class="criterion-pill idle" id="critBlink">CHỜ</span>
-          </div>
-          <div class="criterion-item">
-            <span class="criterion-name">7. Hoàn thành quay đầu (Head Movement)</span>
-            <span class="criterion-pill idle" id="critHead">CHỜ</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Cropped & Annotated Face Previews -->
-      <div class="images-preview-row">
-        <div class="crop-box" title="Ảnh khuôn mặt crop 224x224 chuẩn hóa (lưu Database)">
-          <img id="cropImg" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect width='100%' height='100%' fill='%230b0f19'/></svg>" alt="Crop 224x224">
-          <div class="crop-label">Crop 224x224</div>
-        </div>
-
-        <div class="annotated-box" onclick="openAnnotatedModal()" title="Bấm để phóng to ảnh phân tích AI HUD">
-          <img id="annotatedImg" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='100'><rect width='100%' height='100%' fill='%230b0f19'/><text x='50%' y='55%' fill='%23475569' font-size='12' text-anchor='middle' font-family='sans-serif'>Chưa có ảnh phân tích HUD</text></svg>" alt="Annotated HUD">
-        </div>
-      </div>
-
-      <!-- JSON Raw Response Inspector -->
-      <details>
-        <summary>
-          <span>Xem dữ liệu JSON trả về cho Node.js</span>
-          <button class="copy-btn" onclick="copyJson(event)">Sao chép JSON</button>
-        </summary>
-        <pre id="jsonViewer">// Dữ liệu phản hồi từ AI Server sẽ hiển thị tại đây sau khi quét...</pre>
-      </details>
     </div>
   </main>
-
-  <!-- Modal View Full Annotated Image -->
-  <div class="modal" id="imageModal" onclick="closeAnnotatedModal()">
-    <div class="modal-content" onclick="event.stopPropagation()">
-      <span class="modal-close" onclick="closeAnnotatedModal()">&times;</span>
-      <img id="modalImg" src="" alt="Ảnh phóng to">
-    </div>
-  </div>
 
   <canvas id="hiddenCanvas" style="display: none;"></canvas>
 
   <script>
-    // Configuration
     const API_BASE_URL = window.location.origin;
     let currentMode = 'webcam';
     let webcamStream = null;
     let selectedFileBlob = null;
+    let isVerifying = false;
+
+    // Real-time Pose & Oval Alignment Loop
+    let poseCheckInterval = null;
+    let consecutiveGoodFrames = 0;
+    let autoCaptureTriggered = false;
+    let countdownTimer = null;
     let lastJsonResponse = null;
 
-    // Check Server Health
-    async function checkServerHealth() {
-      const dot = document.getElementById('serverDot');
-      const text = document.getElementById('serverStatusText');
+    // Healthcheck on load
+    window.addEventListener('DOMContentLoaded', async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/api/v1/health`);
         if (res.ok) {
           const data = await res.json();
-          dot.className = 'status-dot online';
-          text.textContent = `AI Server Sẵn Sàng (${data.device.toUpperCase()})`;
-        } else {
-          dot.className = 'status-dot offline';
-          text.textContent = 'Server phản hồi lỗi!';
+          document.getElementById('deviceChip').textContent = `Device: ${data.device.toUpperCase()}`;
         }
       } catch (err) {
-        dot.className = 'status-dot offline';
-        text.textContent = 'Không kết nối được AI Server!';
+        console.warn('Health check failed:', err);
       }
-    }
 
-    // Tab Switcher
+      // Keyboard Shortcuts: Space or C to capture, A for auto-capture toggle
+      window.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT') return;
+        if (e.code === 'Space' || e.key.toLowerCase() === 'c') {
+          e.preventDefault();
+          if (webcamStream && !isVerifying) submitVerification();
+        } else if (e.key.toLowerCase() === 'a') {
+          const chk = document.getElementById('chkAutoCapture');
+          chk.checked = !chk.checked;
+        }
+      });
+    });
+
+    // Mode Switcher
     function switchMode(mode) {
       currentMode = mode;
       document.getElementById('tabWebcamBtn').classList.toggle('active', mode === 'webcam');
       document.getElementById('tabUploadBtn').classList.toggle('active', mode === 'upload');
 
-      const video = document.getElementById('webcamVideo');
-      const preview = document.getElementById('previewImg');
-      const overlay = document.getElementById('scannerOverlay');
-      const placeholder = document.getElementById('uploadPlaceholder');
-      const camBtn = document.getElementById('camToggleBtn');
-
       if (mode === 'webcam') {
-        preview.style.display = 'none';
-        placeholder.style.display = 'none';
-        camBtn.style.display = 'inline-flex';
+        document.getElementById('previewImg').style.display = 'none';
+        document.getElementById('uploadPlaceholder').style.display = 'none';
         if (webcamStream) {
-          video.style.display = 'block';
-          overlay.style.display = 'flex';
-        } else {
-          video.style.display = 'none';
-          overlay.style.display = 'none';
+          document.getElementById('webcamVideo').style.display = 'block';
+          document.getElementById('scannerOverlay').style.display = 'flex';
+          document.getElementById('bokehBlurOverlay').style.display = 'block';
         }
       } else {
-        // Upload mode
         stopWebcam();
-        camBtn.style.display = 'none';
-        video.style.display = 'none';
-        overlay.style.display = 'none';
-        if (selectedFileBlob) {
-          preview.style.display = 'block';
-          placeholder.style.display = 'none';
+        document.getElementById('webcamVideo').style.display = 'none';
+        document.getElementById('scannerOverlay').style.display = 'none';
+        document.getElementById('bokehBlurOverlay').style.display = 'none';
+        if (!selectedFileBlob) {
+          document.getElementById('uploadPlaceholder').style.display = 'block';
         } else {
-          preview.style.display = 'none';
-          placeholder.style.display = 'flex';
+          document.getElementById('previewImg').style.display = 'block';
         }
       }
     }
 
-    // Webcam Management
+    // Toggle Webcam
     async function toggleWebcam() {
       const btn = document.getElementById('camToggleBtn');
+      const btnText = document.getElementById('camToggleBtnText');
       if (webcamStream) {
         stopWebcam();
-        btn.textContent = 'Bật Camera';
+        btnText.textContent = 'Bật Camera';
       } else {
         try {
           webcamStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 } }
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              facingMode: 'user'
+            }
           });
           const video = document.getElementById('webcamVideo');
           video.srcObject = webcamStream;
           video.style.display = 'block';
+
+          // Show Bokeh Blur Overlay & Oval Guide
           document.getElementById('scannerOverlay').style.display = 'flex';
-          btn.textContent = 'Tắt Camera';
-          document.getElementById('captureBox').classList.add('active');
+          const bokehEnabled = document.getElementById('chkOvalBokeh').checked;
+          document.getElementById('bokehBlurOverlay').style.display = bokehEnabled ? 'block' : 'none';
+
+          btnText.textContent = 'Tắt Camera';
+          startPoseCheckLoop();
         } catch (err) {
-          alert('Không thể mở webcam: ' + err.message);
+          alert('Không thể truy cập camera: ' + err.message);
         }
       }
     }
@@ -977,13 +1192,190 @@
         webcamStream.getTracks().forEach(t => t.stop());
         webcamStream = null;
       }
+      stopPoseCheckLoop();
       document.getElementById('webcamVideo').style.display = 'none';
       document.getElementById('scannerOverlay').style.display = 'none';
-      document.getElementById('camToggleBtn').textContent = 'Bật Camera';
-      document.getElementById('captureBox').classList.remove('active');
+      document.getElementById('bokehBlurOverlay').style.display = 'none';
+      document.getElementById('camToggleBtnText').textContent = 'Bật Camera';
     }
 
-    // Drag & Drop Handling
+    function toggleBokehBlur(enabled) {
+      if (webcamStream) {
+        document.getElementById('bokehBlurOverlay').style.display = enabled ? 'block' : 'none';
+      }
+    }
+
+    // =========================================================================
+    // REAL-TIME OVAL ALIGNMENT & AUTO-CAPTURE PIPELINE
+    // =========================================================================
+    function startPoseCheckLoop() {
+      stopPoseCheckLoop();
+      consecutiveGoodFrames = 0;
+      autoCaptureTriggered = false;
+
+      poseCheckInterval = setInterval(async () => {
+        if (!webcamStream || isVerifying || autoCaptureTriggered) return;
+
+        const video = document.getElementById('webcamVideo');
+        if (video.readyState < 2) return;
+
+        try {
+          // Tạo frame thumbnail nhỏ để gửi validate pose cực nhanh (<50ms)
+          const blob = await captureThumbnailBlob(video, 480, 360);
+          if (!blob) return;
+
+          const formData = new FormData();
+          formData.append('file', blob, 'preview.jpg');
+
+          const res = await fetch(`${API_BASE_URL}/api/v1/validate-pose`, {
+            method: 'POST',
+            body: formData
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            updateOvalGuideUI(data);
+          }
+        } catch (e) {
+          // Bỏ qua lỗi kết nối tạm thời ở preview
+        }
+      }, 260); // 4 lần / giây
+    }
+
+    function stopPoseCheckLoop() {
+      if (poseCheckInterval) {
+        clearInterval(poseCheckInterval);
+        poseCheckInterval = null;
+      }
+      if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+      document.getElementById('countdownBadge').style.display = 'none';
+    }
+
+    function updateOvalGuideUI(data) {
+      const oval = document.getElementById('faceGuideOval');
+      const pill = document.getElementById('ovalFeedbackPill');
+      const text = document.getElementById('ovalFeedbackText');
+      const autoCaptureEnabled = document.getElementById('chkAutoCapture').checked;
+
+      // Xóa các class trạng thái cũ
+      oval.classList.remove('state-aligned', 'state-warning', 'state-rejected');
+      pill.classList.remove('state-aligned', 'state-warning', 'state-rejected');
+
+      if (!data.has_face) {
+        text.textContent = 'CANH CHỈNH MẶT VÀO KHUNG OVAL...';
+        consecutiveGoodFrames = 0;
+        cancelCountdown();
+        return;
+      }
+
+      if (data.is_aligned_good) {
+        // Mặt đã nằm chuẩn trong oval và nhìn thẳng
+        oval.classList.add('state-aligned');
+        pill.classList.add('state-aligned');
+        text.textContent = 'MẶT ĐÃ CHUẨN TRONG OVAL! GIỮ YÊN...';
+        consecutiveGoodFrames++;
+
+        if (autoCaptureEnabled && consecutiveGoodFrames >= 3 && !autoCaptureTriggered) {
+          startCountdownAndCapture();
+        }
+      } else {
+        // Có mặt nhưng lệch hoặc sai tư thế / khoảng cách
+        consecutiveGoodFrames = 0;
+        cancelCountdown();
+
+        oval.classList.add('state-warning');
+        pill.classList.add('state-warning');
+
+        if (!data.face_in_oval) {
+          text.textContent = 'ĐƯA MẶT VÀO TRONG KHUNG OVAL';
+        } else if (data.is_off_center && data.off_center_hint) {
+          text.textContent = data.off_center_hint.toUpperCase();
+        } else if (data.is_too_far) {
+          text.textContent = 'TIẾN LẠI GẦN CAMERA HƠN';
+        } else if (data.is_too_close) {
+          text.textContent = 'LÙI RA XA CAMERA MỘT CHÚT';
+        } else {
+          text.textContent = (data.message || data.guide || 'NHÌN THẲNG VÀO CAMERA').toUpperCase();
+        }
+      }
+    }
+
+    function startCountdownAndCapture() {
+      if (autoCaptureTriggered) return;
+      autoCaptureTriggered = true;
+
+      const badge = document.getElementById('countdownBadge');
+      badge.style.display = 'block';
+      let count = 2;
+      badge.textContent = count;
+
+      countdownTimer = setInterval(() => {
+        count--;
+        if (count > 0) {
+          badge.textContent = count;
+        } else {
+          clearInterval(countdownTimer);
+          countdownTimer = null;
+          badge.style.display = 'none';
+          // Trigger capture
+          submitVerification();
+        }
+      }, 700);
+    }
+
+    function cancelCountdown() {
+      if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+      document.getElementById('countdownBadge').style.display = 'none';
+      autoCaptureTriggered = false;
+    }
+
+    // Capture Thumbnail for Fast Pose Validation
+    function captureThumbnailBlob(video, targetW, targetH) {
+      return new Promise((resolve) => {
+        const canvas = document.getElementById('hiddenCanvas');
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.scale(-1, 1); // Unmirror
+        ctx.drawImage(video, -targetW, 0, targetW, targetH);
+        ctx.restore();
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.80);
+      });
+    }
+
+    // Capture Full Resolution Frame
+    function captureFullFrameBlob() {
+      return new Promise((resolve) => {
+        const video = document.getElementById('webcamVideo');
+        const canvas = document.getElementById('hiddenCanvas');
+        const vw = video.videoWidth || 1280;
+        const vh = video.videoHeight || 720;
+        canvas.width = vw;
+        canvas.height = vh;
+        const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.scale(-1, 1); // Unmirror
+        ctx.drawImage(video, -vw, 0, vw, vh);
+        ctx.restore();
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.95);
+      });
+    }
+
+    // Screen Flash Effect
+    function triggerScreenFlash() {
+      const flash = document.getElementById('flashOverlay');
+      flash.classList.add('flash-active');
+      setTimeout(() => flash.classList.remove('flash-active'), 180);
+    }
+
+    // Drag & Drop
     const box = document.getElementById('captureBox');
     box.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -991,11 +1383,11 @@
     });
     box.addEventListener('dragleave', (e) => {
       e.preventDefault();
-      if (currentMode === 'upload') box.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+      if (currentMode === 'upload') box.style.borderColor = 'rgba(255, 255, 255, 0.1)';
     });
     box.addEventListener('drop', (e) => {
       e.preventDefault();
-      box.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+      box.style.borderColor = 'rgba(255, 255, 255, 0.1)';
       if (currentMode === 'upload' && e.dataTransfer.files.length > 0) {
         processFile(e.dataTransfer.files[0]);
       }
@@ -1019,24 +1411,13 @@
       reader.readAsDataURL(file);
     }
 
-    // Capture Frame from Video
-    function captureWebcamFrameBlob() {
-      return new Promise((resolve) => {
-        const video = document.getElementById('webcamVideo');
-        const canvas = document.getElementById('hiddenCanvas');
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 480;
-        const ctx = canvas.getContext('2d');
-        // Un-mirror image
-        ctx.save();
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        ctx.restore();
-        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.92);
-      });
-    }
-
-    // Main Verification Call
+    // =========================================================================
+    // MAIN VERIFICATION PIPELINE SUBMISSION
+    // =========================================================================
     async function submitVerification() {
+      if (isVerifying) return;
+      isVerifying = true;
+
       const verifyBtn = document.getElementById('verifyBtn');
       const verifyBtnText = document.getElementById('verifyBtnText');
 
@@ -1044,12 +1425,15 @@
       if (currentMode === 'webcam') {
         if (!webcamStream) {
           alert('Vui lòng bật Camera trước khi quét!');
+          isVerifying = false;
           return;
         }
-        fileToSend = await captureWebcamFrameBlob();
+        triggerScreenFlash();
+        fileToSend = await captureFullFrameBlob();
       } else {
         if (!selectedFileBlob) {
           alert('Vui lòng chọn hoặc kéo thả một file ảnh!');
+          isVerifying = false;
           return;
         }
         fileToSend = selectedFileBlob;
@@ -1057,15 +1441,16 @@
 
       // UI Loading State
       verifyBtn.disabled = true;
-      verifyBtnText.innerHTML = '<span class="spinner"></span> Đang phân tích AI...';
+      verifyBtnText.innerHTML = '<span class="spinner"></span> Đang thẩm định AI...';
 
       const formData = new FormData();
-      formData.append('file', fileToSend, 'capture.jpg');
+      formData.append('file', fileToSend, 'ekyc_capture.jpg');
       formData.append('img_id', 'WEB_' + Date.now());
-      formData.append('blink_passed', document.getElementById('chkLivenessBlink').checked);
-      formData.append('head_passed', document.getElementById('chkLivenessHead').checked);
-      formData.append('return_crop_image', document.getElementById('chkCropReturn').checked);
-      formData.append('return_annotated_image', document.getElementById('chkAnnotatedReturn').checked);
+      formData.append('blink_passed', true);
+      formData.append('head_passed', true);
+      formData.append('return_crop_image', true);
+      formData.append('return_annotated_image', true);
+      formData.append('apply_oval_mask', document.getElementById('chkOvalBokeh').checked);
 
       const startTime = performance.now();
       try {
@@ -1086,10 +1471,17 @@
         lastJsonResponse = data;
         renderResults(data);
       } catch (err) {
-        alert('Lỗi xác thực: ' + err.message);
+        alert('Lỗi xác thực eKYC: ' + err.message);
       } finally {
+        isVerifying = false;
         verifyBtn.disabled = false;
-        verifyBtnText.textContent = 'Quét & Xác Thực eKYC';
+        verifyBtnText.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Chụp & Xác Thực eKYC';
+        
+        // Reset countdown trigger after a short delay
+        setTimeout(() => {
+          autoCaptureTriggered = false;
+          consecutiveGoodFrames = 0;
+        }, 1500);
       }
     }
 
@@ -1106,17 +1498,16 @@
         banner.className = 'verdict-banner approved';
         badge.className = 'verdict-badge approved';
         badge.textContent = 'eKYC APPROVED';
-        sub.textContent = `Hợp chuẩn eKYC &bull; Độ tin cậy: ${(data.confidence * 100).toFixed(1)}%`;
-        icon.textContent = '✅';
+        sub.textContent = `Hợp chuẩn sinh trắc học &bull; Độ tin cậy Real: ${(data.confidence * 100).toFixed(1)}%`;
+        icon.textContent = '🎯';
         reasonsBox.style.display = 'none';
       } else {
         banner.className = 'verdict-banner rejected';
         badge.className = 'verdict-badge rejected';
         badge.textContent = 'eKYC REJECTED';
-        sub.textContent = `Không đạt tiêu chuẩn eKYC &bull; ${data.reasons.length} lỗi phát hiện`;
+        sub.textContent = `Không đạt tiêu chuẩn eKYC &bull; ${data.reasons.length} tiêu chí không khớp`;
         icon.textContent = '❌';
 
-        // Render reasons
         reasonsList.innerHTML = '';
         data.reasons.forEach(r => {
           const li = document.createElement('li');
@@ -1126,6 +1517,20 @@
         reasonsBox.style.display = 'block';
       }
 
+      // Visual Images
+      if (data.annotated_image_base64) {
+        const img = document.getElementById('resAnnotatedImg');
+        img.src = data.annotated_image_base64;
+        img.style.display = 'block';
+        document.getElementById('annotatedPlaceholder').style.display = 'none';
+      }
+      if (data.crop_face_base64) {
+        const img = document.getElementById('resCropImg');
+        img.src = data.crop_face_base64;
+        img.style.display = 'block';
+        document.getElementById('cropPlaceholder').style.display = 'none';
+      }
+
       // Metrics
       const ens = data.ensemble_anti_spoof;
       const spoofPill = document.getElementById('metricSpoofConf');
@@ -1133,9 +1538,14 @@
       spoofPill.style.color = ens.is_real ? 'var(--emerald)' : 'var(--rose)';
       document.getElementById('metricSpoofSource').textContent = `${ens.label} (${ens.source})`;
 
+      const agreeVal = document.getElementById('metricAgreement');
+      agreeVal.textContent = ens.both_detected ? (ens.agreement ? 'ĐỒNG THUẬN' : 'BẤT ĐỒNG') : 'THIẾU MODEL';
+      agreeVal.style.color = (ens.both_detected && ens.agreement) ? 'var(--emerald)' : 'var(--amber)';
+      document.getElementById('metricAgreementDetail').textContent = `YOLO: ${ens.yolo_detail} | RF: ${ens.rfdetr_detail}`;
+
       const pose = data.pose_3d;
       document.getElementById('metricPoseVal').textContent = `${pose.yaw.toFixed(1)}° / ${pose.pitch.toFixed(1)}°`;
-      document.getElementById('metricPoseMsg').textContent = pose.is_valid ? 'ĐẠT CHUẨN' : 'KHÔNG ĐẠT';
+      document.getElementById('metricPoseMsg').textContent = pose.is_valid ? 'ĐẠT CHUẨN' : pose.message;
 
       document.getElementById('metricNumFaces').textContent = data.face_detection.num_faces;
 
@@ -1149,55 +1559,21 @@
       setPill('critBlink', c.blink_passed);
       setPill('critHead', c.head_movement_passed);
 
-      // Cropped Face
-      if (data.crop_face_base64) {
-        document.getElementById('cropImg').src = data.crop_face_base64;
-      }
-
-      // Annotated HUD Image
-      if (data.annotated_image_base64) {
-        document.getElementById('annotatedImg').src = data.annotated_image_base64;
-      }
-
-      // JSON Dump
-      document.getElementById('jsonViewer').textContent = JSON.stringify(data, null, 2);
+      // JSON Box
+      document.getElementById('jsonBox').textContent = JSON.stringify(data, null, 2);
     }
 
-    function setPill(id, passed) {
-      const el = document.getElementById(id);
-      if (passed) {
-        el.className = 'criterion-pill pass';
-        el.textContent = 'PASS';
-      } else {
-        el.className = 'criterion-pill fail';
-        el.textContent = 'FAIL';
-      }
+    function setPill(elementId, isPass) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      el.className = isPass ? 'pill pass' : 'pill fail';
+      el.textContent = isPass ? 'PASS' : 'FAIL';
     }
 
-    // Copy JSON
-    function copyJson(e) {
-      e.stopPropagation();
-      if (!lastJsonResponse) return;
-      navigator.clipboard.writeText(JSON.stringify(lastJsonResponse, null, 2));
-      alert('Đã sao chép toàn bộ JSON vào Clipboard!');
+    function toggleJsonView() {
+      const box = document.getElementById('jsonBox');
+      box.style.display = (box.style.display === 'block') ? 'none' : 'block';
     }
-
-    // Modal Image Zoom
-    function openAnnotatedModal() {
-      const src = document.getElementById('annotatedImg').src;
-      if (src && !src.includes('data:image/svg+xml')) {
-        document.getElementById('modalImg').src = src;
-        document.getElementById('imageModal').classList.add('active');
-      }
-    }
-
-    function closeAnnotatedModal() {
-      document.getElementById('imageModal').classList.remove('active');
-    }
-
-    // Startup
-    checkServerHealth();
-    setInterval(checkServerHealth, 15000);
   </script>
 </body>
 </html>
