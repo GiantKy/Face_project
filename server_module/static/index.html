@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eKYC AI Scanner & Biometric Verification Portal</title>
+  <!-- Google Fonts: Outfit & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #07090E;
+      --bg-card: rgba(18, 24, 38, 0.85);
+      --bg-card-hover: rgba(28, 36, 56, 0.95);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(6, 182, 212, 0.5);
+      --cyan: #06b6d4;
+      --cyan-glow: rgba(6, 182, 212, 0.25);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.25);
+      --rose: #f43f5e;
+      --rose-glow: rgba(244, 63, 94, 0.25);
+      --amber: #f59e0b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --font-heading: 'Outfit', sans-serif;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: radial-gradient(circle at 50% 0%, #111d33 0%, var(--bg-main) 70%);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
+
+    /* Header */
+    header {
+      border-bottom: 1px solid var(--border-color);
+      background: rgba(7, 9, 14, 0.8);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 1rem 2rem;
+    }
+
+    .header-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, #06b6d4, #3b82f6);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 15px var(--cyan-glow);
+    }
+
+    .brand-icon svg {
+      width: 22px;
+      height: 22px;
+      fill: white;
+    }
+
+    .brand-title {
+      font-family: var(--font-heading);
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(120deg, #ffffff, #a5f3fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-subtitle {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .server-status {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.4rem 0.9rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      border-radius: 9999px;
+      font-size: 0.8rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      box-shadow: 0 0 8px currentColor;
+      transition: all 0.3s;
+    }
+
+    .status-dot.online {
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+    }
+
+    .status-dot.offline {
+      background: var(--rose);
+      box-shadow: 0 0 8px var(--rose);
+    }
+
+    /* Main Container */
+    main {
+      max-width: 1400px;
+      margin: 2rem auto;
+      padding: 0 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      backdrop-filter: blur(16px);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1rem;
+    }
+
+    .panel-title {
+      font-family: var(--font-heading);
+      font-size: 1.15rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 0.3rem;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+      gap: 0.3rem;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 0.5rem 1rem;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      border-radius: 7px;
+      font-family: var(--font-body);
+      font-weight: 500;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--cyan);
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.1);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+    }
+
+    /* Capture Area */
+    .capture-box {
+      position: relative;
+      width: 100%;
+      height: 380px;
+      background: #020408;
+      border: 2px dashed rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      transition: border-color 0.3s;
+    }
+
+    .capture-box.active {
+      border: 2px solid var(--cyan);
+    }
+
+    #webcamVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+      transform: scaleX(-1); /* Mirror view */
+    }
+
+    #previewImg {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+
+    /* Scanner HUD Overlay */
+    .scanner-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .face-guide-oval {
+      width: 220px;
+      height: 290px;
+      border: 2px dashed rgba(6, 182, 212, 0.6);
+      border-radius: 50% / 45%;
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.2), inset 0 0 15px rgba(6, 182, 212, 0.1);
+      position: relative;
+    }
+
+    .radar-line {
+      position: absolute;
+      top: 0;
+      left: 5%;
+      right: 5%;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, #06b6d4, transparent);
+      box-shadow: 0 0 12px #06b6d4;
+      animation: scanAnim 2.2s ease-in-out infinite alternate;
+    }
+
+    @keyframes scanAnim {
+      0% { top: 5%; }
+      100% { top: 95%; }
+    }
+
+    .drag-drop-text {
+      color: var(--text-muted);
+      text-align: center;
+      font-size: 0.9rem;
+      padding: 1rem;
+    }
+
+    .drag-drop-text svg {
+      width: 48px;
+      height: 48px;
+      fill: var(--text-dim);
+      margin-bottom: 0.75rem;
+    }
+
+    /* Control Buttons */
+    .action-row {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 0.75rem 1.4rem;
+      font-family: var(--font-body);
+      font-weight: 600;
+      font-size: 0.9rem;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #06b6d4, #0284c7);
+      color: white;
+      box-shadow: 0 0 15px var(--cyan-glow);
+      flex: 2;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      box-shadow: 0 0 25px rgba(6, 182, 212, 0.5);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      flex: 1;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    /* Liveness Challenge Options */
+    .options-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+    }
+
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .option-item input[type="checkbox"] {
+      accent-color: var(--cyan);
+      width: 16px;
+      height: 16px;
+    }
+
+    /* Right Panel - Results */
+    .verdict-banner {
+      padding: 1.25rem;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      transition: all 0.3s;
+    }
+
+    .verdict-banner.approved {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.4);
+      box-shadow: 0 0 20px var(--emerald-glow);
+    }
+
+    .verdict-banner.rejected {
+      background: rgba(244, 63, 94, 0.12);
+      border-color: rgba(244, 63, 94, 0.4);
+      box-shadow: 0 0 20px var(--rose-glow);
+    }
+
+    .verdict-badge {
+      font-family: var(--font-heading);
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      text-transform: uppercase;
+    }
+
+    .verdict-badge.approved { color: var(--emerald); }
+    .verdict-badge.rejected { color: var(--rose); }
+    .verdict-badge.idle { color: var(--text-dim); }
+
+    .verdict-time {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    /* Reasons List */
+    .reasons-box {
+      display: none;
+      padding: 0.9rem;
+      background: rgba(244, 63, 94, 0.08);
+      border-left: 3px solid var(--rose);
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: #fecdd3;
+    }
+
+    .reasons-box ul {
+      margin-left: 1.2rem;
+      margin-top: 0.3rem;
+    }
+
+    /* Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+
+    .metric-card {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 0.75rem;
+      text-align: center;
+    }
+
+    .metric-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .metric-value {
+      font-family: var(--font-heading);
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+
+    /* 7 Criteria Checklist */
+    .criteria-card {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1rem;
+    }
+
+    .criteria-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.6rem;
+      font-weight: 600;
+    }
+
+    .criteria-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+
+    .criterion-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.45rem 0.6rem;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.02);
+      font-size: 0.82rem;
+    }
+
+    .criterion-name {
+      color: var(--text-main);
+    }
+
+    .criterion-pill {
+      font-weight: 700;
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+    }
+
+    .criterion-pill.pass {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--emerald);
+    }
+
+    .criterion-pill.fail {
+      background: rgba(244, 63, 94, 0.15);
+      color: var(--rose);
+    }
+
+    .criterion-pill.idle {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-dim);
+    }
+
+    /* Images Visual Gallery */
+    .images-preview-row {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .crop-box {
+      width: 100px;
+      height: 100px;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+      background: #020408;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .crop-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .crop-label {
+      position: absolute;
+      bottom: 0;
+      inset-inline: 0;
+      background: rgba(0, 0, 0, 0.7);
+      font-size: 0.65rem;
+      text-align: center;
+      padding: 2px 0;
+      color: var(--cyan);
+      font-weight: 600;
+    }
+
+    .annotated-box {
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+      background: #020408;
+      height: 100px;
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .annotated-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    /* Collapsible JSON */
+    details {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 0.75rem;
+    }
+
+    summary {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    pre {
+      margin-top: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #93c5fd;
+      max-height: 240px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: none;
+      color: var(--text-muted);
+      padding: 0.25rem 0.6rem;
+      border-radius: 5px;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+
+    .copy-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: white;
+    }
+
+    /* Modal for Annotated Image */
+    .modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(8px);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .modal.active { display: flex; }
+
+    .modal-content {
+      max-width: 90vw;
+      max-height: 85vh;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      box-shadow: 0 0 40px rgba(0, 0, 0, 0.9);
+      position: relative;
+    }
+
+    .modal-content img {
+      max-width: 100%;
+      max-height: 80vh;
+      display: block;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      font-size: 1.8rem;
+      color: white;
+      cursor: pointer;
+      text-shadow: 0 0 8px black;
+    }
+
+    /* Loading Spinner */
+    .spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title">eKYC Biometric AI Suite</div>
+          <div class="brand-subtitle">Ensemble Anti-Spoofing &bull; YOLO_4 + RF-DETR Small</div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 1rem; align-items: center;">
+        <div class="server-status">
+          <div class="status-dot" id="serverDot"></div>
+          <span id="serverStatusText">Đang kiểm tra AI Server...</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main>
+    <!-- Left Column: Input Source (Webcam / File) -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span>Kênh Thu Nhận Ảnh (Input Source)</span>
+        </div>
+        <div class="tabs">
+          <button class="tab-btn active" id="tabWebcamBtn" onclick="switchMode('webcam')">Webcam Trực Tiếp</button>
+          <button class="tab-btn" id="tabUploadBtn" onclick="switchMode('upload')">Tải Ảnh Lên</button>
+        </div>
+      </div>
+
+      <!-- Capture Canvas / Display Area -->
+      <div class="capture-box" id="captureBox">
+        <!-- Live Video -->
+        <video id="webcamVideo" autoplay playsinline muted></video>
+
+        <!-- Static Image Preview -->
+        <img id="previewImg" alt="Xem trước ảnh">
+
+        <!-- Scanner HUD Overlay for Webcam -->
+        <div class="scanner-overlay" id="scannerOverlay">
+          <div class="face-guide-oval">
+            <div class="radar-line"></div>
+          </div>
+        </div>
+
+        <!-- Drag & Drop Placeholder -->
+        <div class="drag-drop-text" id="uploadPlaceholder" style="display: none;">
+          <svg viewBox="0 0 24 24">
+            <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+          </svg>
+          <p><strong>Kéo và thả file ảnh vào đây</strong></p>
+          <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;">Hỗ trợ JPG, PNG, WEBP (Tối đa 15MB)</p>
+          <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleFileSelected(event)">
+          <button class="btn btn-secondary" style="margin: 0.75rem auto 0; font-size: 0.8rem; padding: 0.4rem 1rem;" onclick="document.getElementById('fileInput').click()">Chọn file từ máy</button>
+        </div>
+      </div>
+
+      <!-- Liveness Checklist Options for Testing -->
+      <div class="options-grid">
+        <label class="option-item">
+          <input type="checkbox" id="chkLivenessBlink" checked>
+          <span>Chớp mắt (Blink)</span>
+        </label>
+        <label class="option-item">
+          <input type="checkbox" id="chkLivenessHead" checked>
+          <span>Quay đầu (Head Action)</span>
+        </label>
+        <label class="option-item">
+          <input type="checkbox" id="chkCropReturn" checked>
+          <span>Nhận ảnh Crop 224x224</span>
+        </label>
+        <label class="option-item">
+          <input type="checkbox" id="chkAnnotatedReturn" checked>
+          <span>Nhận ảnh HUD AI</span>
+        </label>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-row">
+        <button class="btn btn-secondary" id="camToggleBtn" onclick="toggleWebcam()">Bật Camera</button>
+        <button class="btn btn-primary" id="verifyBtn" onclick="submitVerification()">
+          <span id="verifyBtnText">Quét & Xác Thực eKYC</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Right Column: Verification Results Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span>Kết Quả Phân Tích & Xác Thực (AI Verdict)</span>
+        </div>
+        <div id="latencyTag" style="font-size: 0.8rem; font-family: var(--font-mono); color: var(--cyan);">-- ms</div>
+      </div>
+
+      <!-- Verdict Banner -->
+      <div class="verdict-banner" id="verdictBanner">
+        <div>
+          <div class="verdict-badge idle" id="verdictBadge">CHỜ DỮ LIỆU</div>
+          <div class="verdict-time" id="verdictSubText">Vui lòng cung cấp ảnh chụp để AI quét</div>
+        </div>
+        <div id="verdictIcon" style="font-size: 2.2rem;">⚡</div>
+      </div>
+
+      <!-- Reasons Box (If Rejected) -->
+      <div class="reasons-box" id="reasonsBox">
+        <strong>Lý do từ chối eKYC:</strong>
+        <ul id="reasonsList"></ul>
+      </div>
+
+      <!-- Key Metrics -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">Ensemble Anti-Spoof</div>
+          <div class="metric-value" id="metricSpoofConf">-- %</div>
+          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;" id="metricSpoofSource">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">3D Pose (Yaw/Pitch)</div>
+          <div class="metric-value" id="metricPoseVal">-- / --</div>
+          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;" id="metricPoseMsg">--</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Số khuôn mặt</div>
+          <div class="metric-value" id="metricNumFaces">0</div>
+          <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Yêu cầu 1</div>
+        </div>
+      </div>
+
+      <!-- 7 eKYC Criteria -->
+      <div class="criteria-card">
+        <div class="criteria-title">Bảng 7 Tiêu Chuẩn Hợp Chuẩn eKYC Ngân Hàng</div>
+        <div class="criteria-list">
+          <div class="criterion-item">
+            <span class="criterion-name">1. Tìm thấy khuôn mặt trong ảnh</span>
+            <span class="criterion-pill idle" id="critFace">CHỜ</span>
+          </div>
+          <div class="criterion-item">
+            <span class="criterion-name">2. Duy nhất 1 người trong khung hình</span>
+            <span class="criterion-pill idle" id="critSingle">CHỜ</span>
+          </div>
+          <div class="criterion-item">
+            <span class="criterion-name">3. Tư thế góc mặt thẳng & khoảng cách chuẩn</span>
+            <span class="criterion-pill idle" id="critPose">CHỜ</span>
+          </div>
+          <div class="criterion-item">
+            <span class="criterion-name">4. Người thật (Anti-Spoof Real Face)</span>
+            <span class="criterion-pill idle" id="critSpoof">CHỜ</span>
+          </div>
+          <div class="criterion-item">
+            <span class="criterion-name">5. Cả 2 Model đồng thuận (YOLO + RF-DETR)</span>
+            <span class="criterion-pill idle" id="critBoth">CHỜ</span>
+          </div>
+          <div class="criterion-item">
+            <span class="criterion-name">6. Hoàn thành chớp mắt (Blink Liveness)</span>
+            <span class="criterion-pill idle" id="critBlink">CHỜ</span>
+          </div>
+          <div class="criterion-item">
+            <span class="criterion-name">7. Hoàn thành quay đầu (Head Movement)</span>
+            <span class="criterion-pill idle" id="critHead">CHỜ</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cropped & Annotated Face Previews -->
+      <div class="images-preview-row">
+        <div class="crop-box" title="Ảnh khuôn mặt crop 224x224 chuẩn hóa (lưu Database)">
+          <img id="cropImg" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect width='100%' height='100%' fill='%230b0f19'/></svg>" alt="Crop 224x224">
+          <div class="crop-label">Crop 224x224</div>
+        </div>
+
+        <div class="annotated-box" onclick="openAnnotatedModal()" title="Bấm để phóng to ảnh phân tích AI HUD">
+          <img id="annotatedImg" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='100'><rect width='100%' height='100%' fill='%230b0f19'/><text x='50%' y='55%' fill='%23475569' font-size='12' text-anchor='middle' font-family='sans-serif'>Chưa có ảnh phân tích HUD</text></svg>" alt="Annotated HUD">
+        </div>
+      </div>
+
+      <!-- JSON Raw Response Inspector -->
+      <details>
+        <summary>
+          <span>Xem dữ liệu JSON trả về cho Node.js</span>
+          <button class="copy-btn" onclick="copyJson(event)">Sao chép JSON</button>
+        </summary>
+        <pre id="jsonViewer">// Dữ liệu phản hồi từ AI Server sẽ hiển thị tại đây sau khi quét...</pre>
+      </details>
+    </div>
+  </main>
+
+  <!-- Modal View Full Annotated Image -->
+  <div class="modal" id="imageModal" onclick="closeAnnotatedModal()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <span class="modal-close" onclick="closeAnnotatedModal()">&times;</span>
+      <img id="modalImg" src="" alt="Ảnh phóng to">
+    </div>
+  </div>
+
+  <canvas id="hiddenCanvas" style="display: none;"></canvas>
+
+  <script>
+    // Configuration
+    const API_BASE_URL = window.location.origin;
+    let currentMode = 'webcam';
+    let webcamStream = null;
+    let selectedFileBlob = null;
+    let lastJsonResponse = null;
+
+    // Check Server Health
+    async function checkServerHealth() {
+      const dot = document.getElementById('serverDot');
+      const text = document.getElementById('serverStatusText');
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/health`);
+        if (res.ok) {
+          const data = await res.json();
+          dot.className = 'status-dot online';
+          text.textContent = `AI Server Sẵn Sàng (${data.device.toUpperCase()})`;
+        } else {
+          dot.className = 'status-dot offline';
+          text.textContent = 'Server phản hồi lỗi!';
+        }
+      } catch (err) {
+        dot.className = 'status-dot offline';
+        text.textContent = 'Không kết nối được AI Server!';
+      }
+    }
+
+    // Tab Switcher
+    function switchMode(mode) {
+      currentMode = mode;
+      document.getElementById('tabWebcamBtn').classList.toggle('active', mode === 'webcam');
+      document.getElementById('tabUploadBtn').classList.toggle('active', mode === 'upload');
+
+      const video = document.getElementById('webcamVideo');
+      const preview = document.getElementById('previewImg');
+      const overlay = document.getElementById('scannerOverlay');
+      const placeholder = document.getElementById('uploadPlaceholder');
+      const camBtn = document.getElementById('camToggleBtn');
+
+      if (mode === 'webcam') {
+        preview.style.display = 'none';
+        placeholder.style.display = 'none';
+        camBtn.style.display = 'inline-flex';
+        if (webcamStream) {
+          video.style.display = 'block';
+          overlay.style.display = 'flex';
+        } else {
+          video.style.display = 'none';
+          overlay.style.display = 'none';
+        }
+      } else {
+        // Upload mode
+        stopWebcam();
+        camBtn.style.display = 'none';
+        video.style.display = 'none';
+        overlay.style.display = 'none';
+        if (selectedFileBlob) {
+          preview.style.display = 'block';
+          placeholder.style.display = 'none';
+        } else {
+          preview.style.display = 'none';
+          placeholder.style.display = 'flex';
+        }
+      }
+    }
+
+    // Webcam Management
+    async function toggleWebcam() {
+      const btn = document.getElementById('camToggleBtn');
+      if (webcamStream) {
+        stopWebcam();
+        btn.textContent = 'Bật Camera';
+      } else {
+        try {
+          webcamStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } }
+          });
+          const video = document.getElementById('webcamVideo');
+          video.srcObject = webcamStream;
+          video.style.display = 'block';
+          document.getElementById('scannerOverlay').style.display = 'flex';
+          btn.textContent = 'Tắt Camera';
+          document.getElementById('captureBox').classList.add('active');
+        } catch (err) {
+          alert('Không thể mở webcam: ' + err.message);
+        }
+      }
+    }
+
+    function stopWebcam() {
+      if (webcamStream) {
+        webcamStream.getTracks().forEach(t => t.stop());
+        webcamStream = null;
+      }
+      document.getElementById('webcamVideo').style.display = 'none';
+      document.getElementById('scannerOverlay').style.display = 'none';
+      document.getElementById('camToggleBtn').textContent = 'Bật Camera';
+      document.getElementById('captureBox').classList.remove('active');
+    }
+
+    // Drag & Drop Handling
+    const box = document.getElementById('captureBox');
+    box.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (currentMode === 'upload') box.style.borderColor = 'var(--cyan)';
+    });
+    box.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      if (currentMode === 'upload') box.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+    });
+    box.addEventListener('drop', (e) => {
+      e.preventDefault();
+      box.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+      if (currentMode === 'upload' && e.dataTransfer.files.length > 0) {
+        processFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    function handleFileSelected(e) {
+      if (e.target.files.length > 0) {
+        processFile(e.target.files[0]);
+      }
+    }
+
+    function processFile(file) {
+      selectedFileBlob = file;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const preview = document.getElementById('previewImg');
+        preview.src = evt.target.result;
+        preview.style.display = 'block';
+        document.getElementById('uploadPlaceholder').style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Capture Frame from Video
+    function captureWebcamFrameBlob() {
+      return new Promise((resolve) => {
+        const video = document.getElementById('webcamVideo');
+        const canvas = document.getElementById('hiddenCanvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        // Un-mirror image
+        ctx.save();
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.92);
+      });
+    }
+
+    // Main Verification Call
+    async function submitVerification() {
+      const verifyBtn = document.getElementById('verifyBtn');
+      const verifyBtnText = document.getElementById('verifyBtnText');
+
+      let fileToSend = null;
+      if (currentMode === 'webcam') {
+        if (!webcamStream) {
+          alert('Vui lòng bật Camera trước khi quét!');
+          return;
+        }
+        fileToSend = await captureWebcamFrameBlob();
+      } else {
+        if (!selectedFileBlob) {
+          alert('Vui lòng chọn hoặc kéo thả một file ảnh!');
+          return;
+        }
+        fileToSend = selectedFileBlob;
+      }
+
+      // UI Loading State
+      verifyBtn.disabled = true;
+      verifyBtnText.innerHTML = '<span class="spinner"></span> Đang phân tích AI...';
+
+      const formData = new FormData();
+      formData.append('file', fileToSend, 'capture.jpg');
+      formData.append('img_id', 'WEB_' + Date.now());
+      formData.append('blink_passed', document.getElementById('chkLivenessBlink').checked);
+      formData.append('head_passed', document.getElementById('chkLivenessHead').checked);
+      formData.append('return_crop_image', document.getElementById('chkCropReturn').checked);
+      formData.append('return_annotated_image', document.getElementById('chkAnnotatedReturn').checked);
+
+      const startTime = performance.now();
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/v1/verify`, {
+          method: 'POST',
+          body: formData
+        });
+
+        const elapsed = Math.round(performance.now() - startTime);
+        document.getElementById('latencyTag').textContent = `${elapsed} ms`;
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.detail || 'Lỗi xử lý xác thực từ AI Server');
+        }
+
+        const data = await res.json();
+        lastJsonResponse = data;
+        renderResults(data);
+      } catch (err) {
+        alert('Lỗi xác thực: ' + err.message);
+      } finally {
+        verifyBtn.disabled = false;
+        verifyBtnText.textContent = 'Quét & Xác Thực eKYC';
+      }
+    }
+
+    // Render Results
+    function renderResults(data) {
+      const banner = document.getElementById('verdictBanner');
+      const badge = document.getElementById('verdictBadge');
+      const sub = document.getElementById('verdictSubText');
+      const icon = document.getElementById('verdictIcon');
+      const reasonsBox = document.getElementById('reasonsBox');
+      const reasonsList = document.getElementById('reasonsList');
+
+      if (data.approved) {
+        banner.className = 'verdict-banner approved';
+        badge.className = 'verdict-badge approved';
+        badge.textContent = 'eKYC APPROVED';
+        sub.textContent = `Hợp chuẩn eKYC &bull; Độ tin cậy: ${(data.confidence * 100).toFixed(1)}%`;
+        icon.textContent = '✅';
+        reasonsBox.style.display = 'none';
+      } else {
+        banner.className = 'verdict-banner rejected';
+        badge.className = 'verdict-badge rejected';
+        badge.textContent = 'eKYC REJECTED';
+        sub.textContent = `Không đạt tiêu chuẩn eKYC &bull; ${data.reasons.length} lỗi phát hiện`;
+        icon.textContent = '❌';
+
+        // Render reasons
+        reasonsList.innerHTML = '';
+        data.reasons.forEach(r => {
+          const li = document.createElement('li');
+          li.textContent = r;
+          reasonsList.appendChild(li);
+        });
+        reasonsBox.style.display = 'block';
+      }
+
+      // Metrics
+      const ens = data.ensemble_anti_spoof;
+      const spoofPill = document.getElementById('metricSpoofConf');
+      spoofPill.textContent = `${(ens.confidence * 100).toFixed(1)}%`;
+      spoofPill.style.color = ens.is_real ? 'var(--emerald)' : 'var(--rose)';
+      document.getElementById('metricSpoofSource').textContent = `${ens.label} (${ens.source})`;
+
+      const pose = data.pose_3d;
+      document.getElementById('metricPoseVal').textContent = `${pose.yaw.toFixed(1)}° / ${pose.pitch.toFixed(1)}°`;
+      document.getElementById('metricPoseMsg').textContent = pose.is_valid ? 'ĐẠT CHUẨN' : 'KHÔNG ĐẠT';
+
+      document.getElementById('metricNumFaces').textContent = data.face_detection.num_faces;
+
+      // 7 Criteria
+      const c = data.criteria;
+      setPill('critFace', c.face_detected);
+      setPill('critSingle', c.single_face);
+      setPill('critPose', c.pose_valid);
+      setPill('critSpoof', c.anti_spoof_real);
+      setPill('critBoth', c.both_models_detected);
+      setPill('critBlink', c.blink_passed);
+      setPill('critHead', c.head_movement_passed);
+
+      // Cropped Face
+      if (data.crop_face_base64) {
+        document.getElementById('cropImg').src = data.crop_face_base64;
+      }
+
+      // Annotated HUD Image
+      if (data.annotated_image_base64) {
+        document.getElementById('annotatedImg').src = data.annotated_image_base64;
+      }
+
+      // JSON Dump
+      document.getElementById('jsonViewer').textContent = JSON.stringify(data, null, 2);
+    }
+
+    function setPill(id, passed) {
+      const el = document.getElementById(id);
+      if (passed) {
+        el.className = 'criterion-pill pass';
+        el.textContent = 'PASS';
+      } else {
+        el.className = 'criterion-pill fail';
+        el.textContent = 'FAIL';
+      }
+    }
+
+    // Copy JSON
+    function copyJson(e) {
+      e.stopPropagation();
+      if (!lastJsonResponse) return;
+      navigator.clipboard.writeText(JSON.stringify(lastJsonResponse, null, 2));
+      alert('Đã sao chép toàn bộ JSON vào Clipboard!');
+    }
+
+    // Modal Image Zoom
+    function openAnnotatedModal() {
+      const src = document.getElementById('annotatedImg').src;
+      if (src && !src.includes('data:image/svg+xml')) {
+        document.getElementById('modalImg').src = src;
+        document.getElementById('imageModal').classList.add('active');
+      }
+    }
+
+    function closeAnnotatedModal() {
+      document.getElementById('imageModal').classList.remove('active');
+    }
+
+    // Startup
+    checkServerHealth();
+    setInterval(checkServerHealth, 15000);
+  </script>
+</body>
+</html>

@@ -12,6 +12,16 @@ from typing import Union, Tuple, List, Optional, Dict, Any
 import numpy as np
 import cv2
 
+try:
+    from .components.landmark_detection.draw_landmarks import draw_landmarks
+except Exception:
+    try:
+        from components.landmark_detection.draw_landmarks import draw_landmarks
+    except Exception:
+        def draw_landmarks(frame, landmarks):
+            return frame
+
+
 
 def remove_vietnamese_accents(text: str) -> str:
     """Chuyển đổi văn bản tiếng Việt có dấu thành không dấu để cv2.putText hiển thị không bị lỗi font."""

@@ -7,6 +7,10 @@ Sử dụng Ensemble Anti-Spoofing (YOLO_4 + RF-DETR Small) theo chuẩn test_pi
 from .pipeline_server import EKYCPipelineServer
 from .ensemble_anti_spoof import EnsembleAntiSpoofDetector
 from .anti_spoof_yolo import AntiSpoofYoloDetector
+try:
+    from .app import app
+except ImportError:
+    app = None
 from .utils import (
     load_image,
     image_to_base64,
@@ -32,6 +36,7 @@ from .config import (
 __all__ = [
     # Core Pipeline
     "EKYCPipelineServer",
+    "app",
     # Anti-Spoof Detectors
     "EnsembleAntiSpoofDetector",
     "AntiSpoofYoloDetector",
