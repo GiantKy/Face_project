@@ -7,11 +7,11 @@ class PoseValidator:
     def __init__(self):
         self.estimator = HeadPoseEstimator()
 
-    def validate(self, landmarks, get_point=get_landmark_point):
+    def validate(self, landmarks, get_point=get_landmark_point, img_w=None, img_h=None):
         if get_point is None:
             get_point = get_landmark_point
 
-        pose = self.estimator.estimate(landmarks, get_point)
+        pose = self.estimator.estimate(landmarks, get_point, img_w=img_w, img_h=img_h)
 
         if pose is None:
             return False, "No Face Pose", None
@@ -46,9 +46,9 @@ class PoseValidator:
 
         return True, "Valid Pose", pose
 
-    def validate_pose(self, frame_or_landmarks, landmarks=None, get_point=get_landmark_point):
+    def validate_pose(self, frame_or_landmarks, landmarks=None, get_point=get_landmark_point, img_w=None, img_h=None):
         lm = landmarks if landmarks is not None else frame_or_landmarks
-        valid, text, pose = self.validate(lm, get_point)
+        valid, text, pose = self.validate(lm, get_point, img_w=img_w, img_h=img_h)
         return {
             "is_valid": valid,
             "text": text,

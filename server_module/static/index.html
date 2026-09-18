@@ -1507,6 +1507,9 @@
     let blinkCounter = 0;
     let blinkState = false;
     let blinkPassed = false;
+    let blinkBaselineEAR = 0.0;
+    let isBlinkProcessing = false;
+    let isHeadProcessing = false;
 
     let headChallengeAction = 'turn_left';
     let headChallengePrompt = 'QUAY MẶT SANG TRÁI';
@@ -1896,10 +1899,10 @@
     function startBlinkChallengeLoop() {
       stopChallengeLoop();
       let framesCount = 0;
-      const maxFramesTimeout = 100; // ~10s
+      const maxFramesTimeout = 120; // ~12s
 
       challengeLoopInterval = setInterval(async () => {
-        if (currentState !== APP_STATE.CHALLENGE_BLINK) return;
+        if (currentState !== APP_STATE.CHALLENGE_BLINK || isBlinkProcessing) return;
 
         const video = document.getElementById('webcamVideo');
         if (video.readyState < 2) return;
@@ -1912,12 +1915,15 @@
           return;
         }
 
+        isBlinkProcessing = true;
         try {
-          const frameBlob = await captureThumbnailBlob(video, 480, 360);
+          // Gửi độ phân giải 640x480 để MediaPipe nhận diện mí mắt và tròng mắt chuẩn xác
+          const frameBlob = await captureThumbnailBlob(video, 640, 480);
           const formData = new FormData();
           formData.append('file', frameBlob, 'frame.jpg');
           formData.append('blink_counter', blinkCounter);
-          formData.append('blink_state', blinkState);
+          formData.append('blink_state', blinkState ? 'true' : 'false');
+          formData.append('baseline_ear', blinkBaselineEAR);
 
           const res = await fetch(`${API_BASE_URL}/api/v1/liveness/blink-frame`, {
             method: 'POST',
@@ -1927,18 +1933,20 @@
           if (res.ok) {
             const data = await res.json();
             blinkCounter = data.blink_counter;
-            blinkState = data.blink_state;
-            const earVal = data.ear_avg.toFixed(2);
+            blinkState = Boolean(data.blink_state);
+            blinkBaselineEAR = data.baseline_ear || blinkBaselineEAR;
+            const earVal = (data.ear_avg !== undefined) ? data.ear_avg.toFixed(2) : '0.00';
+            const closedTarget = (data.closed_thresh !== undefined) ? data.closed_thresh.toFixed(2) : '0.20';
             const pct = Math.round((data.progress || 0) * 100);
 
             updateChallengeHUD({
               stageText: 'BƯỚC 1/2: THỬ THÁCH CHỚP MẮT',
               icon: blinkState ? '😉' : '👁️',
-              prompt: data.passed ? 'ĐÃ XÁC NHẬN CHỚP MẮT THÀNH CÔNG!' : (blinkState ? 'ĐANG NHẮM MẮT... GIỮ NGUYÊN' : 'VUI LÒNG CHỚP MẮT TỰ NHIÊN'),
-              hint: `Chỉ số EAR: ${earVal} | Mục tiêu: Nhắm (<0.18) -> Mở (>=0.22)`,
+              prompt: data.passed ? 'ĐÃ XÁC NHẬN CHỚP MẮT THÀNH CÔNG!' : (blinkState ? 'ĐANG NHẮM MẮT... MỞ MẮT ĐỂ HOÀN TẤT' : 'VUI LÒNG CHỚP MẮT TỰ NHIÊN'),
+              hint: `Chỉ số EAR: ${earVal} | Mục tiêu: Nhắm (<${closedTarget}) -> Mở (>=0.22)`,
               timerText: `${blinkCounter}/1 Lần`,
               isTimerUrgent: false,
-              telemetry: `EAR: ${earVal} | Trạng thái: ${data.label || ''}`,
+              telemetry: `EAR: ${earVal} | Mốc: ${blinkBaselineEAR > 0 ? blinkBaselineEAR.toFixed(2) : '--'} | Trạng thái: ${data.label || ''}`,
               percent: `${pct}%`,
               fillWidth: `${pct}%`
             });
@@ -1954,8 +1962,10 @@
           }
         } catch (e) {
           console.warn('Liveness blink error:', e);
+        } finally {
+          isBlinkProcessing = false;
         }
-      }, 100); // 10 FPS
+      }, 90); // ~11 FPS sequential
     }
 
     async function proceedToHeadMovementChallenge() {
@@ -1989,10 +1999,10 @@
         stageText: 'BƯỚC 2/2: THỬ THÁCH QUAY ĐẦU',
         icon: dirIcon,
         prompt: headChallengePrompt.toUpperCase(),
-        hint: `Quay đầu từ từ theo hướng mũi tên đến khi đạt 100%`,
+        hint: `Nhích nhẹ đầu theo hướng mũi tên đến khi đạt 100%`,
         timerText: `${headTimeoutSeconds.toFixed(1)}s`,
         isTimerUrgent: false,
-        telemetry: `Góc quay mục tiêu: 16°`,
+        telemetry: `Mục tiêu: Nhích nhẹ ~8°`,
         percent: '0%',
         fillWidth: '0%'
       });
@@ -2004,11 +2014,12 @@
       stopChallengeLoop();
 
       challengeLoopInterval = setInterval(async () => {
-        if (currentState !== APP_STATE.CHALLENGE_HEAD) return;
+        if (currentState !== APP_STATE.CHALLENGE_HEAD || isHeadProcessing) return;
 
         const video = document.getElementById('webcamVideo');
         if (video.readyState < 2) return;
 
+        isHeadProcessing = true;
         try {
           const frameBlob = await captureThumbnailBlob(video, 480, 360);
           const formData = new FormData();
@@ -2031,16 +2042,21 @@
             else if (headChallengeAction.includes('up')) dirIcon = '⬆️';
             else if (headChallengeAction.includes('down')) dirIcon = '⬇️';
 
+            const movedAngle = (data.current_angle !== undefined) ? data.current_angle.toFixed(1) : '0.0';
             let telemetry = `Tiến trình: ${pct}%`;
             if (data.pose) {
-              telemetry = `Yaw: ${data.pose.yaw}° | Pitch: ${data.pose.pitch}° | ${telemetry}`;
+              telemetry = `Yaw: ${data.pose.yaw}° | Nhích: ${movedAngle}° / 8° | ${telemetry}`;
             }
+
+            const activeHint = data.is_matched
+              ? 'RẤT TỐT! GIỮ NGUYÊN GÓC ĐỂ XÁC NHẬN...'
+              : 'Nhích nhẹ đầu theo hướng mũi tên đến khi đầy thanh tiến trình';
 
             updateChallengeHUD({
               stageText: 'BƯỚC 2/2: THỬ THÁCH QUAY ĐẦU',
               icon: dirIcon,
               prompt: data.prompt ? data.prompt.toUpperCase() : headChallengePrompt.toUpperCase(),
-              hint: `Giữ tư thế quay đầu đến khi đầy thanh tiến trình`,
+              hint: activeHint,
               timerText: `${timeLeft.toFixed(1)}s`,
               isTimerUrgent: isUrgent,
               telemetry: telemetry,
@@ -2088,6 +2104,8 @@
           }
         } catch (e) {
           console.warn('Liveness head error:', e);
+        } finally {
+          isHeadProcessing = false;
         }
       }, 110); // ~9 FPS
     }
@@ -2097,6 +2115,8 @@
         clearInterval(challengeLoopInterval);
         challengeLoopInterval = null;
       }
+      isBlinkProcessing = false;
+      isHeadProcessing = false;
     }
 
     function cancelActiveChallenge() {
@@ -2346,7 +2366,11 @@
         canvas.width = targetW;
         canvas.height = targetH;
         const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.translate(targetW, 0);
+        ctx.scale(-1, 1);
         ctx.drawImage(video, 0, 0, targetW, targetH);
+        ctx.restore();
         canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.85);
       });
     }
@@ -2360,7 +2384,11 @@
         canvas.width = vw;
         canvas.height = vh;
         const ctx = canvas.getContext('2d');
+        ctx.save();
+        ctx.translate(vw, 0);
+        ctx.scale(-1, 1);
         ctx.drawImage(video, 0, 0, vw, vh);
+        ctx.restore();
         canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.95);
       });
     }

@@ -57,11 +57,14 @@ POSE_MAX_ROLL = 15.0      # Độ nghiêng đầu tối đa cho phép
 MIN_FACE_HEIGHT = 170     # Chiều cao khuôn mặt tối thiểu trong khung hình (tránh ngồi quá xa)
 
 # Ngưỡng Liveness Blink (Eye Aspect Ratio - EAR)
-EAR_EYE_CLOSED_THRESHOLD = 0.18   # Dưới ngưỡng này coi như mắt nhắm
+EAR_EYE_CLOSED_THRESHOLD = 0.20   # Dưới ngưỡng này coi như mắt nhắm (bắt trọn chớp mắt tự nhiên)
 EAR_EYE_OPEN_THRESHOLD = 0.22     # Trên ngưỡng này coi như mắt mở
 MIN_BLINKS_REQUIRED = 1
 
 # Ngưỡng thử thách chuyển động đầu (Head Movement Challenge)
 HEAD_YAW_THRESHOLD = 16.0
 HEAD_PITCH_THRESHOLD = 12.0
+HEAD_DELTA_YAW_THRESHOLD = 8.0     # Ngưỡng nhích nhẹ đầu tối thiểu (8 độ chuyển động thực tế từ mốc ban đầu)
+HEAD_DELTA_PITCH_THRESHOLD = 7.0   # Ngưỡng nhích nhẹ gật đầu tối thiểu
 CHALLENGE_TIMEOUT_SECONDS = 7.0
+

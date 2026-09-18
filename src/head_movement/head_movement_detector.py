@@ -46,29 +46,43 @@ class HeadMovementDetector:
         yaw_threshold: float = 16.0,
         pitch_threshold: float = 12.0,
         roll_threshold: float = 14.0,
-        timeout: float = 6.0,
-        min_consecutive_frames: int = 4
+        timeout: float = 7.0,
+        min_consecutive_frames: int = 2,
+        delta_yaw_threshold: float = 8.0,
+        delta_pitch_threshold: float = 7.0
     ):
         """
         Khởi tạo bộ phát hiện cử động đầu.
-        :param yaw_threshold: Ngưỡng góc quay trái/phải (độ)
-        :param pitch_threshold: Ngưỡng góc ngước lên/cúi xuống (độ)
+        :param yaw_threshold: Ngưỡng góc quay trái/phải tuyệt đối (độ)
+        :param pitch_threshold: Ngưỡng góc ngước lên/cúi xuống tuyệt đối (độ)
         :param roll_threshold: Ngưỡng góc nghiêng đầu (độ)
         :param timeout: Thời gian tối đa cho 1 thử thách (giây)
-        :param min_consecutive_frames: Số frame liên tiếp duy trì góc để xác nhận vượt qua (chống nhiễu)
+        :param min_consecutive_frames: Số frame liên tiếp duy trì góc để xác nhận vượt qua
+        :param delta_yaw_threshold: Ngưỡng nhích nhẹ đầu tối thiểu (8 độ chuyển động thực tế từ mốc ban đầu)
+        :param delta_pitch_threshold: Ngưỡng nhích nhẹ gật đầu tối thiểu
         """
         self.yaw_threshold = yaw_threshold
         self.pitch_threshold = pitch_threshold
         self.roll_threshold = roll_threshold
         self.timeout = timeout
-        self.min_consecutive_frames = min_consecutive_frames
+        self.min_consecutive_frames = max(1, min_consecutive_frames)
+        self.delta_yaw_threshold = delta_yaw_threshold
+        self.delta_pitch_threshold = delta_pitch_threshold
 
         self.current_action: HeadAction = HeadAction.NONE
         self.state: ChallengeState = ChallengeState.IDLE
         self.action_start_time: float = 0.0
         self.consecutive_frames: int = 0
         self.max_reached_angle: float = 0.0
+        self.last_progress: float = 0.0
+        self.last_angle: float = 0.0
         self.history_poses: List[Dict[str, float]] = []
+
+        # Baseline pose tracking (khắc phục lỗi không di chuyển đầu vẫn pass)
+        self.baseline_frames: List[Dict[str, float]] = []
+        self.baseline_yaw: Optional[float] = None
+        self.baseline_pitch: Optional[float] = None
+        self.baseline_roll: Optional[float] = None
 
     def classify_static_pose(self, pose_dict: Optional[Dict[str, float]]) -> Dict[str, Any]:
         """
@@ -127,7 +141,6 @@ class HeadMovementDetector:
         """
         Bắt đầu một thử thách cử động đầu mới.
         Nếu action = None, hệ thống sẽ chọn ngẫu nhiên giữa (TURN_LEFT, TURN_RIGHT).
-        (Đã loại bỏ LOOK_UP và LOOK_DOWN để tối ưu trải nghiệm và góc nhìn camera).
         """
         if action is None or action == HeadAction.NONE:
             available_actions = [
@@ -142,7 +155,13 @@ class HeadMovementDetector:
         self.action_start_time = time.time()
         self.consecutive_frames = 0
         self.max_reached_angle = 0.0
+        self.last_progress = 0.0
+        self.last_angle = 0.0
         self.history_poses = []
+        self.baseline_frames = []
+        self.baseline_yaw = None
+        self.baseline_pitch = None
+        self.baseline_roll = None
         return self.current_action
 
     def get_prompt(self) -> str:
@@ -165,8 +184,8 @@ class HeadMovementDetector:
                 "passed": self.state == ChallengeState.COMPLETED,
                 "prompt": self.get_prompt() if self.state == ChallengeState.IN_PROGRESS else self._get_status_text(),
                 "time_left": round(time_left, 1),
-                "progress": 1.0 if self.state == ChallengeState.COMPLETED else 0.0,
-                "current_angle": 0.0
+                "progress": 1.0 if self.state == ChallengeState.COMPLETED else round(self.last_progress, 2),
+                "current_angle": round(self.last_angle, 1)
             }
 
         yaw = pose_dict.get("yaw", 0.0)
@@ -190,70 +209,95 @@ class HeadMovementDetector:
                 "current_angle": 0.0
             }
 
-        # 2. Kiểm tra điều kiện góc tương ứng với hành động yêu cầu
+        # 2. Định hình góc xuất phát ban đầu (Baseline calibration: 2 frame đầu)
+        if len(self.baseline_frames) < 2:
+            self.baseline_frames.append({"yaw": yaw, "pitch": pitch, "roll": roll})
+            self.baseline_yaw = sum(p["yaw"] for p in self.baseline_frames) / len(self.baseline_frames)
+            self.baseline_pitch = sum(p["pitch"] for p in self.baseline_frames) / len(self.baseline_frames)
+            self.baseline_roll = sum(p["roll"] for p in self.baseline_frames) / len(self.baseline_frames)
+            return {
+                "state": self.state.value,
+                "action": self.current_action.value,
+                "passed": False,
+                "prompt": self.get_prompt(),
+                "time_left": round(float(time_left), 1),
+                "progress": 0.0,
+                "current_angle": 0.0,
+                "target_threshold": float(self.delta_yaw_threshold),
+                "is_matched": False
+            }
+
+        # 3. Tính toán độ chuyển động thực tế (Delta movement) so với vị trí ban đầu
+        # Đảm bảo người dùng BẮT BUỘC PHẢI DI CHUYỂN ĐẦU đúng hướng ít nhất delta_yaw_threshold (~8 độ)
         is_matched = False
-        current_angle = 0.0
-        target_threshold = 1.0
+        delta_movement = 0.0
+        target_threshold = self.delta_yaw_threshold
+
+        base_y = self.baseline_yaw if self.baseline_yaw is not None else 0.0
+        base_p = self.baseline_pitch if self.baseline_pitch is not None else 0.0
 
         if self.current_action == HeadAction.TURN_LEFT:
-            current_angle = -yaw
-            target_threshold = self.yaw_threshold
-            is_matched = (yaw < -self.yaw_threshold)
+            # Quay sang trái: yaw giảm dần (âm hơn baseline) -> delta_yaw = baseline_yaw - yaw
+            delta_movement = base_y - yaw
+            target_threshold = self.delta_yaw_threshold
+            # Yêu cầu: Đã nhích sang trái ít nhất delta_yaw_threshold VÀ góc hiện tại lệch trái so với mốc
+            is_matched = bool(delta_movement >= self.delta_yaw_threshold and yaw < (base_y - 2.0))
 
         elif self.current_action == HeadAction.TURN_RIGHT:
-            current_angle = yaw
-            target_threshold = self.yaw_threshold
-            is_matched = (yaw > self.yaw_threshold)
+            # Quay sang phải: yaw tăng dần (dương hơn baseline) -> delta_yaw = yaw - baseline_yaw
+            delta_movement = yaw - base_y
+            target_threshold = self.delta_yaw_threshold
+            # Yêu cầu: Đã nhích sang phải ít nhất delta_yaw_threshold VÀ góc hiện tại lệch phải so với mốc
+            is_matched = bool(delta_movement >= self.delta_yaw_threshold and yaw > (base_y + 2.0))
 
         elif self.current_action == HeadAction.LOOK_UP:
-            current_angle = -pitch
-            target_threshold = self.pitch_threshold
-            is_matched = (pitch < -self.pitch_threshold)
+            delta_movement = base_p - pitch
+            target_threshold = self.delta_pitch_threshold
+            is_matched = bool(delta_movement >= self.delta_pitch_threshold and pitch < (base_p - 2.0))
 
         elif self.current_action == HeadAction.LOOK_DOWN:
-            current_angle = pitch
-            target_threshold = self.pitch_threshold
-            is_matched = (pitch > self.pitch_threshold)
-
-        elif self.current_action == HeadAction.TILT_LEFT:
-            current_angle = -roll
-            target_threshold = self.roll_threshold
-            is_matched = (roll < -self.roll_threshold)
-
-        elif self.current_action == HeadAction.TILT_RIGHT:
-            current_angle = roll
-            target_threshold = self.roll_threshold
-            is_matched = (roll > self.roll_threshold)
+            delta_movement = pitch - base_p
+            target_threshold = self.delta_pitch_threshold
+            is_matched = bool(delta_movement >= self.delta_pitch_threshold and pitch > (base_p + 2.0))
 
         elif self.current_action == HeadAction.LOOK_STRAIGHT:
-            current_angle = max(abs(yaw), abs(pitch))
-            target_threshold = self.yaw_threshold
-            is_matched = (abs(yaw) <= 10.0 and abs(pitch) <= 10.0)
+            delta_movement = max(0.0, 10.0 - max(abs(yaw - base_y), abs(pitch - base_p)))
+            target_threshold = 10.0
+            is_matched = bool(abs(yaw - base_y) <= 4.0 and abs(pitch - base_p) <= 4.0)
 
-        # Cập nhật số frame liên tiếp đạt chuẩn
+        # 4. Tính toán tiến trình thời gian thực
+        # Không di chuyển hoặc di chuyển ngược hướng -> progress = 0%
+        # Nhích nhẹ dần theo đúng hướng -> progress tăng mượt 0% - 75%
+        # Đạt ngưỡng nhích và giữ trong min_consecutive_frames -> progress tăng từ 75% lên 100%
+        clamped_movement = max(0.0, delta_movement)
+        movement_ratio = min(1.0, clamped_movement / max(1.0, target_threshold))
+
         if is_matched:
             self.consecutive_frames += 1
-            self.max_reached_angle = max(self.max_reached_angle, current_angle)
+            self.max_reached_angle = max(self.max_reached_angle, clamped_movement)
+            hold_ratio = min(1.0, self.consecutive_frames / float(self.min_consecutive_frames))
+            progress = min(1.0, 0.75 + 0.25 * hold_ratio)
             if self.consecutive_frames >= self.min_consecutive_frames:
                 self.state = ChallengeState.COMPLETED
+                progress = 1.0
         else:
             self.consecutive_frames = max(0, self.consecutive_frames - 1)
+            progress = min(0.75, movement_ratio * 0.75)
 
-        # Tính toán mức độ hoàn thành (% progress)
-        progress = min(1.0, max(0.0, self.consecutive_frames / float(self.min_consecutive_frames)))
-        if self.state == ChallengeState.COMPLETED:
-            progress = 1.0
+        self.last_progress = progress
+        self.last_angle = clamped_movement
 
         return {
             "state": self.state.value,
             "action": self.current_action.value,
-            "passed": self.state == ChallengeState.COMPLETED,
+            "passed": bool(self.state == ChallengeState.COMPLETED),
             "prompt": self.get_prompt() if self.state != ChallengeState.COMPLETED else "HOAN THANH CU DONG!",
-            "time_left": round(time_left, 1),
-            "progress": round(progress, 2),
-            "current_angle": round(current_angle, 1),
-            "target_threshold": target_threshold,
-            "is_matched": is_matched
+            "time_left": round(float(time_left), 1),
+            "progress": round(float(progress), 2),
+            "current_angle": round(float(clamped_movement), 1),
+            "target_threshold": float(target_threshold),
+            "is_matched": bool(is_matched),
+            "baseline_yaw": round(float(base_y), 2)
         }
 
     def _get_status_text(self) -> str:
@@ -271,4 +315,10 @@ class HeadMovementDetector:
         self.current_action = HeadAction.NONE
         self.consecutive_frames = 0
         self.max_reached_angle = 0.0
+        self.last_progress = 0.0
+        self.last_angle = 0.0
         self.history_poses.clear()
+        self.baseline_frames.clear()
+        self.baseline_yaw = None
+        self.baseline_pitch = None
+        self.baseline_roll = None

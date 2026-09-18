@@ -537,6 +537,16 @@ async def check_anti_spoof(
 # -----------------------------------------------------------------------------
 # 4. ACTIVE LIVENESS CHALLENGES: BLINK & HEAD MOVEMENT
 # -----------------------------------------------------------------------------
+def _parse_bool_param(val) -> bool:
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return val != 0
+    if isinstance(val, str):
+        return val.strip().lower() in ("true", "1", "yes", "t")
+    return bool(val)
+
+
 @app.post(
     "/api/v1/liveness/blink-frame",
     summary="Đánh giá chỉ số EAR và trạng thái chớp mắt trên từng frame"
@@ -545,7 +555,8 @@ async def evaluate_blink_frame_endpoint(
     request: Request,
     file: Optional[UploadFile] = File(None, description="Frame ảnh"),
     blink_counter: Optional[int] = Form(0, description="Số lần chớp mắt hiện tại"),
-    blink_state: Optional[bool] = Form(False, description="Trạng thái mắt đang nhắm")
+    blink_state: Optional[str] = Form("false", description="Trạng thái mắt đang nhắm"),
+    baseline_ear: Optional[float] = Form(0.0, description="Chỉ số EAR mốc khi mở mắt")
 ):
     """Phục vụ Web Client gửi frame đo chỉ số EAR và đếm số lần chớp mắt tự nhiên."""
     pipeline: EKYCPipelineServer = request.app.state.pipeline
@@ -559,6 +570,7 @@ async def evaluate_blink_frame_endpoint(
             image_input = body.get("image_base64")
             blink_counter = body.get("blink_counter", blink_counter)
             blink_state = body.get("blink_state", blink_state)
+            baseline_ear = body.get("baseline_ear", baseline_ear)
         except Exception:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -571,11 +583,15 @@ async def evaluate_blink_frame_endpoint(
             detail="Dữ liệu ảnh rỗng."
         )
 
+    is_closed = _parse_bool_param(blink_state)
+    b_ear = float(baseline_ear or 0.0)
+
     try:
         res = pipeline.evaluate_blink_frame(
             frame_input=image_input,
-            current_blink_counter=int(blink_counter),
-            current_blink_state=bool(blink_state)
+            current_blink_counter=int(blink_counter or 0),
+            current_blink_state=is_closed,
+            baseline_ear=b_ear
         )
     except Exception as e:
         raise HTTPException(

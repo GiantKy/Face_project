@@ -47,6 +47,8 @@ try:
         MIN_BLINKS_REQUIRED,
         HEAD_YAW_THRESHOLD,
         HEAD_PITCH_THRESHOLD,
+        HEAD_DELTA_YAW_THRESHOLD,
+        HEAD_DELTA_PITCH_THRESHOLD,
         CHALLENGE_TIMEOUT_SECONDS
     )
     from .ensemble_anti_spoof import EnsembleAntiSpoofDetector
@@ -98,6 +100,8 @@ except (ImportError, ValueError):
         MIN_BLINKS_REQUIRED,
         HEAD_YAW_THRESHOLD,
         HEAD_PITCH_THRESHOLD,
+        HEAD_DELTA_YAW_THRESHOLD,
+        HEAD_DELTA_PITCH_THRESHOLD,
         CHALLENGE_TIMEOUT_SECONDS
     )
     from ensemble_anti_spoof import EnsembleAntiSpoofDetector
@@ -175,7 +179,7 @@ class EKYCPipelineServer:
     def load_models(self):
         """Khởi tạo và tải trước toàn bộ mô hình AI vào bộ nhớ."""
         print("[EKYCPipelineServer] Đang khởi tạo các mô hình AI (Ensemble Edition)...")
-        self.detector = FaceDetector(model_path=self.face_model_path)
+        self.detector = FaceDetector(model_path=self.face_model_path, conf_thresh=CONF_THRESHOLD_FACE, iou_thresh=0.40)
         self.landmark_detector = LandmarkDetector()
         self.pose_validator = PoseValidator()
         self.aligner = FaceAligner()
@@ -187,7 +191,10 @@ class EKYCPipelineServer:
         self.head_movement_detector = HeadMovementDetector(
             yaw_threshold=HEAD_YAW_THRESHOLD,
             pitch_threshold=HEAD_PITCH_THRESHOLD,
-            timeout=CHALLENGE_TIMEOUT_SECONDS
+            timeout=CHALLENGE_TIMEOUT_SECONDS,
+            min_consecutive_frames=2,
+            delta_yaw_threshold=HEAD_DELTA_YAW_THRESHOLD,
+            delta_pitch_threshold=HEAD_DELTA_PITCH_THRESHOLD
         )
         print("[EKYCPipelineServer] Tải toàn bộ AI Models thành công! (Ensemble Ready)\n")
 
@@ -259,7 +266,7 @@ class EKYCPipelineServer:
             off_center_hint = f"Dich mat {' + '.join(hints)} vao tam oval"
 
         # Đánh giá góc nghiêng 3D Pose
-        pose_valid, text_status, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point)
+        pose_valid, text_status, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point, img_w=w, img_h=h)
         pose_data = pose_dict if pose_dict else {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
 
         is_valid_overall = (
@@ -329,8 +336,8 @@ class EKYCPipelineServer:
         frame = load_image(image_input)
         h_f, w_f = frame.shape[:2]
 
-        # 1. Phát hiện khuôn mặt
-        faces = self.detector.detect(frame)
+        # 1. Phát hiện khuôn mặt (áp dụng NMS Deduplication & Confidence)
+        faces = self.detector.detect(frame, conf=CONF_THRESHOLD_FACE)
         num_faces = len(faces)
 
         if not faces:
@@ -448,23 +455,50 @@ class EKYCPipelineServer:
         self,
         frame_input: Union[str, bytes, np.ndarray],
         current_blink_counter: int = 0,
-        current_blink_state: bool = False
+        current_blink_state: bool = False,
+        baseline_ear: float = 0.0
     ) -> Dict[str, Any]:
-        """Đo lường chỉ số EAR trên frame và cập nhật trạng thái chớp mắt."""
+        """Đo lường chỉ số EAR trên frame và cập nhật trạng thái chớp mắt (chuẩn src & test_pipeline_ensemble_full.py)."""
         self._ensure_models_loaded()
         frame = load_image(frame_input)
+        h, w = frame.shape[:2]
+        oval_center, oval_axes = get_default_oval_params(w, h)
+
+        # 1. Phát hiện landmarks trực tiếp trên frame nguyên bản (giống hệt cách src/landmark_detection hoạt động)
+        # Giúp bảo toàn độ nét của mí mắt và tròng mắt, tránh bị nhòe bởi GaussianBlur ngoài oval
         landmarks = self.landmark_detector.detect(frame)
+        if landmarks and len(landmarks) >= 468:
+            xs = [p[0] for p in landmarks]
+            ys = [p[1] for p in landmarks]
+            face_center = ((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0)
+            if not is_point_in_oval(face_center, oval_center, oval_axes, tolerance=1.15):
+                landmarks = None
 
         has_face = bool(landmarks is not None and len(landmarks) >= 468)
         ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks) if landmarks else (0.0, 0.0, 0.0)
 
         new_counter = current_blink_counter
         new_state = current_blink_state
+        updated_baseline = baseline_ear
 
-        if ear_avg > 0.05 and ear_avg < EAR_EYE_CLOSED_THRESHOLD:
+        # Cập nhật baseline EAR khi mắt mở
+        if ear_avg >= 0.22:
+            if updated_baseline <= 0.05:
+                updated_baseline = ear_avg
+            else:
+                updated_baseline = updated_baseline * 0.85 + ear_avg * 0.15
+
+        # Ngưỡng nhắm: linh hoạt theo baseline mở mắt hoặc ngưỡng EAR_EYE_CLOSED_THRESHOLD (0.20)
+        closed_thresh = EAR_EYE_CLOSED_THRESHOLD
+        if updated_baseline > 0.22:
+            closed_thresh = max(0.18, min(0.21, updated_baseline * 0.78))
+
+        open_thresh = max(closed_thresh + 0.02, EAR_EYE_OPEN_THRESHOLD)
+
+        if ear_avg > 0.05 and ear_avg < closed_thresh:
             if not new_state:
                 new_state = True
-        elif ear_avg >= EAR_EYE_OPEN_THRESHOLD:
+        elif ear_avg >= open_thresh or (ear_avg >= 0.22 and new_state):
             if new_state:
                 new_counter += 1
                 new_state = False
@@ -482,8 +516,10 @@ class EKYCPipelineServer:
             "ear_left": round(ear_l, 4),
             "ear_right": round(ear_r, 4),
             "ear_avg": round(ear_avg, 4),
+            "baseline_ear": round(updated_baseline, 4),
+            "closed_thresh": round(closed_thresh, 4),
             "blink_counter": new_counter,
-            "blink_state": new_state,
+            "blink_state": bool(new_state),
             "passed": bool(passed),
             "progress": progress,
             "label": label
@@ -501,14 +537,24 @@ class EKYCPipelineServer:
         }
 
     def update_head_challenge(self, frame_input: Union[str, bytes, np.ndarray]) -> Dict[str, Any]:
-        """Cập nhật frame cho thử thách quay đầu hiện tại."""
+        """Cập nhật frame cho thử thách quay đầu hiện tại (chuẩn test_pipeline_ensemble_full.py)."""
         self._ensure_models_loaded()
         frame = load_image(frame_input)
-        landmarks = self.landmark_detector.detect(frame)
+        h, w = frame.shape[:2]
+        oval_center, oval_axes = get_default_oval_params(w, h)
+
+        # Lấy frame trong khung oval như test_pipeline_ensemble_full.py
+        frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
+        landmarks = self.landmark_detector.detect(frame_for_detect)
+        if landmarks and len(landmarks) >= 468:
+            xs = [p[0] for p in landmarks]
+            ys = [p[1] for p in landmarks]
+            if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                landmarks = None
 
         pose_dict = None
         if landmarks:
-            _, _, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point)
+            _, _, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point, img_w=w, img_h=h)
 
         status = self.head_movement_detector.update(pose_dict)
         clean_status = {
@@ -571,13 +617,23 @@ class EKYCPipelineServer:
         else:
             processed_frame = frame
 
-        # 1. Face Detection (chạy trên frame tự nhiên)
-        raw_faces = self.detector.detect(frame)
-        num_faces = len(raw_faces)
+        # 1. Face Detection (chạy trên frame tự nhiên với Deduplication)
+        raw_faces = self.detector.detect(frame, conf=CONF_THRESHOLD_FACE)
 
         # Ưu tiên các khuôn mặt nằm trong oval
         faces_in_oval = [f for f in raw_faces if is_face_in_oval(f["bbox"], oval_center, oval_axes)]
         faces = faces_in_oval if faces_in_oval else raw_faces
+
+        # Lọc các khuôn mặt có kích thước đáng kể (loại bỏ nhiễu biên nhỏ)
+        significant_faces = []
+        for f in raw_faces:
+            bx1, by1, bx2, by2 = f["bbox"]
+            bw = bx2 - bx1
+            bh = by2 - by1
+            if bh >= 60 and bw >= 60:
+                significant_faces.append(f)
+
+        num_faces = len(significant_faces) if significant_faces else len(raw_faces)
 
         # Chọn Primary Face
         primary_face = None
@@ -602,7 +658,7 @@ class EKYCPipelineServer:
         pose_dict = None
         pose_msg = "No Face"
         if landmarks:
-            pose_valid, pose_msg, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point)
+            pose_valid, pose_msg, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point, img_w=w_f, img_h=h_f)
 
         # 4. Face Crop & Align
         aligned_img = None

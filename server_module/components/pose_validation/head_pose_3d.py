@@ -29,7 +29,7 @@ class HeadPoseEstimator:
 
         self.dist_coeffs = np.zeros((4, 1))
 
-    def estimate(self, landmarks, get_point):
+    def estimate(self, landmarks, get_point, img_w=None, img_h=None):
 
         try:
             nose = get_point(landmarks, 1)
@@ -46,10 +46,20 @@ class HeadPoseEstimator:
                 nose, chin, le, re, lm, rm
             ], dtype=np.float64)
 
+            # Tự động điều chỉnh camera matrix theo kích thước khung hình thực tế
+            cam_mat = self.camera_matrix
+            if img_w is not None and img_h is not None and img_w > 0 and img_h > 0:
+                focal = float(img_w)
+                cam_mat = np.array([
+                    [focal, 0.0, float(img_w) / 2.0],
+                    [0.0, focal, float(img_h) / 2.0],
+                    [0.0, 0.0, 1.0]
+                ], dtype=np.float64)
+
             success, rvec, tvec = cv2.solvePnP(
                 self.model_points,
                 image_points,
-                self.camera_matrix,
+                cam_mat,
                 self.dist_coeffs
             )
 
