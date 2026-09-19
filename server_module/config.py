@@ -68,3 +68,8 @@ HEAD_DELTA_YAW_THRESHOLD = 8.0     # Ngưỡng nhích nhẹ đầu tối thiểu
 HEAD_DELTA_PITCH_THRESHOLD = 7.0   # Ngưỡng nhích nhẹ gật đầu tối thiểu
 CHALLENGE_TIMEOUT_SECONDS = 7.0
 
+# =====================================================================
+# NODE.JS BACKEND INTEGRATION & WEBHOOK
+# =====================================================================
+NODEJS_WEBHOOK_URL = os.environ.get("NODEJS_WEBHOOK_URL", "http://127.0.0.1:3000/api/ekyc/result")
+NODEJS_WEBHOOK_TIMEOUT = float(os.environ.get("NODEJS_WEBHOOK_TIMEOUT", "5.0"))

@@ -23,7 +23,7 @@ from typing import Optional, Union, Dict, Any, Tuple
 import cv2
 import numpy as np
 import torch
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request, Depends, status
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request, Depends, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -37,6 +37,12 @@ if CURRENT_DIR not in sys.path:
     sys.path.insert(0, CURRENT_DIR)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
+try:
+    from server_module.config import NODEJS_WEBHOOK_URL, NODEJS_WEBHOOK_TIMEOUT
+except ImportError:
+    NODEJS_WEBHOOK_URL = "http://127.0.0.1:3000/api/ekyc/result"
+    NODEJS_WEBHOOK_TIMEOUT = 5.0
 
 try:
     from server_module.pipeline_server import EKYCPipelineServer
@@ -658,6 +664,148 @@ async def update_head_challenge_endpoint(
         )
 
     return {"success": True, **res}
+
+
+# =============================================================================
+# 5. ESP32-CAM DEDICATED PIPELINE & NODE.JS WEBHOOK INTEGRATION
+# =============================================================================
+
+_ACTIVE_NODEJS_WEBHOOK_URL = NODEJS_WEBHOOK_URL
+
+def dispatch_webhook_to_nodejs(payload: dict):
+    """Chuyển tiếp kết quả xác thực từ AI Server sang Node.js Backend qua HTTP Webhook."""
+    global _ACTIVE_NODEJS_WEBHOOK_URL
+    if not _ACTIVE_NODEJS_WEBHOOK_URL:
+        return
+
+    import json
+    import urllib.request
+    try:
+        data = json.dumps(payload, default=str).encode("utf-8")
+        req = urllib.request.Request(
+            _ACTIVE_NODEJS_WEBHOOK_URL,
+            data=data,
+            headers={"Content-Type": "application/json", "User-Agent": "FastAPI-EKYC-AI-Server/2.0"}
+        )
+        with urllib.request.urlopen(req, timeout=NODEJS_WEBHOOK_TIMEOUT) as response:
+            code = response.getcode()
+            print(f"[✓] [Webhook Node.js] Đã chuyển kết quả thành công tới: {_ACTIVE_NODEJS_WEBHOOK_URL} (HTTP {code})")
+    except Exception as exc:
+        print(f"[✕] [Webhook Node.js Lỗi] Không thể gửi tới {_ACTIVE_NODEJS_WEBHOOK_URL}: {exc}")
+
+
+@app.get("/api/v1/webhook/config", summary="Xem cấu hình Webhook Node.js hiện tại")
+async def get_webhook_config():
+    return {"webhook_url": _ACTIVE_NODEJS_WEBHOOK_URL, "timeout": NODEJS_WEBHOOK_TIMEOUT}
+
+
+@app.post("/api/v1/webhook/config", summary="Cập nhật URL Webhook Node.js nhận kết quả")
+async def set_webhook_config(request: Request):
+    global _ACTIVE_NODEJS_WEBHOOK_URL
+    body = await request.json()
+    new_url = body.get("webhook_url")
+    if not new_url or not isinstance(new_url, str):
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp trường 'webhook_url' hợp lệ.")
+    _ACTIVE_NODEJS_WEBHOOK_URL = new_url.strip()
+    return {"success": True, "message": f"Đã cập nhật Webhook Node.js thành: {_ACTIVE_NODEJS_WEBHOOK_URL}", "webhook_url": _ACTIVE_NODEJS_WEBHOOK_URL}
+
+
+@app.post("/api/v1/esp32/verify", summary="Tiếp nhận ảnh từ ESP32-CAM, nhận diện AI và đẩy kết quả sang Node.js")
+async def esp32_cam_verify(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    file: Optional[UploadFile] = File(None, description="Ảnh từ Multipart Form-Data"),
+    device_id: Optional[str] = None
+):
+    """
+    Endpoint tối ưu cho ESP32-CAM chụp ảnh tĩnh 1 shot:
+    1. Nhận trực tiếp ảnh JPEG nhị phân (Binary Content-Type: image/jpeg) hoặc Multipart.
+    2. Chạy toàn bộ Pipeline eKYC: YOLO Face Detection, Pose 3D, Ensemble Anti-Spoofing (YOLO+RF-DETR).
+    3. Tự động chuyển kết quả kèm ảnh Crop khuôn mặt tới Node.js Server qua Webhook.
+    4. Trả về cho ESP32-CAM JSON siêu nhẹ.
+    """
+    t_start = time.time()
+    pipeline: EKYCPipelineServer = request.app.state.pipeline
+    dev_id = device_id or request.headers.get("X-Device-ID") or "ESP32_CAM_DEFAULT"
+
+    image_bytes = None
+    content_type = request.headers.get("content-type", "").lower()
+
+    if file is not None:
+        image_bytes = await file.read()
+    elif "image/" in content_type or "application/octet-stream" in content_type or not content_type:
+        raw_body = await request.body()
+        if raw_body and len(raw_body) > 100:
+            image_bytes = raw_body
+
+    if not image_bytes:
+        try:
+            body = await request.json()
+            image_bytes = body.get("image_base64")
+        except Exception:
+            pass
+
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Không tìm thấy dữ liệu ảnh hợp lệ.")
+
+    try:
+        frame = load_image(image_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"ESP32 Image decode error: {str(e)}")
+
+    try:
+        report = pipeline.full_verify(
+            image_input=frame,
+            img_id=f"ESP32_{int(time.time() * 1000)}",
+            blink_passed=True,
+            blink_count=1,
+            head_movement_passed=True,
+            head_action_name="FRONTAL",
+            apply_oval_mask=False
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi phân tích AI: {str(e)}")
+
+    crop_b64, annotated_b64 = _extract_crop_and_annotation(
+        pipeline=pipeline,
+        frame=frame,
+        report=report,
+        return_crop=True,
+        return_annotated=True
+    )
+
+    t_total = (time.time() - t_start) * 1000
+    ens_info = report["ensemble_anti_spoof"]
+    final_dec = report["final_decision"]
+
+    webhook_payload = {
+        "event": "EKYC_ESP32_VERIFICATION",
+        "device_id": dev_id,
+        "timestamp": report.get("timestamp", time.strftime("%Y-%m-%d %H:%M:%S")),
+        "approved": final_dec["approved"],
+        "verdict": final_dec["verdict"],
+        "is_real": ens_info["is_real"],
+        "confidence": float(ens_info["confidence"]),
+        "reasons": final_dec.get("reasons", []),
+        "face_detection": report.get("face_detection"),
+        "pose_3d": report.get("pose_3d"),
+        "crop_face_base64": crop_b64,
+        "annotated_image_base64": annotated_b64,
+        "processing_time_ms": round(t_total, 2)
+    }
+
+    background_tasks.add_task(dispatch_webhook_to_nodejs, webhook_payload)
+
+    return {
+        "success": True,
+        "device_id": dev_id,
+        "approved": bool(final_dec["approved"]),
+        "verdict": str(final_dec["verdict"]),
+        "is_real": bool(ens_info["is_real"]),
+        "confidence": round(float(ens_info["confidence"]), 4),
+        "message": "Xác thực thành công (REAL)" if final_dec["approved"] else f"Từ chối: {final_dec['verdict']}",
+        "processing_time_ms": round(t_total, 1)
+    }
 
 
 # =============================================================================
