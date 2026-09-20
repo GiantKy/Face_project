@@ -67,6 +67,12 @@ void blinkFlash(int times, int delayMs) {
 }
 
 camera_fb_t* capturePhotoSafe() {
+  // Xả 1 frame đệm cũ để cảm biến đo sáng tươi mới theo ánh sáng hiện tại
+  camera_fb_t *dummy = esp_camera_fb_get();
+  if (dummy) {
+    esp_camera_fb_return(dummy);
+    delay(20);
+  }
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
     delay(40);
@@ -357,12 +363,12 @@ bool initCamera() {
   config.grab_mode    = CAMERA_GRAB_LATEST;
 
   if (psramFound()) {
-    config.frame_size   = FRAMESIZE_240X240;  // 240x240 vuông chuẩn eKYC
+    config.frame_size   = FRAMESIZE_VGA;  // 640x480 VGA độ phân giải cao
     config.jpeg_quality = 10;
     config.fb_count     = 2;
     config.fb_location  = CAMERA_FB_IN_PSRAM;
   } else {
-    config.frame_size   = FRAMESIZE_240X240;
+    config.frame_size   = FRAMESIZE_VGA;
     config.jpeg_quality = 12;
     config.fb_count     = 1;
     config.fb_location  = CAMERA_FB_IN_DRAM;
@@ -376,24 +382,35 @@ bool initCamera() {
 
   sensor_t *s = esp_camera_sensor_get();
   if (s != NULL) {
-    s->set_framesize(s, FRAMESIZE_240X240);  // 240x240 đạt FPS tối đa 25-30fps
-    s->set_brightness(s, 1);
-    s->set_contrast(s, 1);
-    s->set_sharpness(s, 2);                  // Tăng nét tối đa cho chi tiết khuôn mặt
-    s->set_whitebal(s, 1);
-    s->set_awb_gain(s, 1);
+    s->set_framesize(s, FRAMESIZE_VGA);    // 640x480 VGA chuẩn nét
+    s->set_brightness(s, 2);               // Tăng sáng tối đa (+2) để thấy rõ mặt
+    s->set_contrast(s, 0);                 // Để contrast = 0 (tránh bệt đen bóng mắt khi ngược sáng)
+    s->set_saturation(s, 0);               // Màu tự nhiên
+    s->set_sharpness(s, 2);                // Tăng nét chi tiết khuôn mặt
+    
+    // Tự động bù sáng & chống ngược sáng (Backlight Compensation):
+    s->set_gainceiling(s, GAINCEILING_16X);// Tăng trần khuếch đại sáng lên 16X khi thiếu sáng
+    s->set_exposure_ctrl(s, 1);            // Bật tự động phơi sáng (AEC)
+    s->set_aec2(s, 1);                     // Bật thuật toán DSP AEC2 nâng cao
+    s->set_ae_level(s, 2);                 // Bù phơi sáng mức cao nhất (+2) cứu sáng khuôn mặt
+    s->set_gain_ctrl(s, 1);                // Bật tự động điều khiển Gain (AGC)
+    s->set_bpc(s, 1);                      // Sửa điểm ảnh đen
+    s->set_wpc(s, 1);                      // Sửa điểm ảnh trắng
+    s->set_lenc(s, 1);                     // Bật Lens Correction chống tối 4 góc
+    s->set_whitebal(s, 1);                 // Cân bằng trắng tự động (AWB)
+    s->set_awb_gain(s, 1);                 // Gain cân bằng trắng
 #if defined(CAMERA_MODEL_ESP32S3_EYE)
     s->set_vflip(s, 1);
 #endif
   }
 
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < 4; i++) {
     camera_fb_t *fb = esp_camera_fb_get();
     if (fb) esp_camera_fb_return(fb);
-    delay(40);
+    delay(50);
   }
 
-  Serial.println("[ESP32-S3] Camera FRAMESIZE_240X240 sieu muot da san sang!");
+  Serial.println("[ESP32-S3] Camera FRAMESIZE_VGA (640x480) da san sang!");
   return true;
 }
 
@@ -405,7 +422,7 @@ void setup() {
   delay(1000);
 
   Serial.println("\n========================================================");
-  Serial.println("  ESP32-S3 CAM: STREAM & MULTI-STAGE eKYC (240x240)");
+  Serial.println("  ESP32-S3 CAM: SNAPSHOT & MULTI-STAGE eKYC (640x480)");
   Serial.println("========================================================");
 
   preferences.begin("camera_ai", true);
@@ -432,9 +449,6 @@ void setup() {
     Serial.println("\n[WIFI] Ket noi thanh cong!");
     Serial.print("[WIFI] Web UI: http://");
     Serial.println(WiFi.localIP());
-    Serial.print("[WIFI] Stream 240x240: http://");
-    Serial.print(WiFi.localIP());
-    Serial.println(":81/stream");
 
     if (MDNS.begin("esp32cam")) {
       Serial.println("[mDNS] Truy cap Web qua: http://esp32cam.local");
@@ -453,7 +467,8 @@ void setup() {
   server.begin();
   Serial.println("[WEB] Mini Web Server da san sang tai cong 80.");
 
-  startStreamServer();
+  // Không cần mở stream port 81 (để giải phóng tài nguyên và tránh xung đột camera)
+  // startStreamServer();
 }
 
 // ============================================================================

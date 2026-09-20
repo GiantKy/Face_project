@@ -8,7 +8,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ESP32-S3 Camera AI eKYC Stream 240x240</title>
+  <title>ESP32-S3 Camera AI eKYC</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f1f5f9; text-align: center; margin: 0; padding: 16px; }
     .card { max-width: 500px; margin: 0 auto; background: #161e2e; padding: 22px; border-radius: 20px; border: 1px solid #1e293b; box-shadow: 0 15px 35px rgba(0,0,0,0.5); }
@@ -18,7 +18,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     .ip-box input { background: #1e293b; border: 1px solid #475569; color: #fff; padding: 6px 10px; border-radius: 6px; width: 140px; font-family: monospace; font-size: 13px; }
     .ip-box button { background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
     
-    /* Khung Stream 240x240 vuông vắn mượt mà */
+    /* Khung Ảnh Vuông vắn giữ nguyên như cũ (280x280), hiển thị ảnh chụp 640x480 sắc nét */
     .stream-container { position: relative; width: 280px; height: 280px; margin: 0 auto 16px auto; border-radius: 20px; border: 2px solid #38bdf8; overflow: hidden; background: #020617; box-shadow: 0 0 25px rgba(56, 189, 248, 0.25); transition: border-color 0.3s; }
     .stream-container img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .stream-badge { position: absolute; top: 10px; left: 10px; background: rgba(16, 185, 129, 0.85); color: #fff; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 10px; letter-spacing: 0.5px; z-index: 4; }
@@ -53,8 +53,8 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 </head>
 <body>
   <div class="card">
-    <h1>📷 ESP32-S3 Camera eKYC Stream</h1>
-    <p class="sub">Luồng Live Stream 240x240 siêu mượt & Thử thách Liveness đa bước</p>
+    <h1>📷 ESP32-S3 Camera eKYC</h1>
+    <p class="sub">Chụp ảnh khuôn mặt 640x480 & Thử thách Liveness đa bước</p>
 
     <div class="ip-box">
       <span>⚙️ Máy chủ AI:</span>
@@ -64,11 +64,11 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- Màn hình Live Stream 240x240 (Không còn khung Oval che mặt) -->
+    <!-- Màn hình Xem Trước (Ảnh Chụp Trực Tiếp, Không Cần Stream) -->
     <div id="streamBox" class="stream-container">
-      <span class="stream-badge">LIVE 240x240</span>
-      <button class="stream-reload-btn" onclick="reloadStream()" title="Làm mới Stream">🔄</button>
-      <img id="camStream" src="" alt="Camera Live Stream" onerror="handleStreamError(this)">
+      <span class="stream-badge">PHOTO 640x480</span>
+      <button class="stream-reload-btn" onclick="takeSnapshot()" title="Chụp lại ảnh xem trước">📸</button>
+      <img id="camStream" src="/capture" alt="Camera Snapshot" onerror="handleImageError(this)">
       <div id="streamChallengeOverlay" class="stream-challenge-overlay">
         <span id="overlayIcon">👀</span>
         <span id="overlayText">NHÌN THẲNG VÀO CAMERA</span>
@@ -84,7 +84,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       <div id="stepDesc" class="step-desc">Đứng cách camera 35-50cm, nhìn thẳng tự nhiên và bấm "Bắt Đầu".</div>
     </div>
 
-    <button id="actionBtn" class="btn-main" onclick="onActionClick()">🚀 BẮT ĐẦU XÁC THỰC eKYC (AI STREAM)</button>
+    <button id="actionBtn" class="btn-main" onclick="onActionClick()">🚀 BẮT ĐẦU XÁC THỰC eKYC</button>
     <button id="singleBtn" style="background:#334155;color:#94a3b8;border:none;padding:8px;border-radius:8px;font-size:12px;cursor:pointer;width:100%;margin-top:4px;" onclick="triggerSingleShot()">📸 Hoặc Chụp 1 Shot Nhanh (Single Shot)</button>
     <div id="resultBox"></div>
 
@@ -99,19 +99,18 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     let currentStep = 'start';
     let currentPrompt = '';
 
-    // Khởi động luồng Live Stream 240x240 từ port 81
+    // Tải ảnh xem trước trực tiếp từ camera qua endpoint /capture
     window.addEventListener('DOMContentLoaded', () => {
-      reloadStream();
+      takeSnapshot();
     });
 
-    function reloadStream() {
+    function takeSnapshot() {
       const streamImg = document.getElementById('camStream');
-      const host = window.location.hostname || '192.168.123.4';
-      streamImg.src = 'http://' + host + ':81/stream?t=' + Date.now();
+      streamImg.src = '/capture?t=' + Date.now();
     }
 
-    function handleStreamError(img) {
-      setTimeout(() => { reloadStream(); }, 2000);
+    function handleImageError(img) {
+      setTimeout(() => { takeSnapshot(); }, 2000);
     }
 
     function saveAiIp() {
@@ -208,6 +207,12 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
         const data = await fetchJSON('/challenge-start');
 
+        // Hiển thị ngay bức ảnh đã chụp ở bước Face Detect lên khung hình chính
+        if (data.captured_image_base64) {
+          const src = data.captured_image_base64.startsWith('data:') ? data.captured_image_base64 : ('data:image/jpeg;base64,' + data.captured_image_base64);
+          document.getElementById('camStream').src = src;
+        }
+
         // Nếu giả mạo (SPOOF) hoặc không phát hiện mặt -> FAIL-FAST ngay & HIỂN THỊ ẢNH ĐÃ CHỤP
         if (!data.success || !data.passed || !data.is_real) {
           btn.disabled = false;
@@ -246,12 +251,16 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         let blinkPassed = false;
         let blinkRes = null;
         const blinkStartTime = Date.now();
-        const STEP_TIMEOUT_MS = 15000;
+        const STEP_TIMEOUT_MS = 25000;
 
         while (Date.now() - blinkStartTime < STEP_TIMEOUT_MS) {
           try {
             blinkRes = await fetchJSON('/challenge-step?session_id=' + encodeURIComponent(currentSessionId) + '&step=eye_blink');
             if (blinkRes && blinkRes.success) {
+              if (blinkRes.captured_image_base64) {
+                const src = blinkRes.captured_image_base64.startsWith('data:') ? blinkRes.captured_image_base64 : ('data:image/jpeg;base64,' + blinkRes.captured_image_base64);
+                document.getElementById('camStream').src = src;
+              }
               if (blinkRes.ear) {
                 const earVal = blinkRes.ear.current !== undefined ? blinkRes.ear.current : 0;
                 const stateStr = blinkRes.blink_state ? ' (ĐANG NHẮM)' : '';
@@ -265,13 +274,13 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           } catch (e) {
             console.warn('Lỗi step blink:', e);
           }
-          await new Promise(r => setTimeout(r, 100));
+          await new Promise(r => setTimeout(r, 40));
         }
 
         if (!blinkPassed) {
           btn.disabled = false;
           box.className = 'fail';
-          box.innerHTML = '❌ <b>BƯỚC 2/3 THẤT BẠI:</b> ' + ((blinkRes && blinkRes.message) || 'Chưa phát hiện chớp mắt hoặc hết thời gian (15s)!') + renderCapturedPreview(blinkRes);
+          box.innerHTML = '❌ <b>BƯỚC 2/3 THẤT BẠI:</b> ' + ((blinkRes && blinkRes.message) || 'Chưa phát hiện chớp mắt hoặc hết thời gian (25s)!') + renderCapturedPreview(blinkRes);
           streamBox.style.borderColor = '#ef4444';
           btn.innerText = '🚀 THỬ LẠI TỪ ĐẦU';
           btn.className = 'btn-main';
@@ -309,6 +318,10 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           try {
             headRes = await fetchJSON('/challenge-step?session_id=' + encodeURIComponent(currentSessionId) + '&step=head_movement');
             if (headRes && headRes.success) {
+              if (headRes.captured_image_base64) {
+                const src = headRes.captured_image_base64.startsWith('data:') ? headRes.captured_image_base64 : ('data:image/jpeg;base64,' + headRes.captured_image_base64);
+                document.getElementById('camStream').src = src;
+              }
               const prog = headRes.progress !== undefined ? Math.round(headRes.progress * 100) : 0;
               const deltaYaw = headRes.delta ? headRes.delta.yaw : 0;
               btn.innerText = actionIcon + ' ' + headPrompt + ' (' + prog + '% - ΔYaw: ' + deltaYaw + '°)';
@@ -320,12 +333,16 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           } catch (e) {
             console.warn('Lỗi step head:', e);
           }
-          await new Promise(r => setTimeout(r, 100));
+          await new Promise(r => setTimeout(r, 40));
         }
 
         btn.disabled = false;
 
         if (headApproved && headRes && headRes.approved) {
+          if (headRes.captured_image_base64) {
+            const src = headRes.captured_image_base64.startsWith('data:') ? headRes.captured_image_base64 : ('data:image/jpeg;base64,' + headRes.captured_image_base64);
+            document.getElementById('camStream').src = src;
+          }
           box.className = 'pass';
           box.innerHTML = '🎉 <b>XÁC THỰC TOÀN DIỆN THÀNH CÔNG (REAL)!</b><br>' +
                           'Đã vượt qua toàn bộ 3 bước: Anti-Spoof + Chớp Mắt + Quay Đầu!<br>' +
@@ -340,7 +357,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           currentSessionId = '';
         } else {
           box.className = 'fail';
-          box.innerHTML = '❌ <b>BƯỚC 3/3 THẤT BẠI:</b> ' + ((headRes && headRes.message) || 'Góc quay đầu chưa đạt yêu cầu hoặc hết thời gian (15s)!') + renderCapturedPreview(headRes);
+          box.innerHTML = '❌ <b>BƯỚC 3/3 THẤT BẠI:</b> ' + ((headRes && headRes.message) || 'Góc quay đầu chưa đạt yêu cầu hoặc hết thời gian (25s)!') + renderCapturedPreview(headRes);
           streamBox.style.borderColor = '#ef4444';
           btn.innerText = '🚀 THỬ LẠI TỪ ĐẦU';
           btn.className = 'btn-main';
@@ -364,6 +381,10 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
       try {
         const data = await fetchJSON('/send-to-ai');
+        if (data.captured_image_base64) {
+          const src = data.captured_image_base64.startsWith('data:') ? data.captured_image_base64 : ('data:image/jpeg;base64,' + data.captured_image_base64);
+          document.getElementById('camStream').src = src;
+        }
         if (data.approved) {
           box.className = 'pass';
           box.innerHTML = '✅ <b>XÁC THỰC THÀNH CÔNG (REAL)</b> - ' + (data.confidence * 100).toFixed(1) + '%' + renderCapturedPreview(data);
