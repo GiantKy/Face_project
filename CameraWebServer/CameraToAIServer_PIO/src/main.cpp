@@ -30,7 +30,9 @@
 // KHAI BÁO NGUYÊN MẪU HÀM (FORWARD DECLARATIONS CHO C++)
 // ============================================================================
 void blinkFlash(int times, int delayMs);
+void setCameraResolution(framesize_t size, int quality);
 camera_fb_t* capturePhotoSafe();
+camera_fb_t* capturePhotoFast();
 static esp_err_t stream_handler(httpd_req_t *req);
 void startStreamServer();
 void handleRoot();
@@ -79,8 +81,25 @@ void blinkFlash(int times, int delayMs) {
 #endif
 }
 
+// Chuyển đổi độ phân giải và chất lượng nén động an toàn khi đang chạy
+void setCameraResolution(framesize_t size, int quality) {
+  sensor_t *s = esp_camera_sensor_get();
+  if (s != NULL) {
+    if (s->status.framesize != size) {
+      s->set_framesize(s, size);
+      // Xả 2 frame đệm cũ trong DMA/PSRAM để tránh vỡ/rách hình khi đổi kích thước
+      for (int i = 0; i < 2; i++) {
+        camera_fb_t *fb = esp_camera_fb_get();
+        if (fb) esp_camera_fb_return(fb);
+        delay(10);
+      }
+    }
+    s->set_quality(s, quality);
+  }
+}
+
 camera_fb_t* capturePhotoSafe() {
-  // Xả 1 frame đệm cũ để cảm biến đo sáng tươi mới theo ánh sáng hiện tại
+  // Xả 1 frame đệm cũ để cảm biến đo sáng tươi mới theo ánh sáng hiện tại (dùng cho Snapshot)
   camera_fb_t *dummy = esp_camera_fb_get();
   if (dummy) {
     esp_camera_fb_return(dummy);
@@ -89,6 +108,16 @@ camera_fb_t* capturePhotoSafe() {
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
     delay(40);
+    fb = esp_camera_fb_get();
+  }
+  return fb;
+}
+
+camera_fb_t* capturePhotoFast() {
+  // Chụp siêu nhanh không xả buffer dùng riêng cho chuỗi frame thử thách Liveness (Bước 2 & 3)
+  camera_fb_t *fb = esp_camera_fb_get();
+  if (!fb) {
+    delay(10);
     fb = esp_camera_fb_get();
   }
   return fb;
@@ -238,13 +267,16 @@ void handleSendToAI() {
   }
 }
 
-// Endpoint Thử Thách Bước 1: Khởi tạo phiên liveness đa bước
+// Endpoint Thử Thách Bước 1: Khởi tạo phiên liveness đa bước (Snapshot Anti-Spoofing VGA 640x480)
 void handleChallengeStart() {
   if (isBusyProcessing) {
     server.send(429, "application/json", "{\"error\":\"Thiet bi dang ban\"}");
     return;
   }
   isBusyProcessing = true;
+
+  // Đảm bảo Bước 1 chụp ảnh ở FRAMESIZE_VGA (640x480), quality = 10 để đủ nét cho YOLO + RF-DETR
+  setCameraResolution(FRAMESIZE_VGA, 10);
 
   camera_fb_t *fb = capturePhotoSafe();
   if (!fb) {
@@ -254,7 +286,7 @@ void handleChallengeStart() {
   }
 
   String fullUrl = "http://" + ai_server_ip + ":" + String(ai_server_port) + "/api/v1/esp32/challenge/start";
-  Serial.printf("\n[ESP32] Gui anh Khoi tao thu thach toi: %s ...\n", fullUrl.c_str());
+  Serial.printf("\n[ESP32] Gui anh Khoi tao thu thach (VGA 640x480, %u bytes) toi: %s ...\n", fb->len, fullUrl.c_str());
 
   HTTPClient http;
   http.begin(fullUrl);
@@ -278,7 +310,7 @@ void handleChallengeStart() {
   }
 }
 
-// Endpoint Thử Thách Bước 2 & 3: Gửi ảnh chớp mắt / quay đầu
+// Endpoint Thử Thách Bước 2 & 3: Gửi ảnh chớp mắt / quay đầu (Tốc độ cao QVGA 320x240)
 void handleChallengeStep() {
   if (isBusyProcessing) {
     server.send(429, "application/json", "{\"error\":\"Thiet bi dang ban\"}");
@@ -294,7 +326,11 @@ void handleChallengeStep() {
   }
 
   isBusyProcessing = true;
-  camera_fb_t *fb = capturePhotoSafe();
+
+  // Bước 2 & 3: Chuyển sang FRAMESIZE_QVGA (320x240), quality = 16 để tăng FPS gấp 3-4 lần (~6KB/frame)
+  setCameraResolution(FRAMESIZE_QVGA, 16);
+
+  camera_fb_t *fb = capturePhotoFast();
   if (!fb) {
     isBusyProcessing = false;
     server.send(500, "application/json", "{\"error\":\"Khong the chup anh tu camera\"}");
@@ -302,7 +338,7 @@ void handleChallengeStep() {
   }
 
   String fullUrl = "http://" + ai_server_ip + ":" + String(ai_server_port) + "/api/v1/esp32/challenge/step";
-  Serial.printf("\n[ESP32] Gui anh Buoc [%s] toi: %s ...\n", stepName.c_str(), fullUrl.c_str());
+  Serial.printf("\n[ESP32] Gui anh Buoc [%s] (QVGA 320x240, %u bytes) toi: %s ...\n", stepName.c_str(), fb->len, fullUrl.c_str());
 
   HTTPClient http;
   http.begin(fullUrl);
@@ -322,6 +358,8 @@ void handleChallengeStep() {
   if (httpCode == 200 && responsePayload.indexOf("\"approved\":true") >= 0) {
     Serial.println(">>> [eKYC MULTI-STAGE] APPROVED! Mo cua thanh cong!");
     blinkFlash(2, 100);
+    // Reset lại độ phân giải VGA chuẩn nét cho phiên tiếp theo
+    setCameraResolution(FRAMESIZE_VGA, 10);
   }
 
   Serial.printf("[ESP32] Challenge Step Response (%d): %s\n", httpCode, responsePayload.c_str());
@@ -395,17 +433,17 @@ bool initCamera() {
 
   sensor_t *s = esp_camera_sensor_get();
   if (s != NULL) {
-    s->set_framesize(s, FRAMESIZE_VGA);    // 640x480 VGA chuẩn nét
-    s->set_brightness(s, 2);               // Tăng sáng tối đa (+2) để thấy rõ mặt
-    s->set_contrast(s, 0);                 // Để contrast = 0 (tránh bệt đen bóng mắt khi ngược sáng)
+    s->set_framesize(s, FRAMESIZE_VGA);    // 640x480 VGA chuẩn nét cho snapshot
+    s->set_brightness(s, 0);               // Đưa về 0 để tránh cháy sáng / lóa mắt
+    s->set_contrast(s, 1);                 // Tăng tương phản nhẹ (+1) để tách rõ con ngươi & mí mắt
     s->set_saturation(s, 0);               // Màu tự nhiên
-    s->set_sharpness(s, 2);                // Tăng nét chi tiết khuôn mặt
+    s->set_sharpness(s, 0);                // Đưa về 0 (tránh viền gai nhiễu làm méo landmarks)
     
-    // Tự động bù sáng & chống ngược sáng (Backlight Compensation):
-    s->set_gainceiling(s, GAINCEILING_16X);// Tăng trần khuếch đại sáng lên 16X khi thiếu sáng
+    // Tự động bù sáng & chống ngược sáng nhưng kiểm soát Gain để triệt tiêu nhiễu hạt:
+    s->set_gainceiling(s, GAINCEILING_4X);// Giảm từ 16X xuống 4X (giảm 70% nhiễu hạt sensor OV2640)
     s->set_exposure_ctrl(s, 1);            // Bật tự động phơi sáng (AEC)
     s->set_aec2(s, 1);                     // Bật thuật toán DSP AEC2 nâng cao
-    s->set_ae_level(s, 2);                 // Bù phơi sáng mức cao nhất (+2) cứu sáng khuôn mặt
+    s->set_ae_level(s, 0);                 // Đưa về 0 thay vì +2 để chống lóa trắng
     s->set_gain_ctrl(s, 1);                // Bật tự động điều khiển Gain (AGC)
     s->set_bpc(s, 1);                      // Sửa điểm ảnh đen
     s->set_wpc(s, 1);                      // Sửa điểm ảnh trắng

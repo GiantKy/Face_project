@@ -54,7 +54,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <body>
   <div class="card">
     <h1>📷 ESP32-S3 Camera eKYC</h1>
-    <p class="sub">Chụp ảnh khuôn mặt 640x480 & Thử thách Liveness đa bước</p>
+    <p class="sub">Snapshot 640x480 & Thử thách Động 320x240 Tốc Độ Cao</p>
 
     <div class="ip-box">
       <span>⚙️ Máy chủ AI:</span>
@@ -66,7 +66,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
     <!-- Màn hình Xem Trước (Ảnh Chụp Trực Tiếp, Không Cần Stream) -->
     <div id="streamBox" class="stream-container">
-      <span class="stream-badge">PHOTO 640x480</span>
+      <span id="streamBadge" class="stream-badge">PHOTO 640x480</span>
       <button class="stream-reload-btn" onclick="takeSnapshot()" title="Chụp lại ảnh xem trước">📸</button>
       <img id="camStream" src="/capture" alt="Camera Snapshot" onerror="handleImageError(this)">
       <div id="streamChallengeOverlay" class="stream-challenge-overlay">
@@ -125,29 +125,34 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       const icon = document.getElementById('overlayIcon');
       const text = document.getElementById('overlayText');
       const box = document.getElementById('streamBox');
+      const badge = document.getElementById('streamBadge');
 
       if (step === 'start') {
+        if (badge) badge.innerText = 'SNAPSHOT 640x480';
         icon.innerText = '👀';
         text.innerText = 'NHÌN THẲNG VÀO CAMERA';
         overlay.className = 'stream-challenge-overlay';
         box.style.borderColor = '#38bdf8';
       } else if (step === 'eye_blink') {
+        if (badge) badge.innerText = 'CHALLENGE 320x240 (HIGH FPS)';
         icon.innerText = '👁️';
-        text.innerText = 'CHỚP MẮT HOẶC NHẮM NHẸ';
+        text.innerText = 'NHẮM MẮT LẠI RỒI MỞ RA';
         overlay.className = 'stream-challenge-overlay blink';
         box.style.borderColor = '#10b981';
       } else if (step === 'head_movement') {
+        if (badge) badge.innerText = 'CHALLENGE 320x240 (HIGH FPS)';
         if (action === 'TURN_LEFT') {
           icon.innerText = '⬅️';
-          text.innerText = 'QUAY NHẸ SANG TRÁI (~5°-10°)';
+          text.innerText = 'QUAY MẶT SANG BÊN TRÁI';
           overlay.className = 'stream-challenge-overlay turn-left';
         } else {
           icon.innerText = '➡️';
-          text.innerText = 'QUAY NHẸ SANG PHẢI (~5°-10°)';
+          text.innerText = 'QUAY MẶT SANG BÊN PHẢI';
           overlay.className = 'stream-challenge-overlay turn-right';
         }
         box.style.borderColor = '#f59e0b';
       } else if (step === 'completed') {
+        if (badge) badge.innerText = 'COMPLETED (REAL)';
         icon.innerText = '🎉';
         text.innerText = 'XÁC THỰC THÀNH CÔNG (REAL)!';
         overlay.className = 'stream-challenge-overlay';
@@ -233,14 +238,17 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         const promptText = data.action_prompt || 'Hãy quay đầu';
         const challengeAction = data.challenge_action || 'TURN_LEFT';
 
+        const stBadge = document.getElementById('streamBadge');
+        if (stBadge) stBadge.innerText = 'CHALLENGE 320x240 (HIGH FPS)';
+
         box.className = 'pass';
         box.innerHTML = '✅ <b>BƯỚC 1/3 ĐẠT!</b> Mặt thật REAL (' + (data.confidence * 100).toFixed(1) + '%)<br>' +
-                        '👁️ <b>BƯỚC 2/3: THỬ THÁCH CHỚP MẮT (EYE BLINK)</b><br>' +
-                        '<i>Hãy nhìn vào camera và chớp mắt tự nhiên 1-2 lần. AI đang đọc stream...</i>' +
+                        '👁️ <b>BƯỚC 2/3: THỬ THÁCH NHẮM/MỞ MẮT (EYE BLINK)</b><br>' +
+                        '<i>Hãy nhắm mắt nhẹ 0.5s - 1s rồi mở mắt ra tự nhiên. Camera 320x240 FPS cao đang bắt chuyển động...</i>' +
                         renderCapturedPreview(data);
         hudTitle.innerText = 'BƯỚC 2/3: THỬ THÁCH CHỚP MẮT';
         hudBadge.innerText = '2/3';
-        hudDesc.innerText = 'Hãy nhìn thẳng vào camera và CHỚP MẮT TỰ NHIÊN 1-2 lần. AI đang tự động theo dõi cử động mắt!';
+        hudDesc.innerText = 'Hãy NHẮM MẮT LẠI (giữ ~1 giây) rồi MỞ MẮT RA tự nhiên. Camera 320x240 FPS cao đang theo dõi!';
         btn.innerText = '👁️ ĐANG THEO DÕI CHỚP MẮT (BƯỚC 2/3)...';
         btn.className = 'btn-main btn-step';
         updateOverlay('eye_blink');
@@ -274,7 +282,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           } catch (e) {
             console.warn('Lỗi step blink:', e);
           }
-          await new Promise(r => setTimeout(r, 40));
+          await new Promise(r => setTimeout(r, 10));
         }
 
         if (!blinkPassed) {
@@ -302,7 +310,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
                         '<i>Đang chụp ảnh phân tích góc quay mặt...</i>';
         hudTitle.innerText = 'BƯỚC 3/3: THỬ THÁCH QUAY ĐẦU';
         hudBadge.innerText = '3/3';
-        hudDesc.innerText = headPrompt + '. Hãy giữ tư thế trong 1-2 giây để AI bắt cử động!';
+        hudDesc.innerText = headPrompt + ' (theo hướng của bạn). Quay rõ góc mặt để hoàn tất!';
         btn.innerText = actionIcon + ' ĐANG THEO DÕI QUAY ĐẦU (BƯỚC 3/3)...';
         btn.className = 'btn-main btn-step';
         updateOverlay('head_movement', headAction);
@@ -333,12 +341,13 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           } catch (e) {
             console.warn('Lỗi step head:', e);
           }
-          await new Promise(r => setTimeout(r, 40));
+          await new Promise(r => setTimeout(r, 10));
         }
 
         btn.disabled = false;
 
         if (headApproved && headRes && headRes.approved) {
+          if (stBadge) stBadge.innerText = 'APPROVED (REAL)';
           if (headRes.captured_image_base64) {
             const src = headRes.captured_image_base64.startsWith('data:') ? headRes.captured_image_base64 : ('data:image/jpeg;base64,' + headRes.captured_image_base64);
             document.getElementById('camStream').src = src;

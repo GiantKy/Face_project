@@ -390,10 +390,10 @@ class ESP32ChallengeManager:
         session.completed_steps.append("anti_spoof")
         session.current_step = "eye_blink"
 
-        # Sinh ngẫu nhiên hành động quay đầu: QUAY TRÁI hoặc QUAY PHẢI
+        # Sinh ngẫu nhiên hành động quay đầu: QUAY TRÁI hoặc QUAY PHẢI (theo góc nhìn người dùng)
         possible_actions = [
-            ("TURN_LEFT", "Hãy quay mặt nhẹ sang bên TRÁI (~5°-10°)", 5.0),
-            ("TURN_RIGHT", "Hãy quay mặt nhẹ sang bên PHẢI (~5°-10°)", -5.0),
+            ("TURN_LEFT", "Hãy quay mặt nhẹ sang bên TRÁI của bạn (~5°-10°)", -5.0),
+            ("TURN_RIGHT", "Hãy quay mặt nhẹ sang bên PHẢI của bạn (~5°-10°)", 5.0),
         ]
         chosen_action, prompt_text, target_thresh = random.choice(possible_actions)
         session.target_head_action = chosen_action
@@ -486,10 +486,15 @@ class ESP32ChallengeManager:
             session.current_ear = float(ear_avg)
 
             # State machine: MẮT MỞ → MẮT NHẮM → MẮT MỞ LẠI = 1 blink
-            if (ear_avg < 0.18) or (ear_avg <= base_ear * 0.80):
+            # Nới lỏng độ nhạy: Chỉ cần nhắm mắt nhẹ (EAR giảm > 15% hoặc < 0.20)
+            is_closed = (ear_avg < 0.20) or (ear_avg <= base_ear * 0.85)
+            # Mở lại: phục hồi về >= 0.21 hoặc >= 90% baseline ban đầu
+            is_opened = (ear_avg >= 0.21) or (ear_avg >= base_ear * 0.90)
+
+            if is_closed:
                 # Mắt đang nhắm
                 session.blink_state = True
-            elif ear_avg >= 0.22 and session.blink_state:
+            elif is_opened and session.blink_state:
                 # Mắt vừa mở lại sau khi nhắm → hoàn thành 1 blink
                 session.blink_counter += 1
                 session.blink_state = False
@@ -544,8 +549,7 @@ class ESP32ChallengeManager:
 
         # ---------------------------------------------------------------------
         # XỬ LÝ BƯỚC 3: HEAD MOVEMENT (QUAY ĐẦU) - Tích lũy consecutive frames
-        # Tham chiếu test_pipeline_ensemble_full.py: HeadMovementDetector(yaw_threshold=16.0)
-        # Dùng consecutive_turn_frames >= 2 để tránh false positive
+        # Quy ước góc PnP chuẩn: TURN_LEFT là Yaw ÂM, TURN_RIGHT là Yaw DƯƠNG
         # ---------------------------------------------------------------------
         if target_step == "head_movement":
             pose_valid, text_status, pose_dict = pipeline.pose_validator.validate(
@@ -562,21 +566,29 @@ class ESP32ChallengeManager:
             session.current_pitch = curr_pitch
             session.delta_yaw = delta_yaw
 
-            # Đánh giá theo thử thách ngẫu nhiên đã giao
+            # Đánh giá theo thử thách ngẫu nhiên (Đúng chuẩn hệ tọa độ PnP: TRÁI là ÂM, PHẢI là DƯƠNG)
             head_matched = False
             action = session.target_head_action
 
             if action == "TURN_LEFT":
-                head_matched = (delta_yaw >= 4.5) or (curr_yaw >= 7.5)
+                # Quay TRÁI của người dùng: delta_yaw ÂM
+                head_matched = (delta_yaw <= -4.0) or (curr_yaw <= -6.0)
             elif action == "TURN_RIGHT":
-                head_matched = (delta_yaw <= -4.5) or (curr_yaw <= -7.5)
+                # Quay PHẢI của người dùng: delta_yaw DƯƠNG
+                head_matched = (delta_yaw >= 4.0) or (curr_yaw >= 6.0)
 
             if head_matched:
-                session.consecutive_turn_frames += 1
+                # Nếu quay góc rõ rệt (|delta_yaw| >= 5.0 hoặc |curr_yaw| >= 7.5): cho pass ngay sau 1 frame rõ
+                if (action == "TURN_LEFT" and (delta_yaw <= -5.0 or curr_yaw <= -7.5)) or \
+                   (action == "TURN_RIGHT" and (delta_yaw >= 5.0 or curr_yaw >= 7.5)):
+                    session.consecutive_turn_frames += 2
+                else:
+                    session.consecutive_turn_frames += 1
             else:
+                # Giữ điểm nhẹ nhàng, không trừ sạch điểm khi người dùng vừa quay đầu lại nhìn camera
                 session.consecutive_turn_frames = max(0, session.consecutive_turn_frames - 1)
 
-            # Cần >= 2 frame liên tiếp đạt chuẩn để pass
+            # Cần >= 2 điểm tích lũy để pass
             progress = min(1.0, session.consecutive_turn_frames / 2.0)
 
             if session.consecutive_turn_frames >= 2:
