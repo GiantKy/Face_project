@@ -734,7 +734,8 @@ class EKYCPipelineServer:
         is_primary_real = bool(best_spoof["is_real"]) if best_spoof else False
 
         # 6. Đánh giá Final Decision — 7 tiêu chí
-        c_face = (primary_face is not None) and face_in_oval
+        face_position_ok = face_in_oval if apply_oval_mask else True
+        c_face = (primary_face is not None) and face_position_ok
         c_single = (num_faces == 1)
         c_pose = pose_valid
         c_spoof = is_primary_real
@@ -746,7 +747,7 @@ class EKYCPipelineServer:
         reasons = []
         if primary_face is None:
             reasons.append("Không tìm thấy khuôn mặt trong ảnh")
-        elif not face_in_oval:
+        elif apply_oval_mask and not face_in_oval:
             reasons.append("Khuôn mặt nằm ngoài khung oval hướng dẫn")
         elif not c_single:
             reasons.append(f"Phát hiện {num_faces} người trong khung hình (Yêu cầu 1 người duy nhất)")

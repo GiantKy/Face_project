@@ -1291,7 +1291,7 @@
             <div class="challenge-header-row">
               <span class="challenge-stage-tag" id="challengeStageTag">
                 <span class="status-dot" style="background:#38bdf8; box-shadow:0 0 8px #38bdf8;"></span>
-                <span id="challengeStageText">BƯỚC 1/2: THỬ THÁCH CHỚP MẮT</span>
+                <span id="challengeStageText">BƯỚC 2/3: THỬ THÁCH CHỚP MẮT</span>
               </span>
               <span class="challenge-timer-tag" id="challengeTimerTag">
                 ⏱️ <span id="challengeTimeVal">7.0s</span>
@@ -1879,7 +1879,7 @@
 
       showChallengeHUD();
       updateChallengeHUD({
-        stageText: 'BƯỚC 1/2: THỬ THÁCH CHỚP MẮT',
+        stageText: 'BƯỚC 2/3: THỬ THÁCH CHỚP MẮT',
         icon: '👁️',
         prompt: 'VUI LÒNG CHỚP MẮT TỰ NHIÊN',
         hint: 'Nhìn vào camera và chớp mắt 1 lần tự nhiên',
@@ -1940,7 +1940,7 @@
             const pct = Math.round((data.progress || 0) * 100);
 
             updateChallengeHUD({
-              stageText: 'BƯỚC 1/2: THỬ THÁCH CHỚP MẮT',
+              stageText: 'BƯỚC 2/3: THỬ THÁCH CHỚP MẮT',
               icon: blinkState ? '😉' : '👁️',
               prompt: data.passed ? 'ĐÃ XÁC NHẬN CHỚP MẮT THÀNH CÔNG!' : (blinkState ? 'ĐANG NHẮM MẮT... MỞ MẮT ĐỂ HOÀN TẤT' : 'VUI LÒNG CHỚP MẮT TỰ NHIÊN'),
               hint: `Chỉ số EAR: ${earVal} | Mục tiêu: Nhắm (<${closedTarget}) -> Mở (>=0.22)`,
@@ -1996,7 +1996,7 @@
       else if (headChallengeAction.includes('down')) dirIcon = '⬇️';
 
       updateChallengeHUD({
-        stageText: 'BƯỚC 2/2: THỬ THÁCH QUAY ĐẦU',
+        stageText: 'BƯỚC 3/3: THỬ THÁCH QUAY ĐẦU',
         icon: dirIcon,
         prompt: headChallengePrompt.toUpperCase(),
         hint: `Nhích nhẹ đầu theo hướng mũi tên đến khi đạt 100%`,

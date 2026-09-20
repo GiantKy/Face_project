@@ -45,6 +45,15 @@ except ImportError:
     NODEJS_WEBHOOK_TIMEOUT = 5.0
 
 try:
+    from server_module.esp32_challenge import esp32_challenge_manager, preprocess_esp32_image
+except ImportError:
+    try:
+        from esp32_challenge import esp32_challenge_manager, preprocess_esp32_image
+    except ImportError:
+        esp32_challenge_manager = None
+        def preprocess_esp32_image(f): return f
+
+try:
     from server_module.pipeline_server import EKYCPipelineServer
     from server_module.utils import (
         load_image,
@@ -613,7 +622,7 @@ async def evaluate_blink_frame_endpoint(
     summary="Khởi tạo thử thách quay đầu ngẫu nhiên mới (Head Movement Challenge)"
 )
 async def start_head_challenge_endpoint(request: Request):
-    """Bắt đầu thử thách quay đầu ngẫu nhiên: TURN_LEFT, TURN_RIGHT, LOOK_UP, LOOK_DOWN."""
+    """Bắt đầu thử thách quay đầu ngẫu nhiên: TURN_LEFT hoặc TURN_RIGHT (Chỉ quay trái hoặc quay phải)."""
     pipeline: EKYCPipelineServer = request.app.state.pipeline
     try:
         res = pipeline.start_head_challenge()
@@ -694,6 +703,26 @@ def dispatch_webhook_to_nodejs(payload: dict):
         print(f"[✕] [Webhook Node.js Lỗi] Không thể gửi tới {_ACTIVE_NODEJS_WEBHOOK_URL}: {exc}")
 
 
+def trigger_esp32_relay(esp32_ip: str, timeout: float = 2.5) -> bool:
+    """Gửi lệnh mở cửa / kích hoạt relay tới ESP32-CAM qua HTTP GET /open"""
+    if not esp32_ip:
+        return False
+    ip_clean = esp32_ip.strip()
+    if not ip_clean.startswith("http"):
+        url = f"http://{ip_clean}/open"
+    else:
+        url = f"{ip_clean.rstrip('/')}/open"
+    try:
+        import urllib.request
+        req = urllib.request.Request(url, headers={"User-Agent": "FastAPI-AI-Pipeline/1.0"}, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            print(f"[ESP32 RELAY] Đã kích hoạt mở cửa Relay tại {url} -> THÀNH CÔNG!")
+            return True
+    except Exception as e:
+        print(f"[ESP32 RELAY] Không thể gửi lệnh mở cửa tới {url}: {e}")
+        return False
+
+
 @app.get("/api/v1/webhook/config", summary="Xem cấu hình Webhook Node.js hiện tại")
 async def get_webhook_config():
     return {"webhook_url": _ACTIVE_NODEJS_WEBHOOK_URL, "timeout": NODEJS_WEBHOOK_TIMEOUT}
@@ -750,6 +779,7 @@ async def esp32_cam_verify(
 
     try:
         frame = load_image(image_bytes)
+        frame = preprocess_esp32_image(frame)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"ESP32 Image decode error: {str(e)}")
 
@@ -804,8 +834,172 @@ async def esp32_cam_verify(
         "is_real": bool(ens_info["is_real"]),
         "confidence": round(float(ens_info["confidence"]), 4),
         "message": "Xác thực thành công (REAL)" if final_dec["approved"] else f"Từ chối: {final_dec['verdict']}",
-        "processing_time_ms": round(t_total, 1)
+        "processing_time_ms": round(t_total, 1),
+        "captured_image_base64": annotated_b64,
+        "crop_face_base64": crop_b64
     }
+
+
+# =============================================================================
+# 6. ESP32 MULTI-STAGE CHALLENGE SYSTEM (TỪNG BƯỚC BẰNG ẢNH TĨNH)
+# =============================================================================
+
+async def _extract_image_from_request(request: Request, file: Optional[UploadFile]) -> bytes:
+    """Hàm phụ trợ trích xuất dữ liệu ảnh (Binary stream, multipart hoặc base64 JSON)."""
+    if file is not None:
+        return await file.read()
+
+    content_type = request.headers.get("content-type", "").lower()
+    if "image/" in content_type or "application/octet-stream" in content_type or not content_type:
+        raw_body = await request.body()
+        if raw_body and len(raw_body) > 100:
+            return raw_body
+
+    try:
+        body = await request.json()
+        b64 = body.get("image_base64")
+        if b64:
+            return b64.encode("utf-8") if isinstance(b64, str) else b64
+    except Exception:
+        pass
+
+    raise HTTPException(status_code=400, detail="Vui lòng cung cấp dữ liệu ảnh tĩnh (Binary JPEG hoặc base64).")
+
+
+@app.post(
+    "/api/v1/esp32/challenge/start",
+    summary="ESP32 Bước 1: Khởi tạo phiên, Face Detect & Duyệt Ensemble Anti-Spoofing (Fail-Fast)"
+)
+async def esp32_challenge_start(
+    request: Request,
+    file: Optional[UploadFile] = File(None, description="Ảnh tĩnh nhìn thẳng từ ESP32"),
+    device_id: Optional[str] = None
+):
+    """
+    ESP32 gửi ảnh chụp số 1 (nhìn thẳng).
+    Server kiểm tra Face Detect, Pose nhìn thẳng và DUYỆT NGAY Ensemble Anti-Spoofing (YOLO+RF-DETR):
+    - Nếu SPOOF (giả mạo): Từ chối ngay lập tức (Fail-Fast).
+    - Nếu REAL: Lưu baseline EAR & Pose, sinh ngẫu nhiên hướng quay đầu và trả session_id sẵn sàng cho Stream.
+    """
+    pipeline: EKYCPipelineServer = request.app.state.pipeline
+    dev_id = device_id or request.headers.get("X-Device-ID") or "ESP32_CAM"
+    image_bytes = await _extract_image_from_request(request, file)
+
+    try:
+        res = esp32_challenge_manager.start_challenge(
+            image_input=image_bytes,
+            pipeline=pipeline,
+            device_id=dev_id
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khởi tạo thử thách ESP32: {str(e)}")
+
+
+@app.post(
+    "/api/v1/esp32/challenge/step",
+    summary="ESP32 Bước 2 & 3: Nhận ảnh push liên tục cho thử thách Chớp mắt và Quay đầu"
+)
+async def esp32_challenge_step(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    file: Optional[UploadFile] = File(None, description="Ảnh cho thử thách hiện tại"),
+    session_id: Optional[str] = None,
+    step: Optional[str] = None
+):
+    """
+    ESP32 chủ động chụp và push ảnh liên tục (~200ms/lần) cho bước hiện tại kèm session_id:
+    - Nếu step='eye_blink': Server kiểm tra trạng thái chớp mắt (EAR mở -> nhắm <0.18 -> mở >=0.22).
+    - Nếu step='head_movement': Server kiểm tra góc quay delta_yaw theo hướng yêu cầu (>=2 frame liên tiếp).
+    - Khi hoàn tất ('completed') và approved=True:
+        + Tự động kích hoạt mở cửa relay ESP32 (/open).
+        + Gửi Webhook sang Node.js (:3000).
+    """
+    pipeline: EKYCPipelineServer = request.app.state.pipeline
+
+    # Lấy session_id và step từ Query, Header hoặc JSON
+    sess_id = session_id or request.headers.get("X-Session-ID")
+    target_step = step or request.headers.get("X-Step")
+
+    image_bytes = None
+    if file is not None:
+        image_bytes = await file.read()
+    else:
+        content_type = request.headers.get("content-type", "").lower()
+        if "application/json" in content_type:
+            try:
+                body = await request.json()
+                sess_id = sess_id or body.get("session_id")
+                target_step = target_step or body.get("step")
+                image_bytes = body.get("image_base64")
+            except Exception:
+                pass
+        elif "image/" in content_type or "application/octet-stream" in content_type or not content_type:
+            raw_body = await request.body()
+            if raw_body and len(raw_body) > 100:
+                image_bytes = raw_body
+
+    if not sess_id:
+        raise HTTPException(status_code=400, detail="Thiếu 'session_id'. Vui lòng truyền qua query, header X-Session-ID hoặc JSON.")
+
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Thiếu dữ liệu ảnh cho bước thử thách.")
+
+    try:
+        res = esp32_challenge_manager.process_step(
+            session_id=sess_id,
+            image_input=image_bytes,
+            pipeline=pipeline,
+            step_name=target_step
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi xử lý bước thử thách ESP32: {str(e)}")
+
+    # Nếu bước này đã hoàn thành toàn diện ('completed'), bắn Webhook sang Node.js và mở relay
+    if res.get("step") == "completed" and res.get("success"):
+        webhook_payload = {
+            "event": "EKYC_ESP32_MULTISTEP_VERIFICATION",
+            "device_id": res.get("device_id", "ESP32_CAM"),
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "approved": res.get("approved", False),
+            "verdict": res.get("verdict", "REJECTED"),
+            "is_real": res.get("is_real", False),
+            "confidence": res.get("confidence", 0.0),
+            "steps_summary": res.get("steps_summary", {}),
+            "challenge_details": res.get("challenge_details", {}),
+            "crop_face_base64": res.get("crop_face_base64"),
+            "processing_time_ms": res.get("processing_time_ms", 0.0)
+        }
+        background_tasks.add_task(dispatch_webhook_to_nodejs, webhook_payload)
+
+        # Tự động kích hoạt mở cửa ESP32 nếu approved
+        if res.get("approved"):
+            target_esp_ip = request.headers.get("X-ESP32-IP") or (request.client.host if request.client else None)
+            if target_esp_ip:
+                background_tasks.add_task(trigger_esp32_relay, target_esp_ip)
+
+    return res
+
+
+@app.post(
+    "/api/v1/esp32/challenge/reset",
+    summary="Hủy phiên thử thách hiện tại của ESP32"
+)
+async def esp32_challenge_reset(request: Request, session_id: Optional[str] = None):
+    """Hủy một phiên thử thách đang diễn ra."""
+    sess_id = session_id or request.headers.get("X-Session-ID")
+    if not sess_id:
+        try:
+            body = await request.json()
+            sess_id = body.get("session_id")
+        except Exception:
+            pass
+
+    if not sess_id:
+        raise HTTPException(status_code=400, detail="Thiếu 'session_id'.")
+
+    ok = esp32_challenge_manager.reset_session(sess_id)
+    return {"success": ok, "message": f"Đã hủy session {sess_id}" if ok else "Session không tồn tại."}
 
 
 # =============================================================================

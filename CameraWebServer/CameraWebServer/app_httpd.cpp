@@ -814,6 +814,28 @@ void startCameraServer() {
 #endif
   };
 
+  httpd_uri_t open_uri = {
+    .uri = "/open",
+    .method = HTTP_GET,
+    .handler = [](httpd_req_t *req) -> esp_err_t {
+      log_i("eKYC Approved -> Kích hoạt Relay mở cửa...");
+#if defined(LED_GPIO_NUM) && (LED_GPIO_NUM >= 0)
+      pinMode(LED_GPIO_NUM, OUTPUT);
+      for (int i = 0; i < 2; i++) {
+        digitalWrite(LED_GPIO_NUM, HIGH);
+        delay(100);
+        digitalWrite(LED_GPIO_NUM, LOW);
+        delay(80);
+      }
+#endif
+      httpd_resp_set_type(req, "application/json");
+      httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+      const char *resp = "{\"status\":\"DOOR_OPENED\",\"approved\":true,\"message\":\"Relay pulsed successfully\"}";
+      return httpd_resp_send(req, resp, strlen(resp));
+    },
+    .user_ctx = NULL
+  };
+
   ra_filter_init(&ra_filter, 20);
 
   log_i("Starting web server on port: '%d'", config.server_port);
@@ -823,6 +845,7 @@ void startCameraServer() {
     httpd_register_uri_handler(camera_httpd, &status_uri);
     httpd_register_uri_handler(camera_httpd, &capture_uri);
     httpd_register_uri_handler(camera_httpd, &bmp_uri);
+    httpd_register_uri_handler(camera_httpd, &open_uri);
 
     httpd_register_uri_handler(camera_httpd, &xclk_uri);
     httpd_register_uri_handler(camera_httpd, &reg_uri);

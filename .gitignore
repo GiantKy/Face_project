@@ -29,6 +29,8 @@ dist/
 *.egg-info/
 .pytest_cache/
 .ipynb_checkpoints/
+.pio/
+CameraWebServer/esp32cam-rtsp/
 
 # =============================================================================
 # Large AI Models / Weights (> 5MB)

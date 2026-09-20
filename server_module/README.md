@@ -5,10 +5,8 @@ Module máy chủ chuyên trách tính toán Computer Vision và Trí tuệ nhâ
 Module này được thiết kế theo dạng **gói độc lập (Self-contained Package)**, sẵn sàng để đóng gói và **upload thẳng lên server** để tích hợp vào hệ thống backend hiện tại (hỗ trợ cả Python Server lẫn Server Node.js).
 
 > [!IMPORTANT]
-> **THIẾT KẾ THUẦN XỬ LÝ ẢNH (HEADLESS SERVER MODE)**:
-> - **Chỉ nhận ảnh đầu vào**: Module hoạt động 100% trên dữ liệu ảnh tĩnh và frame buffer (`File Path`, `Base64`, `Bytes Buffer`, hoặc `NumPy Array`).
-> - **Tuyệt đối KHÔNG chạy webcam**: Không gọi `cv2.VideoCapture()`, không kết nối camera phần cứng, không sử dụng giao diện đồ họa hiển thị (`cv2.imshow()`, `cv2.waitKey()`).
-> - **Sẵn sàng triển khai Headless**: Đảm bảo chạy mượt mà, không gây lỗi thiếu display (`DISPLAY not set`) trên môi trường Server không màn hình (Ubuntu/Debian Server, Docker Container, AWS/GCP/DigitalOcean Cloud VM).
+> **TÀI LIỆU KIẾN TRÚC PIPELINE 3 BƯỚC MỚI NHẤT**:
+> Xem chi tiết tại: [**`PIPELINE_ARCHITECTURE.md`**](file:///C:/Users/HP/Desktop/Face-Project/server_module/PIPELINE_ARCHITECTURE.md) — Quy chuẩn luồng 3 bước: 1. Snapshot AI (Fail-Fast Ensemble) -> 2. Live Stream Eye Blink -> 3. Live Stream Head Movement -> Mở cửa Relay & Webhook Node.js.
 
 ---
 

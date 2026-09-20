@@ -83,7 +83,7 @@ class FaceDetector:
         self.conf_thresh = conf_thresh
         self.iou_thresh = iou_thresh
 
-    def detect(self, frame, conf: Optional[float] = None, iou: Optional[float] = None, min_size: int = 45):
+    def detect(self, frame, conf: Optional[float] = None, iou: Optional[float] = None, min_size: int = 25):
         run_conf = conf if conf is not None else self.conf_thresh
         run_iou = iou if iou is not None else self.iou_thresh
 
@@ -119,6 +119,37 @@ class FaceDetector:
                     "class_id": cls,
                     "face_crop": face_crop
                 })
+
+        # Nếu chưa tìm thấy và ảnh có độ phân giải thấp (<= 320px như ESP32 240x240)
+        # Tự động upscale 2x để phát hiện khuôn mặt nhạy hơn
+        if not faces and (w <= 320 or h <= 320):
+            import cv2
+            scale_w = 2.0
+            scale_h = 2.0
+            up_frame = cv2.resize(frame, (int(w * scale_w), int(h * scale_h)), interpolation=cv2.INTER_LINEAR)
+            up_results = self.model(up_frame, conf=max(0.18, run_conf * 0.75), iou=run_iou, verbose=False)
+            for result in up_results:
+                for box in result.boxes:
+                    ux1, uy1, ux2, uy2 = map(int, box.xyxy[0])
+                    c_conf = float(box.conf[0])
+                    cls = int(box.cls[0])
+
+                    x1 = max(0, min(w - 1, int(ux1 / scale_w)))
+                    y1 = max(0, min(h - 1, int(uy1 / scale_h)))
+                    x2 = max(0, min(w, int(ux2 / scale_w)))
+                    y2 = max(0, min(h, int(uy2 / scale_h)))
+                    bw = x2 - x1
+                    bh = y2 - y1
+
+                    if bw < min_size or bh < min_size:
+                        continue
+
+                    faces.append({
+                        "bbox": [x1, y1, x2, y2],
+                        "confidence": c_conf,
+                        "class_id": cls,
+                        "face_crop": frame[y1:y2, x1:x2]
+                    })
 
         # NMS Deduplication loại bỏ box đè hoặc box con cùng 1 người
         return deduplicate_faces(faces, iou_thresh=0.35, iomin_thresh=0.60)

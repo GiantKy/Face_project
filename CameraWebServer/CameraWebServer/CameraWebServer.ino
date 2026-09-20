@@ -87,9 +87,11 @@ void setup() {
     s->set_brightness(s, 1);   // up the brightness just a bit
     s->set_saturation(s, -2);  // lower the saturation
   }
-  // drop down frame size for higher initial frame rate
+  // Cấu hình độ phân giải VGA 640x480 chuẩn cho nhận diện khuôn mặt & stream mượt
   if (config.pixel_format == PIXFORMAT_JPEG) {
-    s->set_framesize(s, FRAMESIZE_QVGA);
+    s->set_framesize(s, FRAMESIZE_VGA);
+    s->set_sharpness(s, 2);   // Tăng độ nét chi tiết khuôn mặt
+    s->set_contrast(s, 1);    // Tăng tương phản tách nền
   }
 
 #if defined(CAMERA_MODEL_M5STACK_WIDE) || defined(CAMERA_MODEL_M5STACK_ESP32CAM)

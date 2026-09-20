@@ -1,24 +1,21 @@
 /**
  * ============================================================================
- * ESP32-S3-CAM TO FASTAPI AI SERVER & NODE.JS INTEGRATION (SINGLE-SHOT STATIC)
+ * ESP32-S3-CAM TO FASTAPI AI SERVER & NODE.JS INTEGRATION (PLATFORMIO VERSION)
  * ============================================================================
  * 
  * Luồng hoạt động:
- * 1. ESP32-S3-CAM chụp ảnh JPEG tĩnh (VGA 640x480).
- * 2. Gửi dữ liệu ảnh dạng Binary Stream (image/jpeg) trực tiếp tới FastAPI AI Server:
- *    POST http://<AI_SERVER_IP>:8000/api/v1/esp32/verify
- * 3. FastAPI AI Server xử lý trọn gói:
- *    - YOLO Face Detection
- *    - 3D Pose Euler Angles
- *    - Ensemble Anti-Spoofing (YOLO_4 + RF-DETR Small)
- *    - Tự động đẩy kết quả Webhook sang Node.js Server (:3000).
- * 4. ESP32 nhận phản hồi JSON gọn nhẹ (approved: true/false, verdict: REAL/SPOOF).
- *    - Nếu approved: Nháy đèn Flash 2 lần, kích hoạt Relay mở cửa.
- *    - Nếu rejected: Nháy đèn Flash 4 lần báo từ chối.
- * 
+ * 1. ESP32-S3-CAM chạy Camera ở độ phân giải 240x240 (FRAMESIZE_240X240) siêu mượt.
+ * 2. Cổng 81: Live Stream MJPEG (/stream) tốc độ cao, độ trễ cực thấp.
+ * 3. Cổng 80: Web UI điều khiển eKYC & các API tích hợp AI Server:
+ *    - /challenge-start: Chụp ảnh trực diện, gửi sang AI Server kiểm tra Face + Anti-Spoofing.
+ *    - /challenge-step: Thử thách Eye Blink & Head Turn (Left/Right).
+ *    - /send-to-ai: Chụp 1 ảnh xác thực nhanh.
+ *    - /open: Kích hoạt Relay mở cửa & nháy Flash.
+ *    - /set-ai-ip: Đổi IP AI Server linh hoạt, lưu vào Flash NVS.
  * ============================================================================
  */
 
+#include <Arduino.h>
 #include "esp_camera.h"
 #include "esp_http_server.h"
 #include <WiFi.h>
@@ -28,6 +25,22 @@
 #include <ESPmDNS.h>
 #include "board_config.h"
 #include "web_ui.h"
+
+// ============================================================================
+// KHAI BÁO NGUYÊN MẪU HÀM (FORWARD DECLARATIONS CHO C++)
+// ============================================================================
+void blinkFlash(int times, int delayMs);
+camera_fb_t* capturePhotoSafe();
+static esp_err_t stream_handler(httpd_req_t *req);
+void startStreamServer();
+void handleRoot();
+void handleCapture();
+void handleOpenDoor();
+void handleSendToAI();
+void handleChallengeStart();
+void handleChallengeStep();
+void handleSetAiIp();
+bool initCamera();
 
 // ============================================================================
 // 1. CẤU HÌNH WIFI
@@ -357,7 +370,7 @@ bool initCamera() {
   config.grab_mode    = CAMERA_GRAB_LATEST;
 
   if (psramFound()) {
-    config.frame_size   = FRAMESIZE_240X240;  // 240x240 vuông chuẩn eKYC
+    config.frame_size   = FRAMESIZE_240X240;  // 240x240 vuông chuẩn eKYC siêu mượt
     config.jpeg_quality = 10;
     config.fb_count     = 2;
     config.fb_location  = CAMERA_FB_IN_PSRAM;
@@ -379,7 +392,7 @@ bool initCamera() {
     s->set_framesize(s, FRAMESIZE_240X240);  // 240x240 đạt FPS tối đa 25-30fps
     s->set_brightness(s, 1);
     s->set_contrast(s, 1);
-    s->set_sharpness(s, 2);                  // Tăng nét tối đa cho chi tiết khuôn mặt
+    s->set_sharpness(s, 2);                  // Tăng nét chi tiết khuôn mặt
     s->set_whitebal(s, 1);
     s->set_awb_gain(s, 1);
 #if defined(CAMERA_MODEL_ESP32S3_EYE)
@@ -405,7 +418,7 @@ void setup() {
   delay(1000);
 
   Serial.println("\n========================================================");
-  Serial.println("  ESP32-S3 CAM: STREAM & MULTI-STAGE eKYC (240x240)");
+  Serial.println("  ESP32-S3 CAM: STREAM & MULTI-STAGE eKYC (240x240) [PIO]");
   Serial.println("========================================================");
 
   preferences.begin("camera_ai", true);
@@ -420,6 +433,10 @@ void setup() {
 
   // Kết nối WiFi
   Serial.printf("[WIFI] Dang ket noi toi: %s ", ssid);
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
   WiFi.begin(ssid, password);
   int retry = 0;
   while (WiFi.status() != WL_CONNECTED && retry < 35) {
