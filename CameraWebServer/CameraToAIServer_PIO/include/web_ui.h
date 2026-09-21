@@ -54,7 +54,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <body>
   <div class="card">
     <h1>📷 ESP32-S3 Camera eKYC</h1>
-    <p class="sub">Snapshot 640x480 & Thử thách Động 320x240 Tốc Độ Cao</p>
+    <p class="sub">Độ Phân Giải 240x240 Tốc Độ Cao & Siêu Nhạy Sáng</p>
 
     <div class="ip-box">
       <span>⚙️ Máy chủ AI:</span>
@@ -66,7 +66,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
     <!-- Màn hình Xem Trước (Ảnh Chụp Trực Tiếp, Không Cần Stream) -->
     <div id="streamBox" class="stream-container">
-      <span id="streamBadge" class="stream-badge">PHOTO 640x480</span>
+      <span id="streamBadge" class="stream-badge">240x240</span>
       <button class="stream-reload-btn" onclick="takeSnapshot()" title="Chụp lại ảnh xem trước">📸</button>
       <img id="camStream" src="/capture" alt="Camera Snapshot" onerror="handleImageError(this)">
       <div id="streamChallengeOverlay" class="stream-challenge-overlay">
@@ -85,7 +85,6 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     </div>
 
     <button id="actionBtn" class="btn-main" onclick="onActionClick()">🚀 BẮT ĐẦU XÁC THỰC eKYC</button>
-    <button id="singleBtn" style="background:#334155;color:#94a3b8;border:none;padding:8px;border-radius:8px;font-size:12px;cursor:pointer;width:100%;margin-top:4px;" onclick="triggerSingleShot()">📸 Hoặc Chụp 1 Shot Nhanh (Single Shot)</button>
     <div id="resultBox"></div>
 
     <div class="node-link">
@@ -128,13 +127,13 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       const badge = document.getElementById('streamBadge');
 
       if (step === 'start') {
-        if (badge) badge.innerText = 'SNAPSHOT 640x480';
+        if (badge) badge.innerText = 'QVGA 320x240';
         icon.innerText = '👀';
         text.innerText = 'NHÌN THẲNG VÀO CAMERA';
         overlay.className = 'stream-challenge-overlay';
         box.style.borderColor = '#38bdf8';
       } else if (step === 'eye_blink') {
-        if (badge) badge.innerText = 'CHALLENGE 320x240 (HIGH FPS)';
+        if (badge) badge.innerText = 'QVGA 320x240 (HIGH FPS)';
         icon.innerText = '👁️';
         text.innerText = 'NHẮM MẮT LẠI RỒI MỞ RA';
         overlay.className = 'stream-challenge-overlay blink';
@@ -379,31 +378,6 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         box.innerHTML = '❌ <b>Lỗi kết nối:</b> ' + err.message;
         streamBox.style.borderColor = '#ef4444';
         btn.innerText = '🚀 THỬ LẠI';
-      }
-    }
-
-    async function triggerSingleShot() {
-      const box = document.getElementById('resultBox');
-      box.style.display = 'block';
-      box.className = 'load';
-      box.innerHTML = '⏳ Đang chụp 1 shot và gửi sang AI Server...';
-
-      try {
-        const data = await fetchJSON('/send-to-ai');
-        if (data.captured_image_base64) {
-          const src = data.captured_image_base64.startsWith('data:') ? data.captured_image_base64 : ('data:image/jpeg;base64,' + data.captured_image_base64);
-          document.getElementById('camStream').src = src;
-        }
-        if (data.approved) {
-          box.className = 'pass';
-          box.innerHTML = '✅ <b>XÁC THỰC THÀNH CÔNG (REAL)</b> - ' + (data.confidence * 100).toFixed(1) + '%' + renderCapturedPreview(data);
-        } else {
-          box.className = 'fail';
-          box.innerHTML = '❌ <b>TỪ CHỐI</b>: ' + (data.message || data.verdict) + renderCapturedPreview(data);
-        }
-      } catch (e) {
-        box.className = 'fail';
-        box.innerHTML = '❌ <b>Lỗi kết nối:</b> ' + e.message;
       }
     }
   </script>

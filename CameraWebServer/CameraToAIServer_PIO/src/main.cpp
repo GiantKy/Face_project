@@ -38,7 +38,6 @@ void startStreamServer();
 void handleRoot();
 void handleCapture();
 void handleOpenDoor();
-void handleSendToAI();
 void handleChallengeStart();
 void handleChallengeStep();
 void handleSetAiIp();
@@ -47,7 +46,7 @@ bool initCamera();
 // ============================================================================
 // 1. CẤU HÌNH WIFI
 // ============================================================================
-const char *ssid = "68/14";
+const char *ssid = "Gia Ky";
 const char *password = "16102005";
 
 // ============================================================================
@@ -99,11 +98,13 @@ void setCameraResolution(framesize_t size, int quality) {
 }
 
 camera_fb_t* capturePhotoSafe() {
-  // Xả 1 frame đệm cũ để cảm biến đo sáng tươi mới theo ánh sáng hiện tại (dùng cho Snapshot)
-  camera_fb_t *dummy = esp_camera_fb_get();
-  if (dummy) {
-    esp_camera_fb_return(dummy);
-    delay(20);
+  // Xả 5 frame đệm để cảm biến AEC/AGC tự động đo sáng và nâng độ sáng khuôn mặt
+  for (int i = 0; i < 5; i++) {
+    camera_fb_t *dummy = esp_camera_fb_get();
+    if (dummy) {
+      esp_camera_fb_return(dummy);
+      delay(30);
+    }
   }
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
@@ -217,66 +218,13 @@ void handleOpenDoor() {
   server.send(200, "application/json", "{\"status\":\"DOOR_OPENED\",\"approved\":true}");
 }
 
-// Endpoint gửi ảnh tĩnh sang AI Server
-void handleSendToAI() {
-  if (isBusyProcessing) {
-    server.send(429, "application/json", "{\"error\":\"Thiet bi dang ban\"}");
-    return;
-  }
-  isBusyProcessing = true;
-
-  camera_fb_t *fb = capturePhotoSafe();
-  if (!fb) {
-    isBusyProcessing = false;
-    server.send(500, "application/json", "{\"error\":\"Khong the chup anh tu camera\"}");
-    return;
-  }
-
-  String fullUrl = "http://" + ai_server_ip + ":" + String(ai_server_port) + String(ai_endpoint);
-  Serial.printf("\n[ESP32] Dang gui anh (%u bytes) toi AI Server: %s ...\n", fb->len, fullUrl.c_str());
-
-  HTTPClient http;
-  http.begin(fullUrl);
-  http.addHeader("Content-Type", "image/jpeg");
-  http.addHeader("X-Device-ID", device_id);
-  http.setTimeout(25000);
-
-  int httpCode = http.POST(fb->buf, fb->len);
-  String responsePayload = http.getString();
-  http.end();
-
-  esp_camera_fb_return(fb);
-  isBusyProcessing = false;
-
-  if (httpCode == 200) {
-    Serial.println("[ESP32] Phan hoi tu AI Server:");
-    Serial.println(responsePayload);
-
-    if (responsePayload.indexOf("\"approved\":true") >= 0) {
-      Serial.println(">>> [eKYC] PASS! Xac thuc thanh cong (REAL).");
-      blinkFlash(2, 100);
-    } else {
-      Serial.println(">>> [eKYC] REJECT! Tu choi xac thuc.");
-      blinkFlash(4, 50);
-    }
-    server.send(200, "application/json", responsePayload);
-  } else {
-    Serial.printf("[HTTP ERROR] AI Server tra ve ma loi: %d\n", httpCode);
-    String errJson = "{\"approved\":false,\"verdict\":\"ERROR\",\"message\":\"Loi ket noi AI Server (HTTP " + String(httpCode) + ")\"}";
-    server.send(200, "application/json", errJson);
-  }
-}
-
-// Endpoint Thử Thách Bước 1: Khởi tạo phiên liveness đa bước (Snapshot Anti-Spoofing VGA 640x480)
+// Endpoint Thử Thách Bước 1: Khởi tạo phiên liveness đa bước (240x240 sáng rõ, no pixel binning)
 void handleChallengeStart() {
   if (isBusyProcessing) {
     server.send(429, "application/json", "{\"error\":\"Thiet bi dang ban\"}");
     return;
   }
   isBusyProcessing = true;
-
-  // Đảm bảo Bước 1 chụp ảnh ở FRAMESIZE_VGA (640x480), quality = 10 để đủ nét cho YOLO + RF-DETR
-  setCameraResolution(FRAMESIZE_VGA, 10);
 
   camera_fb_t *fb = capturePhotoSafe();
   if (!fb) {
@@ -286,7 +234,7 @@ void handleChallengeStart() {
   }
 
   String fullUrl = "http://" + ai_server_ip + ":" + String(ai_server_port) + "/api/v1/esp32/challenge/start";
-  Serial.printf("\n[ESP32] Gui anh Khoi tao thu thach (VGA 640x480, %u bytes) toi: %s ...\n", fb->len, fullUrl.c_str());
+  Serial.printf("\n[ESP32] Gui anh Khoi tao thu thach (240x240, %u bytes) toi: %s ...\n", fb->len, fullUrl.c_str());
 
   HTTPClient http;
   http.begin(fullUrl);
@@ -310,7 +258,7 @@ void handleChallengeStart() {
   }
 }
 
-// Endpoint Thử Thách Bước 2 & 3: Gửi ảnh chớp mắt / quay đầu (Tốc độ cao QVGA 320x240)
+// Endpoint Thử Thách Bước 2 & 3: Gửi ảnh chớp mắt / quay đầu (Tốc độ cao 240x240)
 void handleChallengeStep() {
   if (isBusyProcessing) {
     server.send(429, "application/json", "{\"error\":\"Thiet bi dang ban\"}");
@@ -327,9 +275,6 @@ void handleChallengeStep() {
 
   isBusyProcessing = true;
 
-  // Bước 2 & 3: Chuyển sang FRAMESIZE_QVGA (320x240), quality = 16 để tăng FPS gấp 3-4 lần (~6KB/frame)
-  setCameraResolution(FRAMESIZE_QVGA, 16);
-
   camera_fb_t *fb = capturePhotoFast();
   if (!fb) {
     isBusyProcessing = false;
@@ -338,7 +283,7 @@ void handleChallengeStep() {
   }
 
   String fullUrl = "http://" + ai_server_ip + ":" + String(ai_server_port) + "/api/v1/esp32/challenge/step";
-  Serial.printf("\n[ESP32] Gui anh Buoc [%s] (QVGA 320x240, %u bytes) toi: %s ...\n", stepName.c_str(), fb->len, fullUrl.c_str());
+  Serial.printf("\n[ESP32] Gui anh Buoc [%s] (240x240, %u bytes) toi: %s ...\n", stepName.c_str(), fb->len, fullUrl.c_str());
 
   HTTPClient http;
   http.begin(fullUrl);
@@ -358,8 +303,6 @@ void handleChallengeStep() {
   if (httpCode == 200 && responsePayload.indexOf("\"approved\":true") >= 0) {
     Serial.println(">>> [eKYC MULTI-STAGE] APPROVED! Mo cua thanh cong!");
     blinkFlash(2, 100);
-    // Reset lại độ phân giải VGA chuẩn nét cho phiên tiếp theo
-    setCameraResolution(FRAMESIZE_VGA, 10);
   }
 
   Serial.printf("[ESP32] Challenge Step Response (%d): %s\n", httpCode, responsePayload.c_str());
@@ -414,13 +357,13 @@ bool initCamera() {
   config.grab_mode    = CAMERA_GRAB_LATEST;
 
   if (psramFound()) {
-    config.frame_size   = FRAMESIZE_VGA;  // 640x480 VGA độ phân giải cao
-    config.jpeg_quality = 10;
+    config.frame_size   = FRAMESIZE_240X240;  // 240x240 vuông vắn, binning tối đa, siêu sáng & FPS cao
+    config.jpeg_quality = 12;
     config.fb_count     = 2;
     config.fb_location  = CAMERA_FB_IN_PSRAM;
   } else {
-    config.frame_size   = FRAMESIZE_VGA;
-    config.jpeg_quality = 12;
+    config.frame_size   = FRAMESIZE_240X240;
+    config.jpeg_quality = 14;
     config.fb_count     = 1;
     config.fb_location  = CAMERA_FB_IN_DRAM;
   }
@@ -433,23 +376,23 @@ bool initCamera() {
 
   sensor_t *s = esp_camera_sensor_get();
   if (s != NULL) {
-    s->set_framesize(s, FRAMESIZE_VGA);    // 640x480 VGA chuẩn nét cho snapshot
-    s->set_brightness(s, 0);               // Đưa về 0 để tránh cháy sáng / lóa mắt
-    s->set_contrast(s, 1);                 // Tăng tương phản nhẹ (+1) để tách rõ con ngươi & mí mắt
-    s->set_saturation(s, 0);               // Màu tự nhiên
-    s->set_sharpness(s, 0);                // Đưa về 0 (tránh viền gai nhiễu làm méo landmarks)
+    s->set_framesize(s, FRAMESIZE_240X240); // 240x240 cố định
+    s->set_brightness(s, 2);                // Tăng sáng tối đa (+2) cứu sáng khuôn mặt
+    s->set_contrast(s, 0);                  // Contrast = 0 (tránh bệt đen kịt vùng shadow)
+    s->set_saturation(s, 0);                // Màu tự nhiên
+    s->set_sharpness(s, 0);                 // Đưa về 0
     
-    // Tự động bù sáng & chống ngược sáng nhưng kiểm soát Gain để triệt tiêu nhiễu hạt:
-    s->set_gainceiling(s, GAINCEILING_4X);// Giảm từ 16X xuống 4X (giảm 70% nhiễu hạt sensor OV2640)
-    s->set_exposure_ctrl(s, 1);            // Bật tự động phơi sáng (AEC)
-    s->set_aec2(s, 1);                     // Bật thuật toán DSP AEC2 nâng cao
-    s->set_ae_level(s, 0);                 // Đưa về 0 thay vì +2 để chống lóa trắng
-    s->set_gain_ctrl(s, 1);                // Bật tự động điều khiển Gain (AGC)
-    s->set_bpc(s, 1);                      // Sửa điểm ảnh đen
-    s->set_wpc(s, 1);                      // Sửa điểm ảnh trắng
-    s->set_lenc(s, 1);                     // Bật Lens Correction chống tối 4 góc
-    s->set_whitebal(s, 1);                 // Cân bằng trắng tự động (AWB)
-    s->set_awb_gain(s, 1);                 // Gain cân bằng trắng
+    // Tự động bù sáng & phơi sáng mạnh nhất:
+    s->set_gainceiling(s, GAINCEILING_16X);// 16X khuếch đại sáng tối đa trong phòng
+    s->set_exposure_ctrl(s, 1);             // Bật tự động phơi sáng (AEC)
+    s->set_aec2(s, 1);                      // Bật thuật toán DSP AEC2 nâng cao
+    s->set_ae_level(s, 2);                  // Bù phơi sáng mức cao nhất (+2) cứu sáng khuôn mặt
+    s->set_gain_ctrl(s, 1);                 // Bật tự động điều khiển Gain (AGC)
+    s->set_bpc(s, 1);                       // Sửa điểm ảnh đen
+    s->set_wpc(s, 1);                       // Sửa điểm ảnh trắng
+    s->set_lenc(s, 1);                      // Bật Lens Correction chống tối 4 góc
+    s->set_whitebal(s, 1);                  // Cân bằng trắng tự động (AWB)
+    s->set_awb_gain(s, 1);                  // Gain cân bằng trắng
 #if defined(CAMERA_MODEL_ESP32S3_EYE)
     s->set_vflip(s, 1);
 #endif
@@ -461,7 +404,7 @@ bool initCamera() {
     delay(50);
   }
 
-  Serial.println("[ESP32-S3] Camera FRAMESIZE_VGA (640x480) da san sang!");
+  Serial.println("[ESP32-S3] Camera FRAMESIZE_240X240 (240x240) da san sang!");
   return true;
 }
 
@@ -473,7 +416,7 @@ void setup() {
   delay(1000);
 
   Serial.println("\n========================================================");
-  Serial.println("  ESP32-S3 CAM: SNAPSHOT & MULTI-STAGE eKYC (640x480) [PIO]");
+  Serial.println("  ESP32-S3 CAM: SNAPSHOT & MULTI-STAGE eKYC (240x240) [PIO]");
   Serial.println("========================================================");
 
   preferences.begin("camera_ai", true);
@@ -514,7 +457,6 @@ void setup() {
 
   server.on("/", HTTP_GET, handleRoot);
   server.on("/capture", HTTP_GET, handleCapture);
-  server.on("/send-to-ai", HTTP_GET, handleSendToAI);
   server.on("/challenge-start", HTTP_GET, handleChallengeStart);
   server.on("/challenge-step", HTTP_GET, handleChallengeStep);
   server.on("/open", HTTP_GET, handleOpenDoor);

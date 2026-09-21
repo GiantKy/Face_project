@@ -43,32 +43,43 @@ def preprocess_esp32_image(frame: np.ndarray, apply_clahe: bool = True, sharpen:
     """
     Tiền xử lý ảnh tĩnh từ cảm biến OV2640 (ESP32-CAM):
     1. Cân bằng sáng cục bộ thích nghi CLAHE trên kênh Luminance (không gian màu LAB).
-       -> Khắc phục tình trạng mặt bị bệt đen do thiếu sáng hoặc ngược sáng.
-    2. Làm sắc nét (Unsharp Masking).
-       -> Khắc phục tình trạng mất viền nét (edges) của ống kính OV2640.
+       Tự động kích sáng Gamma Correction nếu ảnh quá tối (mean_L < 85).
+    2. Làm sắc nét viền nhẹ nhàng (Unsharp Masking).
     """
     if frame is None or frame.size == 0:
         return frame
 
     enhanced = frame.copy()
 
-    # 1. CLAHE trên kênh L
+    # 1. CLAHE trên kênh L & Tự động cứu sáng Gamma nếu thiếu sáng
     if apply_clahe:
         try:
             lab = cv2.cvtColor(enhanced, cv2.COLOR_BGR2LAB)
             l, a, b = cv2.split(lab)
-            clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
+            mean_l = float(np.mean(l))
+
+            # Nếu ảnh bị tối (mean_L < 85), tự động kích hoạt Gamma LUT cứu sáng vùng mặt
+            if mean_l < 85.0:
+                gamma = max(0.55, mean_l / 110.0)
+                inv_gamma = 1.0 / gamma
+                table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+                l = cv2.LUT(l, table)
+                clip = 3.0
+            else:
+                clip = 2.2
+
+            clahe = cv2.createCLAHE(clipLimit=clip, tileGridSize=(8, 8))
             cl = clahe.apply(l)
             limg = cv2.merge((cl, a, b))
             enhanced = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
         except Exception:
             pass
 
-    # 2. Unsharp Masking
+    # 2. Unsharp Masking nhẹ
     if sharpen:
         try:
-            gaussian = cv2.GaussianBlur(enhanced, (0, 0), sigmaX=2.0)
-            enhanced = cv2.addWeighted(enhanced, 1.35, gaussian, -0.35, 0)
+            gaussian = cv2.GaussianBlur(enhanced, (0, 0), sigmaX=1.5)
+            enhanced = cv2.addWeighted(enhanced, 1.25, gaussian, -0.25, 0)
         except Exception:
             pass
 
