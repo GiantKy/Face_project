@@ -87,3 +87,6 @@ gitlab_token.md
 *.token
 *.secret
 *.key
+config_secret.h
+*secret*.h
+!config_secret.example.h
