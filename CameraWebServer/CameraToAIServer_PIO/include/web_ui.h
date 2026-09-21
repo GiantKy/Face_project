@@ -286,6 +286,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
         if (!blinkPassed) {
           btn.disabled = false;
+          fetch('/set-led?status=rejected').catch(()=>{}); // Bật LED Đỏ báo hiệu hết giờ / thất bại Bước 2
           box.className = 'fail';
           box.innerHTML = '❌ <b>BƯỚC 2/3 THẤT BẠI:</b> ' + ((blinkRes && blinkRes.message) || 'Chưa phát hiện chớp mắt hoặc hết thời gian (10s)!') + renderCapturedPreview(blinkRes);
           streamBox.style.borderColor = '#ef4444';
@@ -364,6 +365,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           updateOverlay('completed');
           currentSessionId = '';
         } else {
+          fetch('/set-led?status=rejected').catch(()=>{}); // Bật LED Đỏ báo hiệu hết giờ / thất bại Bước 3
           box.className = 'fail';
           box.innerHTML = '❌ <b>BƯỚC 3/3 THẤT BẠI:</b> ' + ((headRes && headRes.message) || 'Góc quay đầu chưa đạt yêu cầu hoặc hết thời gian (10s)!') + renderCapturedPreview(headRes);
           streamBox.style.borderColor = '#ef4444';
@@ -374,6 +376,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         }
       } catch (err) {
         btn.disabled = false;
+        fetch('/set-led?status=rejected').catch(()=>{}); // Bật LED Đỏ khi lỗi kết nối
         box.className = 'fail';
         box.innerHTML = '❌ <b>Lỗi kết nối:</b> ' + err.message;
         streamBox.style.borderColor = '#ef4444';

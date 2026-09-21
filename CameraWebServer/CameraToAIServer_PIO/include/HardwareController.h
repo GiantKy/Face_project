@@ -58,17 +58,17 @@ public:
     void setStageIndicator(const String& stage) {
         Serial.printf("[HardwareController] Switching LED Stage: %s\n", stage.c_str());
         if (stage == "idle") {
-            setLedColor(0, 50, 200);         // Xanh dương sáng rõ
+            setLedColor(0, 15, 60);          // Xanh dương dịu mắt
         } else if (stage == "stage1") {
-            setLedColor(180, 0, 220);        // Tím sáng rõ (Bước 1)
+            setLedColor(60, 0, 70);          // Tím vừa phải (Bước 1)
         } else if (stage == "stage2_blink") {
-            setLedColor(255, 140, 0);        // Vàng cam rực rỡ (Bước 2 chớp mắt)
+            setLedColor(80, 40, 0);          // Vàng cam vừa phải (Bước 2 chớp mắt)
         } else if (stage == "stage3_turn") {
-            setLedColor(0, 200, 200);        // Xanh ngọc Cyan sáng (Bước 3 quay đầu)
+            setLedColor(0, 60, 60);          // Xanh ngọc Cyan vừa phải (Bước 3 quay đầu)
         } else if (stage == "approved") {
-            setLedColor(0, 255, 0);          // Xanh lá tối đa (Pass/Mở cửa)
+            setLedColor(0, 80, 0);           // Xanh lá êm dịu (Pass/Mở cửa)
         } else if (stage == "rejected") {
-            setLedColor(255, 0, 0);          // Đỏ rực rỡ (Cảnh báo)
+            setLedColor(90, 0, 0);           // Đỏ rõ nét (Cảnh báo thất bại / timeout)
         } else if (stage == "off") {
             setLedColor(0, 0, 0);
         }

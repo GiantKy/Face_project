@@ -41,6 +41,7 @@ public:
         m_server.on("/challenge-step", HTTP_GET, [this]() { this->handleChallengeStep(); });
         m_server.on("/open", HTTP_GET, [this]() { this->handleOpenDoor(); });
         m_server.on("/set-ai-ip", HTTP_GET, [this]() { this->handleSetAiIp(); });
+        m_server.on("/set-led", HTTP_GET, [this]() { this->handleSetLed(); });
 
         m_server.begin();
         Serial.println("[EKYCService] Mini Web Server da san sang tai cong 80.");
@@ -214,6 +215,16 @@ private:
             m_server.send(200, "text/plain", "OK");
         } else {
             m_server.send(400, "text/plain", "Missing ip arg");
+        }
+    }
+
+    void handleSetLed() {
+        if (m_server.hasArg("status")) {
+            String status = m_server.arg("status");
+            m_hw.setStageIndicator(status);
+            m_server.send(200, "text/plain", "OK");
+        } else {
+            m_server.send(400, "text/plain", "Missing status arg");
         }
     }
 
