@@ -87,12 +87,16 @@ private:
         }
         m_isBusy = true;
 
+        // Báo hiệu LED RGB: Màu Tím (Bắt đầu Bước 1: Face Detect & Anti-Spoofing)
+        m_hw.setStageIndicator("stage1");
+
         // Bước 1: Nâng lên VGA 640x480 sắc nét
         m_camera.setResolution(FRAMESIZE_VGA, 10);
 
         camera_fb_t *fb = m_camera.capturePhotoSafe();
         if (!fb) {
             m_isBusy = false;
+            m_hw.setStageIndicator("rejected");
             m_server.send(500, "application/json", "{\"error\":\"Khong the chup anh tu camera\"}");
             return;
         }
@@ -115,9 +119,16 @@ private:
 
         Serial.printf("[EKYCService] Challenge Start Response (%d): %s\n", httpCode, responsePayload.c_str());
         if (httpCode <= 0 || responsePayload.length() == 0) {
+            m_hw.setStageIndicator("rejected");
             String errJson = "{\"success\":false,\"passed\":false,\"message\":\"Không thể kết nối tới AI Server tại " + m_aiServerIp + ":" + String(m_aiServerPort) + " (Lỗi " + String(httpCode) + "). Vui lòng đảm bảo start_ai_server.bat đang chạy!\"}";
             m_server.send(200, "application/json", errJson);
         } else {
+            if (responsePayload.indexOf("\"success\":true") >= 0 && responsePayload.indexOf("\"is_real\":true") >= 0) {
+                // Đạt bước 1: Lập tức chuyển LED sang màu Vàng Cam (Sẵn sàng cho Bước 2: Chớp mắt)
+                m_hw.setStageIndicator("stage2_blink");
+            } else {
+                m_hw.setStageIndicator("rejected");
+            }
             m_server.send(httpCode == 200 ? 200 : 400, "application/json", responsePayload);
         }
     }
@@ -137,6 +148,13 @@ private:
         }
 
         m_isBusy = true;
+
+        // Cập nhật LED RGB theo đúng thử thách đang gửi
+        if (stepName == "head_movement") {
+            m_hw.setStageIndicator("stage3_turn");  // Màu Xanh lơ Cyan (Bước 3: Quay đầu)
+        } else {
+            m_hw.setStageIndicator("stage2_blink"); // Màu Vàng cam (Bước 2: Chớp mắt)
+        }
 
         // Bước 2 & 3: Tự động hạ về 240x240 để đạt FPS cao
         m_camera.setResolution(FRAMESIZE_240X240, 15);
@@ -168,12 +186,16 @@ private:
 
         if (httpCode == 200 && responsePayload.indexOf("\"approved\":true") >= 0) {
             Serial.println(">>> [eKYC MULTI-STAGE] APPROVED! Mo cua thanh cong!");
-            m_hw.blinkFlash(2, 100);
+            m_hw.openDoor(); // Bật LED Xanh Lá + Nháy Flash + Kích hoạt Relay
             m_camera.setResolution(FRAMESIZE_240X240, 14);
+        } else if (responsePayload.indexOf("\"passed\":true") >= 0 && responsePayload.indexOf("\"next_step\":\"head_movement\"") >= 0) {
+            // Vừa vượt qua Bước 2 (Chớp mắt) -> Lập tức đổi LED sang màu Xanh Cyan (Bước 3: Quay đầu)
+            m_hw.setStageIndicator("stage3_turn");
         }
 
         Serial.printf("[EKYCService] Challenge Step Response (%d): %s\n", httpCode, responsePayload.c_str());
         if (httpCode <= 0 || responsePayload.length() == 0) {
+            m_hw.setStageIndicator("rejected");
             String errJson = "{\"success\":false,\"passed\":false,\"approved\":false,\"message\":\"Không thể kết nối tới AI Server tại " + m_aiServerIp + ":" + String(m_aiServerPort) + " (Lỗi " + String(httpCode) + "). Vui lòng đảm bảo start_ai_server.bat đang chạy!\"}";
             m_server.send(200, "application/json", errJson);
         } else {
