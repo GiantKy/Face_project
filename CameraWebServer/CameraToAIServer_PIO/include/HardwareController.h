@@ -25,25 +25,25 @@ public:
 #endif
         // Đặt chân 48 làm OUTPUT
         pinMode(RGB_LED_PIN, OUTPUT);
-        // Trạng thái chờ khởi động: Sáng màu Xanh Dương dịu
-        setLedColor(0, 0, 40);
+        // Trạng thái chờ: Sáng màu Xanh Dương rõ ràng
+        setStageIndicator("idle");
     }
 
     /**
      * @brief Đặt màu cho LED RGB chân 48 (WS2812 / NeoPixel)
-     *        Có hỗ trợ cả neopixelWrite built-in lẫn fallback digitalWrite.
+     *        Trên ESP32 Arduino Core, neopixelWrite là hàm C chuẩn (không phải macro #define).
      */
     void setLedColor(uint8_t red, uint8_t green, uint8_t blue) {
-#if defined(neopixelWrite)
+        Serial.printf("[LED48] RGB Color -> R:%d, G:%d, B:%d\n", red, green, blue);
+        // Gọi trực tiếp API neopixelWrite của ESP32-S3 Core
         neopixelWrite(RGB_LED_PIN, red, green, blue);
-#else
-        // Fallback cho board dùng LED đơn sắc đảo trạng thái
+        
+        // Đồng thời xuất trạng thái logic nếu là board dùng LED đơn
         if (red > 0 || green > 0 || blue > 0) {
             digitalWrite(RGB_LED_PIN, HIGH);
         } else {
             digitalWrite(RGB_LED_PIN, LOW);
         }
-#endif
     }
 
     /**
@@ -56,18 +56,19 @@ public:
      * - "rejected":      Màu Đỏ cảnh báo (Thất bại / Giả mạo / Hết giờ)
      */
     void setStageIndicator(const String& stage) {
+        Serial.printf("[HardwareController] Switching LED Stage: %s\n", stage.c_str());
         if (stage == "idle") {
-            setLedColor(0, 0, 35);           // Xanh dương dịu
+            setLedColor(0, 50, 200);         // Xanh dương sáng rõ
         } else if (stage == "stage1") {
-            setLedColor(60, 0, 80);          // Tím (Bước 1)
+            setLedColor(180, 0, 220);        // Tím sáng rõ (Bước 1)
         } else if (stage == "stage2_blink") {
-            setLedColor(90, 45, 0);          // Vàng cam (Bước 2 chớp mắt)
+            setLedColor(255, 140, 0);        // Vàng cam rực rỡ (Bước 2 chớp mắt)
         } else if (stage == "stage3_turn") {
-            setLedColor(0, 70, 70);          // Xanh ngọc Cyan (Bước 3 quay đầu)
+            setLedColor(0, 200, 200);        // Xanh ngọc Cyan sáng (Bước 3 quay đầu)
         } else if (stage == "approved") {
-            setLedColor(0, 100, 0);          // Xanh lá rực rỡ
+            setLedColor(0, 255, 0);          // Xanh lá tối đa (Pass/Mở cửa)
         } else if (stage == "rejected") {
-            setLedColor(100, 0, 0);          // Đỏ cảnh báo
+            setLedColor(255, 0, 0);          // Đỏ rực rỡ (Cảnh báo)
         } else if (stage == "off") {
             setLedColor(0, 0, 0);
         }
