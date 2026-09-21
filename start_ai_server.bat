@@ -8,20 +8,20 @@ cd /d "%~dp0"
 
 where python >nul 2>nul
 if %ERRORLEVEL% equ 0 (
-    python run_api_server.py
+    python server_module/app.py
     pause
     exit /b
 )
 
 if exist "C:\Users\HP\AppData\Local\Programs\Python\Python311\python.exe" (
-    "C:\Users\HP\AppData\Local\Programs\Python\Python311\python.exe" run_api_server.py
+    "C:\Users\HP\AppData\Local\Programs\Python\Python311\python.exe" server_module/app.py
     pause
     exit /b
 )
 
 where py >nul 2>nul
 if %ERRORLEVEL% equ 0 (
-    py -3.11 run_api_server.py
+    py -3.11 server_module/app.py
     pause
     exit /b
 )

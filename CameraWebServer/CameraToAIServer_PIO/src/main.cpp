@@ -218,13 +218,16 @@ void handleOpenDoor() {
   server.send(200, "application/json", "{\"status\":\"DOOR_OPENED\",\"approved\":true}");
 }
 
-// Endpoint Thử Thách Bước 1: Khởi tạo phiên liveness đa bước (240x240 sáng rõ, no pixel binning)
+// Endpoint Thử Thách Bước 1: Khởi tạo phiên liveness đa bước (VGA 640x480 sắc nét cho Face Detect & Anti-Spoofing)
 void handleChallengeStart() {
   if (isBusyProcessing) {
     server.send(429, "application/json", "{\"error\":\"Thiet bi dang ban\"}");
     return;
   }
   isBusyProcessing = true;
+
+  // Chuyển sang độ phân giải cao VGA (640x480) cho Bước 1
+  setCameraResolution(FRAMESIZE_VGA, 10);
 
   camera_fb_t *fb = capturePhotoSafe();
   if (!fb) {
@@ -234,7 +237,7 @@ void handleChallengeStart() {
   }
 
   String fullUrl = "http://" + ai_server_ip + ":" + String(ai_server_port) + "/api/v1/esp32/challenge/start";
-  Serial.printf("\n[ESP32] Gui anh Khoi tao thu thach (240x240, %u bytes) toi: %s ...\n", fb->len, fullUrl.c_str());
+  Serial.printf("\n[ESP32] Gui anh Khoi tao thu thach (VGA 640x480, %u bytes) toi: %s ...\n", fb->len, fullUrl.c_str());
 
   HTTPClient http;
   http.begin(fullUrl);
@@ -275,6 +278,9 @@ void handleChallengeStep() {
 
   isBusyProcessing = true;
 
+  // Chuyển về 240x240 để đạt tốc độ truyền cực nhanh cho các thử thách cử động
+  setCameraResolution(FRAMESIZE_240X240, 15);
+
   camera_fb_t *fb = capturePhotoFast();
   if (!fb) {
     isBusyProcessing = false;
@@ -303,6 +309,8 @@ void handleChallengeStep() {
   if (httpCode == 200 && responsePayload.indexOf("\"approved\":true") >= 0) {
     Serial.println(">>> [eKYC MULTI-STAGE] APPROVED! Mo cua thanh cong!");
     blinkFlash(2, 100);
+    // Khi hoàn tất phiên thành công, giữ 240x240 cho nhẹ
+    setCameraResolution(FRAMESIZE_240X240, 14);
   }
 
   Serial.printf("[ESP32] Challenge Step Response (%d): %s\n", httpCode, responsePayload.c_str());
@@ -357,13 +365,13 @@ bool initCamera() {
   config.grab_mode    = CAMERA_GRAB_LATEST;
 
   if (psramFound()) {
-    config.frame_size   = FRAMESIZE_240X240;  // 240x240 vuông vắn, binning tối đa, siêu sáng & FPS cao
-    config.jpeg_quality = 12;
+    config.frame_size   = FRAMESIZE_VGA;      // Cấp phát buffer tối đa VGA 640x480 trong PSRAM để chuyển đổi động an toàn
+    config.jpeg_quality = 10;
     config.fb_count     = 2;
     config.fb_location  = CAMERA_FB_IN_PSRAM;
   } else {
-    config.frame_size   = FRAMESIZE_240X240;
-    config.jpeg_quality = 14;
+    config.frame_size   = FRAMESIZE_VGA;
+    config.jpeg_quality = 12;
     config.fb_count     = 1;
     config.fb_location  = CAMERA_FB_IN_DRAM;
   }
@@ -376,7 +384,7 @@ bool initCamera() {
 
   sensor_t *s = esp_camera_sensor_get();
   if (s != NULL) {
-    s->set_framesize(s, FRAMESIZE_240X240); // 240x240 cố định
+    s->set_framesize(s, FRAMESIZE_240X240); // Mặc định preview ở 240x240 nhẹ nhàng
     s->set_brightness(s, 2);                // Tăng sáng tối đa (+2) cứu sáng khuôn mặt
     s->set_contrast(s, 0);                  // Contrast = 0 (tránh bệt đen kịt vùng shadow)
     s->set_saturation(s, 0);                // Màu tự nhiên
@@ -404,7 +412,7 @@ bool initCamera() {
     delay(50);
   }
 
-  Serial.println("[ESP32-S3] Camera FRAMESIZE_240X240 (240x240) da san sang!");
+  Serial.println("[ESP32-S3] Camera da san sang! (Buffer VGA 640x480, Active 240x240)");
   return true;
 }
 

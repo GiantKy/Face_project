@@ -54,7 +54,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <body>
   <div class="card">
     <h1>📷 ESP32-S3 Camera eKYC</h1>
-    <p class="sub">Độ Phân Giải 240x240 Tốc Độ Cao & Siêu Nhạy Sáng</p>
+    <p class="sub">Bước 1 VGA 640x480  | Bước 2-3 240x240 </p>
 
     <div class="ip-box">
       <span>⚙️ Máy chủ AI:</span>
@@ -258,7 +258,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         let blinkPassed = false;
         let blinkRes = null;
         const blinkStartTime = Date.now();
-        const STEP_TIMEOUT_MS = 25000;
+        const STEP_TIMEOUT_MS = 10000; // Giới hạn 10 giây cho mỗi thử thách
 
         while (Date.now() - blinkStartTime < STEP_TIMEOUT_MS) {
           try {
@@ -287,7 +287,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         if (!blinkPassed) {
           btn.disabled = false;
           box.className = 'fail';
-          box.innerHTML = '❌ <b>BƯỚC 2/3 THẤT BẠI:</b> ' + ((blinkRes && blinkRes.message) || 'Chưa phát hiện chớp mắt hoặc hết thời gian (25s)!') + renderCapturedPreview(blinkRes);
+          box.innerHTML = '❌ <b>BƯỚC 2/3 THẤT BẠI:</b> ' + ((blinkRes && blinkRes.message) || 'Chưa phát hiện chớp mắt hoặc hết thời gian (10s)!') + renderCapturedPreview(blinkRes);
           streamBox.style.borderColor = '#ef4444';
           btn.innerText = '🚀 THỬ LẠI TỪ ĐẦU';
           btn.className = 'btn-main';
@@ -365,7 +365,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           currentSessionId = '';
         } else {
           box.className = 'fail';
-          box.innerHTML = '❌ <b>BƯỚC 3/3 THẤT BẠI:</b> ' + ((headRes && headRes.message) || 'Góc quay đầu chưa đạt yêu cầu hoặc hết thời gian (25s)!') + renderCapturedPreview(headRes);
+          box.innerHTML = '❌ <b>BƯỚC 3/3 THẤT BẠI:</b> ' + ((headRes && headRes.message) || 'Góc quay đầu chưa đạt yêu cầu hoặc hết thời gian (10s)!') + renderCapturedPreview(headRes);
           streamBox.style.borderColor = '#ef4444';
           btn.innerText = '🚀 THỬ LẠI TỪ ĐẦU';
           btn.className = 'btn-main';
