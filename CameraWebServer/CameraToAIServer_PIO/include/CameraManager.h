@@ -43,12 +43,12 @@ public:
 
         if (psramFound()) {
             config.frame_size   = FRAMESIZE_VGA;      // Độ phân giải VGA 640x480 trong PSRAM
-            config.jpeg_quality = 30;                 // Quality 30 (nén nhẹ, truyền mượt)
+            config.jpeg_quality = 12;                 // Quality 12 (chỉ số nhỏ = chất lượng nét cao, không bị nén mờ)
             config.fb_count     = 2;
             config.fb_location  = CAMERA_FB_IN_PSRAM;
         } else {
             config.frame_size   = FRAMESIZE_VGA;
-            config.jpeg_quality = 30;
+            config.jpeg_quality = 12;
             config.fb_count     = 1;
             config.fb_location  = CAMERA_FB_IN_DRAM;
         }
@@ -63,12 +63,12 @@ public:
         sensor_t *s = esp_camera_sensor_get();
         if (s != nullptr) {
             s->set_framesize(s, FRAMESIZE_VGA);     // Độ phân giải VGA 640x480
-            s->set_quality(s, 30);                  // Quality 30 theo yêu cầu
-            s->set_brightness(s, 1);                // Brightness = +1 (theo UI settings slider -3 đến 3)
-            s->set_contrast(s, 2);                  // Contrast = +2 (theo UI slider contrast gần sát cực đại)
-            s->set_saturation(s, 0);                // Saturation = 0 (màu tự nhiên trung tính theo UI settings)
-            s->set_sharpness(s, 2);                 // Sharpness = +2 (theo UI slider sharpness sắc nét)
-            s->set_denoise(s, 1);                   // De-Noise = 1 (khử nhiễu Auto theo UI settings)
+            s->set_quality(s, 12);                  // Quality 12: sắc nét, không bị artifact nén
+            s->set_brightness(s, 1);                // Brightness = +1
+            s->set_contrast(s, 2);                  // Contrast = +2
+            s->set_saturation(s, 0);                // Saturation = 0 (tự nhiên)
+            s->set_sharpness(s, 2);                 // Sharpness = +2 (sắc nét)
+            s->set_denoise(s, 0);                   // De-Noise = 0 (TẮT khử nhiễu để tránh làm mờ/bệt chi tiết mắt & da)
             
             // Các chế độ phơi sáng, cân bằng trắng và khử quang sai theo UI Toggle Settings:
             s->set_gainceiling(s, GAINCEILING_16X); // Gainceiling 16X

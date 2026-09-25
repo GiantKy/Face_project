@@ -134,9 +134,16 @@ class FaceIdentityVerifier:
         h, w = frame.shape[:2]
         face_landmarks_3d = None
 
+        # Chỉ sử dụng precomputed_landmarks nếu thực sự chứa tọa độ chiều sâu Z
         if precomputed_landmarks and len(precomputed_landmarks) >= 468:
-            face_landmarks_3d = precomputed_landmarks
-        else:
+            first_lm = precomputed_landmarks[0]
+            if hasattr(first_lm, "z"):
+                face_landmarks_3d = precomputed_landmarks
+            elif isinstance(first_lm, (tuple, list)) and len(first_lm) > 2 and abs(first_lm[2]) > 1e-6:
+                face_landmarks_3d = precomputed_landmarks
+
+        if face_landmarks_3d is None:
+            self._init_landmarker()
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             res = self._landmarker.detect(mp_img)
@@ -216,8 +223,8 @@ class FaceIdentityVerifier:
         self,
         base_desc: Dict[str, Any],
         cand_desc: Dict[str, Any],
-        max_disparity_thresh: float = 0.012,
-        min_cosine_thresh: float = 0.965
+        max_disparity_thresh: float = 0.018,
+        min_cosine_thresh: float = 0.950
     ) -> Tuple[bool, float, Dict[str, Any]]:
         """
         So sánh danh tính giữa 2 khuôn mặt bằng Procrustes 3D Shape Analysis + Vector hình học.

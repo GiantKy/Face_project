@@ -415,6 +415,8 @@
       display: none;
       transform: scaleX(-1);
       /* Mirror */
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: high-quality;
     }
 
     #previewImg {
@@ -1211,6 +1213,8 @@
       object-fit: cover;
       display: none;
       transform: scaleX(1);
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: high-quality;
     }
 
     /* Dual Window Side-by-Side Dashboard Card */
@@ -1627,7 +1631,7 @@
               </svg>
               <span>Webcam</span>
             </button>
-            <button class="tab-btn" id="tabEsp32Btn" onclick="switchInputMode('esp32')">
+            <button class="tab-btn" id="tabEsp32Btn" onclick="onEsp32TabClick()">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"
                 style="vertical-align:-2px; margin-right:4px;">
                 <path
@@ -1696,7 +1700,7 @@
           </div>
 
           <!-- Placeholder hiển thị khi ESP32 chưa đẩy frame -->
-          <div class="webcam-off-card" id="esp32OffPlaceholder" style="display: none;" onclick="toggleWebcam()">
+          <div class="webcam-off-card" id="esp32OffPlaceholder" style="display: none;" onclick="refreshEsp32Stream()">
             <div class="webcam-off-icon" style="color: var(--cyan); background: rgba(6, 182, 212, 0.12); border-color: rgba(6, 182, 212, 0.3);">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
@@ -1808,7 +1812,7 @@
 
         <!-- Action Buttons -->
         <div class="action-row">
-          <button class="btn btn-secondary" id="camToggleBtn" onclick="toggleWebcam()">
+          <button class="btn btn-secondary" id="camToggleBtn" onclick="handleCameraToggleButton()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path
                 d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
@@ -2127,11 +2131,53 @@
     // =========================================================================
     // NAVIGATION & WORKFLOW SWITCHERS (Webcam vs ESP32-CAM vs Tải File)
     // =========================================================================
-    async function onWebcamTabClick() {
-      if (inputMode !== 'webcam') {
-        switchInputMode('webcam');
+    async function onEsp32TabClick() {
+      // Chỉ cho phép 1 camera hoạt động: Tắt triệt để webcam trước khi bật ESP32
+      if (webcamStream) {
+        stopWebcam();
       }
+      switchInputMode('esp32');
+      refreshEsp32Stream();
+    }
+
+    async function onWebcamTabClick() {
+      // Chỉ cho phép 1 camera hoạt động: Ngắt luồng ESP32 trước khi bật Webcam
+      if (inputMode === 'esp32') {
+        const espImg = document.getElementById('esp32StreamImg');
+        if (espImg) {
+          espImg.src = '';
+          espImg.style.display = 'none';
+        }
+        if (esp32PollTimer) {
+          clearInterval(esp32PollTimer);
+          esp32PollTimer = null;
+        }
+      }
+      switchInputMode('webcam');
       if (!webcamStream) {
+        await toggleWebcam();
+      }
+    }
+
+    function refreshEsp32Stream() {
+      if (inputMode !== 'esp32') {
+        switchInputMode('esp32');
+      }
+      // Đảm bảo webcam đã tắt 100%
+      if (webcamStream) {
+        stopWebcam();
+      }
+      const espImg = document.getElementById('esp32StreamImg');
+      setEsp32StreamSource(espImg, lastKnownEsp32Ip);
+      checkEsp32Status(true);
+      currentState = APP_STATE.PREVIEW_ALIGN;
+      startPoseCheckLoop();
+    }
+
+    async function handleCameraToggleButton() {
+      if (inputMode === 'esp32') {
+        refreshEsp32Stream();
+      } else if (inputMode === 'webcam') {
         await toggleWebcam();
       }
     }
@@ -2160,7 +2206,7 @@
       }
 
       if (mode === 'webcam') {
-        // Tắt triệt để luồng ESP32
+        // Tắt triệt để luồng ESP32 (không cho phép chạy ngầm)
         espImg.style.display = 'none';
         espImg.src = '';
         if (espPlaceholder) espPlaceholder.style.display = 'none';
@@ -2303,20 +2349,20 @@
     // =========================================================================
     async function toggleWebcam() {
       if (inputMode === 'esp32') {
-        const isChallengeActive = (currentState !== APP_STATE.IDLE && currentState !== APP_STATE.PREVIEW_ALIGN);
-        if (isChallengeActive) return; // Không ngắt khi đang chạy thử thách liveness
-
-        const espImg = document.getElementById('esp32StreamImg');
-        setEsp32StreamSource(espImg, lastKnownEsp32Ip);
-        await checkEsp32Status(true);
-        currentState = APP_STATE.PREVIEW_ALIGN;
-        startPoseCheckLoop();
+        refreshEsp32Stream();
         return;
       }
 
       // Đảm bảo tab webcam được kích hoạt
       if (inputMode !== 'webcam') {
         switchInputMode('webcam');
+      }
+
+      // Ngắt hoàn toàn luồng ESP32 nếu còn sót lại
+      const espImg = document.getElementById('esp32StreamImg');
+      if (espImg) {
+        espImg.src = '';
+        espImg.style.display = 'none';
       }
 
       const btnText = document.getElementById('camToggleBtnText');
@@ -3002,14 +3048,65 @@
 
     function cancelActiveChallenge() {
       stopChallengeLoop();
+      cancelCountdown();
       hideChallengeHUD();
-      document.getElementById('cancelChallengeBtn').style.display = 'none';
-      document.getElementById('mainActionBtn').disabled = false;
-      currentState = APP_STATE.PREVIEW_ALIGN;
+
+      const cancelBtn = document.getElementById('cancelChallengeBtn');
+      if (cancelBtn) cancelBtn.style.display = 'none';
+      const mainBtn = document.getElementById('mainActionBtn');
+      if (mainBtn) mainBtn.disabled = false;
+
+      // Xóa toàn bộ dữ liệu & phiên thử thách
       livenessSessionId = null;
+      baseFrameBlob = null;
       blinkSuccessBlob = null;
       headSuccessBlob = null;
+      blinkCounter = 0;
+      blinkState = false;
+      blinkPassed = false;
+      blinkBaselineEAR = 0.0;
+      headPassed = false;
+      autoTriggerBlocked = false;
+      consecutiveGoodFrames = 0;
+
+      // Reset các bước quy trình về Bước 1 (Active)
       resetAllSteps();
+
+      // Reset viền Oval hướng dẫn và feedback text
+      const oval = document.getElementById('faceGuideOval');
+      if (oval) oval.className = 'face-guide-oval';
+      const pill = document.getElementById('ovalFeedbackPill');
+      if (pill) pill.className = 'oval-feedback-pill';
+      const feedbackText = document.getElementById('ovalFeedbackText');
+      if (feedbackText) feedbackText.textContent = 'CANH CHỈNH MẶT VÀO KHUNG OVAL...';
+
+      // Reset bảng 8 tiêu chuẩn kiểm tra về trạng thái ban đầu (idle)
+      const critIds = ['critFace', 'critSingle', 'critPose', 'critSpoof', 'critBoth', 'critBlink', 'critHead', 'critSamePerson'];
+      critIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.className = 'pill idle';
+          el.textContent = '--';
+        }
+      });
+
+      // Reset banner kết quả thẩm định
+      const banner = document.getElementById('verdictBanner');
+      if (banner) banner.className = 'verdict-banner idle';
+      const badge = document.getElementById('verdictBadge');
+      if (badge) {
+        badge.className = 'verdict-badge';
+        badge.textContent = 'CHƯA XÁC THỰC';
+      }
+      const sub = document.getElementById('verdictSubText');
+      if (sub) sub.textContent = 'Sẵn sàng thẩm định khuôn mặt & sinh trắc học';
+      const icon = document.getElementById('verdictIcon');
+      if (icon) icon.textContent = '🛡️';
+      const reasonsBox = document.getElementById('reasonsBox');
+      if (reasonsBox) reasonsBox.style.display = 'none';
+
+      updateMainActionButtonText();
+      currentState = APP_STATE.PREVIEW_ALIGN;
       startPoseCheckLoop();
     }
 

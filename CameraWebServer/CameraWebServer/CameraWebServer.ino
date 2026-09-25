@@ -45,14 +45,14 @@ void setup() {
   //config.pixel_format = PIXFORMAT_RGB565; // for face detection/recognition
   config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
   config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.jpeg_quality = 30;
+  config.jpeg_quality = 12;
   config.fb_count = 1;
 
   // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
   //                      for larger pre-allocated frame buffer.
   if (config.pixel_format == PIXFORMAT_JPEG) {
     if (psramFound()) {
-      config.jpeg_quality = 30;
+      config.jpeg_quality = 12;
       config.fb_count = 2;
       config.grab_mode = CAMERA_GRAB_LATEST;
     } else {
@@ -87,10 +87,11 @@ void setup() {
     s->set_brightness(s, 1);   // up the brightness just a bit
     s->set_saturation(s, -2);  // lower the saturation
   }
-  // Cấu hình độ phân giải VGA 640x480 chuẩn và Quality 30 cho nhận diện khuôn mặt & stream mượt
+  // Cấu hình độ phân giải VGA 640x480 chuẩn và Quality 12 cho nhận diện khuôn mặt sắc nét
   if (config.pixel_format == PIXFORMAT_JPEG) {
     s->set_framesize(s, FRAMESIZE_VGA);
-    s->set_quality(s, 30);
+    s->set_quality(s, 12);
+    s->set_denoise(s, 0);     // Tắt khử nhiễu để tránh làm mờ bệt da mặt
     s->set_sharpness(s, 2);   // Tăng độ nét chi tiết khuôn mặt
     s->set_contrast(s, 1);    // Tăng tương phản tách nền
   }

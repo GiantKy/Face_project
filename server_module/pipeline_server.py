@@ -604,7 +604,7 @@ class EKYCPipelineServer:
         same_person = True
         identity_details = None
         if base_desc is not None and has_face:
-            cand_desc = self.identity_verifier.extract_descriptor(frame, precomputed_landmarks=landmarks)
+            cand_desc = self.identity_verifier.extract_descriptor(frame)
             if cand_desc is not None:
                 same_person, match_score, identity_details = self.identity_verifier.verify_identity(base_desc, cand_desc)
                 if not same_person:
@@ -744,7 +744,7 @@ class EKYCPipelineServer:
         same_person = True
         identity_details = None
         if base_desc is not None and landmarks and len(landmarks) >= 468:
-            cand_desc = self.identity_verifier.extract_descriptor(frame, precomputed_landmarks=landmarks)
+            cand_desc = self.identity_verifier.extract_descriptor(frame)
             if cand_desc is not None:
                 same_person, match_score, identity_details = self.identity_verifier.verify_identity(base_desc, cand_desc)
                 if not same_person:

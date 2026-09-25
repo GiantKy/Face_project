@@ -625,7 +625,7 @@ class ESP32ChallengeManager:
         session.target_angle_threshold = target_thresh
 
         if hasattr(pipeline, "identity_verifier") and pipeline.identity_verifier is not None:
-            session.base_descriptor = pipeline.identity_verifier.extract_descriptor(raw_frame, precomputed_landmarks=landmarks)
+            session.base_descriptor = pipeline.identity_verifier.extract_descriptor(raw_frame)
 
         self.sessions[session_id] = session
 
@@ -716,7 +716,7 @@ class ESP32ChallengeManager:
                     "reasons": ["MULTI_FACES_DETECTED"]
                 }
             if getattr(session, "base_descriptor", None) is not None:
-                cand_desc = pipeline.identity_verifier.extract_descriptor(raw_frame, precomputed_landmarks=landmarks)
+                cand_desc = pipeline.identity_verifier.extract_descriptor(raw_frame)
                 if cand_desc is not None:
                     is_same, score, details = pipeline.identity_verifier.verify_identity(session.base_descriptor, cand_desc)
                     if not is_same:
