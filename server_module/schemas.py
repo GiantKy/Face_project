@@ -23,6 +23,9 @@ class VerifyJsonRequest(BaseModel):
     return_annotated_image: bool = Field(default=True, description="Có trả về ảnh Base64 đã vẽ HUD/khung nhận diện hay không")
     return_crop_image: bool = Field(default=True, description="Có trả về ảnh khuôn mặt đã crop 224x224 Base64 hay không")
     apply_oval_mask: bool = Field(default=True, description="Làm mờ bối cảnh ngoại vi trừ khung Oval ở giữa")
+    session_id: Optional[str] = Field(default=None, description="Mã phiên thử thách liveness (nếu có)")
+    blink_image_base64: Optional[str] = Field(default=None, description="Ảnh khi chớp mắt thành công (đối chiếu danh tính)")
+    head_image_base64: Optional[str] = Field(default=None, description="Ảnh khi quay đầu thành công (đối chiếu danh tính)")
     output_dir: Optional[str] = Field(default=None, description="Đường dẫn thư mục lưu ảnh/báo cáo trên ổ cứng server (nếu muốn lưu)")
 
 
@@ -101,6 +104,7 @@ class CriteriaDetail(BaseModel):
     both_models_detected: bool = Field(..., description="5. Cả 2 mô hình đồng thuận nhận diện")
     blink_passed: bool = Field(..., description="6. Hoàn thành chớp mắt")
     head_movement_passed: bool = Field(..., description="7. Hoàn thành quay đầu")
+    same_person_verified: Optional[bool] = Field(default=True, description="8. Xác thực cùng một người giữa các bước (Chống tráo đổi người)")
 
 
 class FinalDecision(BaseModel):
@@ -119,7 +123,7 @@ class VerifyResponse(BaseModel):
     is_real: bool = Field(..., description="Người thật (True) hay Giả mạo (False)")
     confidence: float = Field(..., description="Độ tin cậy chống giả mạo (0.0 - 1.0)")
     reasons: List[str] = Field(default_factory=list, description="Lý do từ chối (nếu rejected)")
-    criteria: CriteriaDetail = Field(..., description="Chi tiết 7 tiêu chuẩn đánh giá eKYC")
+    criteria: CriteriaDetail = Field(..., description="Chi tiết 8 tiêu chuẩn đánh giá eKYC")
     face_detection: FaceDetectionDetail = Field(..., description="Dữ liệu phát hiện khuôn mặt")
     pose_3d: Pose3DDetail = Field(..., description="Dữ liệu tư thế 3D")
     ensemble_anti_spoof: EnsembleAntiSpoofDetail = Field(..., description="Dữ liệu Ensemble Anti-Spoofing chi tiết")
@@ -134,6 +138,7 @@ class VerifyResponse(BaseModel):
 class PoseValidateResponse(BaseModel):
     success: bool = True
     has_face: bool
+    num_faces: Optional[int] = 1
     is_valid: bool
     face_in_oval: bool = False
     is_aligned_good: bool = False

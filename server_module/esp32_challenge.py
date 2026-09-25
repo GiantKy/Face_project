@@ -123,6 +123,7 @@ class ChallengeSession:
         self.aligned_img_static: Optional[np.ndarray] = None
         self.frontal_frame: Optional[np.ndarray] = None
         self.face_crop_224: Optional[np.ndarray] = None
+        self.base_descriptor: Optional[Dict[str, Any]] = None
 
         # Thử thách quay đầu ngẫu nhiên
         self.target_head_action: str = "TURN_LEFT"
@@ -311,6 +312,25 @@ class ESP32ChallengeManager:
 
         raw_frame = load_image(image_input)
         h, w = raw_frame.shape[:2]
+
+        # 0. Kiểm tra số lượng người nghiêm ngặt (Single Person Strict Enforcement)
+        if hasattr(pipeline, "identity_verifier") and pipeline.identity_verifier is not None:
+            num_faces, is_single = pipeline.identity_verifier.count_faces(raw_frame, pipeline.detector)
+            if num_faces > 1:
+                captured_b64 = image_to_base64(raw_frame, quality=75)
+                return {
+                    "success": False,
+                    "step": "face_detect",
+                    "passed": False,
+                    "approved": False,
+                    "verdict": "MULTI_FACES",
+                    "is_real": False,
+                    "num_faces": num_faces,
+                    "message": f"Phát hiện {num_faces} người trong khung hình (Yêu cầu 1 người duy nhất).",
+                    "reasons": ["MULTI_FACES_DETECTED"],
+                    "hint": "Vui lòng chỉ 1 người đứng trước camera.",
+                    "captured_image_base64": captured_b64
+                }
 
         # Áp dụng tiền xử lý tối ưu cho ESP32
         proc_frame = preprocess_esp32_image(raw_frame)
@@ -604,6 +624,9 @@ class ESP32ChallengeManager:
         session.head_prompt = prompt_text
         session.target_angle_threshold = target_thresh
 
+        if hasattr(pipeline, "identity_verifier") and pipeline.identity_verifier is not None:
+            session.base_descriptor = pipeline.identity_verifier.extract_descriptor(raw_frame, precomputed_landmarks=landmarks)
+
         self.sessions[session_id] = session
 
         t_ms = (time.time() - t0) * 1000
@@ -678,6 +701,34 @@ class ESP32ChallengeManager:
                 "message": "Không nhận diện được các nét khuôn mặt ở bước này. Vui lòng chụp lại rõ nét hơn.",
                 "reasons": ["LANDMARKS_FAILED"]
             }
+
+        # Kiểm tra nhiều người trong khung hình & kiểm tra tráo đổi người (Face Continuity Defense)
+        if hasattr(pipeline, "identity_verifier") and pipeline.identity_verifier is not None:
+            num_faces, is_single = pipeline.identity_verifier.count_faces(raw_frame, pipeline.detector)
+            if num_faces > 1:
+                return {
+                    "success": False,
+                    "session_id": session_id,
+                    "step": target_step,
+                    "passed": False,
+                    "error": "MULTI_FACES",
+                    "message": f"Phát hiện {num_faces} người trong khung hình! Vui lòng chỉ 1 người thực hiện.",
+                    "reasons": ["MULTI_FACES_DETECTED"]
+                }
+            if getattr(session, "base_descriptor", None) is not None:
+                cand_desc = pipeline.identity_verifier.extract_descriptor(raw_frame, precomputed_landmarks=landmarks)
+                if cand_desc is not None:
+                    is_same, score, details = pipeline.identity_verifier.verify_identity(session.base_descriptor, cand_desc)
+                    if not is_same:
+                        return {
+                            "success": False,
+                            "session_id": session_id,
+                            "step": target_step,
+                            "passed": False,
+                            "error": "FACE_MISMATCH",
+                            "message": "CẢNH BÁO: Phát hiện đổi người! Yêu cầu đúng người chụp ảnh ban đầu thực hiện thử thách.",
+                            "reasons": ["FACE_IDENTITY_MISMATCH"]
+                        }
 
         # ---------------------------------------------------------------------
         # XỬ LÝ BƯỚC 2: EYE BLINK (CHỚP MẮT) - State Machine: MỞ→NHẮM→MỞ = 1 blink

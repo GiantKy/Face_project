@@ -54,16 +54,38 @@ class LandmarkDetector:
         result = self.landmarker.detect(mp_image)
 
         landmarks = []
-
         if result.face_landmarks:
-
             h, w, _ = frame.shape
-
             for lm in result.face_landmarks[0]:
-
                 x = int(lm.x * w)
                 y = int(lm.y * h)
-
                 landmarks.append((x, y))
 
         return landmarks
+
+    def detect_with_count(self, frame):
+        """Trả về tuple: (landmarks_mặt_chính, số_lượng_khuôn_mặt)."""
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        result = self.landmarker.detect(mp_image)
+
+        num_faces = len(result.face_landmarks) if result.face_landmarks else 0
+        landmarks = []
+        if num_faces > 0:
+            h, w, _ = frame.shape
+            for lm in result.face_landmarks[0]:
+                x = int(lm.x * w)
+                y = int(lm.y * h)
+                landmarks.append((x, y))
+
+        return landmarks, num_faces
+
+    def detect_raw_3d(self, frame):
+        """Trả về tuple: (landmarks_3d_mặt_chính, số_lượng_khuôn_mặt)."""
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        result = self.landmarker.detect(mp_image)
+
+        num_faces = len(result.face_landmarks) if result.face_landmarks else 0
+        landmarks_3d = result.face_landmarks[0] if num_faces > 0 else []
+        return landmarks_3d, num_faces

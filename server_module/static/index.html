@@ -1932,9 +1932,9 @@
           </div>
         </div>
 
-        <!-- 7 Criteria Checklist -->
+        <!-- 8 Criteria Checklist -->
         <div class="criteria-card">
-          <div class="criteria-title">Bảng Kiểm 7 Tiêu Chuẩn Xác Thực eKYC</div>
+          <div class="criteria-title">Bảng Kiểm 8 Tiêu Chuẩn Xác Thực eKYC (Chống Tráo Đổi)</div>
           <div class="criteria-list">
             <div class="criteria-row">
               <span>1. Phát hiện khuôn mặt trong Oval</span>
@@ -1963,6 +1963,10 @@
             <div class="criteria-row">
               <span>7. Hoàn thành cử động quay đầu (Head Turn)</span>
               <span class="pill idle" id="critHead">--</span>
+            </div>
+            <div class="criteria-row">
+              <span>8. Nhất quán định danh (Cùng 1 người xuyên suốt)</span>
+              <span class="pill idle" id="critSamePerson">--</span>
             </div>
           </div>
         </div>
@@ -2014,6 +2018,9 @@
 
     // Active Liveness Session variables
     let baseFrameBlob = null; // Captured when face is well-aligned for final Ensemble verify
+    let livenessSessionId = null; // Session ID from /api/v1/liveness/init-session
+    let blinkSuccessBlob = null; // Frame blob upon blink pass
+    let headSuccessBlob = null; // Frame blob upon head turn pass
     let blinkCounter = 0;
     let blinkState = false;
     let blinkPassed = false;
@@ -2508,6 +2515,15 @@
         return;
       }
 
+      if (data.num_faces !== undefined && data.num_faces > 1) {
+        oval.classList.add('state-warning');
+        pill.classList.add('state-warning');
+        text.textContent = `PHÁT HIỆN ${data.num_faces} NGƯỜI! YÊU CẦU ĐỨNG 1 MÌNH`;
+        consecutiveGoodFrames = 0;
+        cancelCountdown();
+        return;
+      }
+
       if (data.is_aligned_good) {
         oval.classList.add('state-aligned');
         pill.classList.add('state-aligned');
@@ -2635,6 +2651,29 @@
       triggerScreenFlash();
       baseFrameBlob = await captureFullFrameBlob();
 
+      // Khởi tạo phiên Liveness trên Server để chống tráo đổi người (Face-swap anti-spoofing)
+      try {
+        const initForm = new FormData();
+        initForm.append('file', baseFrameBlob, 'base_frame.jpg');
+        const initRes = await fetch(`${API_BASE_URL}/api/v1/liveness/init-session`, {
+          method: 'POST',
+          body: initForm
+        });
+        if (!initRes.ok) {
+          const errData = await initRes.json();
+          alert(errData.detail || 'Không thể khởi tạo phiên Liveness (Yêu cầu chỉ 1 người duy nhất và nhìn thẳng vào camera).');
+          cancelActiveChallenge();
+          return;
+        }
+        const initData = await initRes.json();
+        livenessSessionId = initData.session_id;
+        blinkSuccessBlob = null;
+        headSuccessBlob = null;
+      } catch (err) {
+        console.warn('Liveness init-session error:', err);
+        livenessSessionId = null;
+      }
+
       setStepStatus(1, 'completed');
       setStepStatus(2, 'active');
 
@@ -2695,6 +2734,9 @@
 
           const formData = new FormData();
           formData.append('file', frameBlob, 'frame.jpg');
+          if (livenessSessionId) {
+            formData.append('session_id', livenessSessionId);
+          }
           formData.append('blink_counter', blinkCounter);
           formData.append('blink_state', blinkState ? 'true' : 'false');
           formData.append('baseline_ear', blinkBaselineEAR);
@@ -2706,6 +2748,32 @@
 
           if (res.ok) {
             const data = await res.json();
+
+            // Kiểm tra nhiều người hoặc đổi người trong lúc chớp mắt
+            if (data.num_faces !== undefined && data.num_faces > 1) {
+              updateChallengeHUD({
+                stageText: 'CẢNH BÁO AN NINH',
+                icon: '👥',
+                prompt: 'PHÁT HIỆN NHIỀU NGƯỜI TRONG KHUNG HÌNH!',
+                hint: 'Yêu cầu chỉ 1 người duy nhất trong khung camera',
+                isTimerUrgent: true,
+                telemetry: `Số người phát hiện: ${data.num_faces}`
+              });
+              return;
+            }
+
+            if (data.same_person === false) {
+              updateChallengeHUD({
+                stageText: '🚨 CẢNH BÁO TRÁO ĐỔI NGƯỜI!',
+                icon: '⛔',
+                prompt: 'PHÁT HIỆN ĐỔI NGƯỜI (FACE MISMATCH)',
+                hint: 'Người đang chớp mắt KHÔNG PHẢI người đã chụp ở Bước 1!',
+                isTimerUrgent: true,
+                telemetry: 'Định danh không khớp'
+              });
+              return;
+            }
+
             blinkCounter = data.blink_counter;
             blinkState = Boolean(data.blink_state);
             blinkBaselineEAR = data.baseline_ear || blinkBaselineEAR;
@@ -2728,6 +2796,7 @@
 
             if (data.passed) {
               blinkPassed = true;
+              blinkSuccessBlob = frameBlob;
               stopChallengeLoop();
               // Chờ 600ms hiển thị badge thành công rồi chuyển sang Bước 2: Quay Đầu
               setTimeout(() => {
@@ -2806,6 +2875,9 @@
 
           const formData = new FormData();
           formData.append('file', frameBlob, 'frame.jpg');
+          if (livenessSessionId) {
+            formData.append('session_id', livenessSessionId);
+          }
 
           const res = await fetch(`${API_BASE_URL}/api/v1/liveness/update-head`, {
             method: 'POST',
@@ -2814,6 +2886,32 @@
 
           if (res.ok) {
             const data = await res.json();
+
+            // Kiểm tra nhiều người hoặc đổi người trong lúc quay đầu
+            if (data.num_faces !== undefined && data.num_faces > 1) {
+              updateChallengeHUD({
+                stageText: 'CẢNH BÁO AN NINH',
+                icon: '👥',
+                prompt: 'PHÁT HIỆN NHIỀU NGƯỜI TRONG KHUNG HÌNH!',
+                hint: 'Yêu cầu chỉ 1 người duy nhất trong khung camera',
+                isTimerUrgent: true,
+                telemetry: `Số người phát hiện: ${data.num_faces}`
+              });
+              return;
+            }
+
+            if (data.same_person === false) {
+              updateChallengeHUD({
+                stageText: '🚨 CẢNH BÁO TRÁO ĐỔI NGƯỜI!',
+                icon: '⛔',
+                prompt: 'PHÁT HIỆN ĐỔI NGƯỜI (FACE MISMATCH)',
+                hint: 'Người đang quay đầu KHÔNG PHẢI người đã chụp ở Bước 1!',
+                isTimerUrgent: true,
+                telemetry: 'Định danh không khớp'
+              });
+              return;
+            }
+
             const pct = Math.min(100, Math.round((data.progress || 0) * 100));
             const timeLeft = data.time_left !== undefined ? data.time_left : 0.0;
             const isUrgent = timeLeft < 2.5;
@@ -2835,7 +2933,7 @@
               : 'Nhích nhẹ đầu theo hướng mũi tên đến khi đầy thanh tiến trình';
 
             updateChallengeHUD({
-              stageText: 'BƯỚC 2/2: THỬ THÁCH QUAY ĐẦU',
+              stageText: 'BƯỚC 3/3: THỬ THÁCH QUAY ĐẦU',
               icon: dirIcon,
               prompt: data.prompt ? data.prompt.toUpperCase() : headChallengePrompt.toUpperCase(),
               hint: activeHint,
@@ -2848,6 +2946,7 @@
 
             if (data.passed) {
               headPassed = true;
+              headSuccessBlob = frameBlob;
               stopChallengeLoop();
               updateChallengeHUD({
                 stageText: 'THÀNH CÔNG!',
@@ -2907,6 +3006,9 @@
       document.getElementById('cancelChallengeBtn').style.display = 'none';
       document.getElementById('mainActionBtn').disabled = false;
       currentState = APP_STATE.PREVIEW_ALIGN;
+      livenessSessionId = null;
+      blinkSuccessBlob = null;
+      headSuccessBlob = null;
       resetAllSteps();
       startPoseCheckLoop();
     }
@@ -2957,7 +3059,10 @@
         blink_passed: blinkPassed,
         blink_count: blinkCounter,
         head_passed: headPassed,
-        head_action: headChallengeAction
+        head_action: headChallengeAction,
+        sessionId: livenessSessionId,
+        blinkFile: blinkSuccessBlob,
+        headFile: headSuccessBlob
       });
     }
 
@@ -3005,7 +3110,7 @@
       });
     }
 
-    async function sendVerificationPayload({ fileToSend, blink_passed, blink_count, head_passed, head_action }) {
+    async function sendVerificationPayload({ fileToSend, blink_passed, blink_count, head_passed, head_action, sessionId = null, blinkFile = null, headFile = null }) {
       const mainBtn = document.getElementById('mainActionBtn');
       const mainBtnText = document.getElementById('mainActionBtnText');
 
@@ -3022,6 +3127,16 @@
       formData.append('return_crop_image', true);
       formData.append('return_annotated_image', true);
       formData.append('apply_oval_mask', document.getElementById('chkOvalBokeh').checked);
+
+      if (sessionId) {
+        formData.append('session_id', sessionId);
+      }
+      if (blinkFile) {
+        formData.append('blink_file', blinkFile, 'blink_capture.jpg');
+      }
+      if (headFile) {
+        formData.append('head_file', headFile, 'head_capture.jpg');
+      }
 
       const startTime = performance.now();
       try {
@@ -3076,7 +3191,7 @@
         banner.className = 'verdict-banner approved';
         badge.className = 'verdict-badge approved';
         badge.textContent = 'eKYC APPROVED';
-        sub.textContent = `Hợp chuẩn sinh trắc học 7/7 tiêu chí &bull; Real: ${(data.confidence * 100).toFixed(1)}%`;
+        sub.textContent = `Hợp chuẩn sinh trắc học 8/8 tiêu chí &bull; Real: ${(data.confidence * 100).toFixed(1)}%`;
         icon.textContent = '🎯';
         reasonsBox.style.display = 'none';
       } else {
@@ -3144,7 +3259,7 @@
 
       document.getElementById('metricNumFaces').textContent = data.face_detection.num_faces;
 
-      // 7 Criteria
+      // 8 Criteria Checklist
       const c = data.criteria;
       setPill('critFace', c.face_detected);
       setPill('critSingle', c.single_face);
@@ -3153,6 +3268,7 @@
       setPill('critBoth', c.both_models_detected);
       setPill('critBlink', c.blink_passed);
       setPill('critHead', c.head_movement_passed);
+      setPill('critSamePerson', c.same_person_verified !== undefined ? c.same_person_verified : true);
 
       // JSON Box
       document.getElementById('jsonBox').textContent = JSON.stringify(data, null, 2);

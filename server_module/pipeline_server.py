@@ -25,7 +25,8 @@ try:
         FaceAligner,
         HeadMovementDetector,
         HeadAction,
-        ChallengeState
+        ChallengeState,
+        FaceIdentityVerifier
     )
     from .config import (
         FACE_DETECTION_MODEL_PATH,
@@ -78,7 +79,8 @@ except (ImportError, ValueError):
         FaceAligner,
         HeadMovementDetector,
         HeadAction,
-        ChallengeState
+        ChallengeState,
+        FaceIdentityVerifier
     )
     from config import (
         FACE_DETECTION_MODEL_PATH,
@@ -172,6 +174,8 @@ class EKYCPipelineServer:
         self.aligner: Optional[FaceAligner] = None
         self.ensemble_anti_spoof: Optional[EnsembleAntiSpoofDetector] = None
         self.head_movement_detector: Optional[HeadMovementDetector] = None
+        self.identity_verifier: Optional[FaceIdentityVerifier] = None
+        self.liveness_sessions: Dict[str, Dict[str, Any]] = {}
 
         if not lazy_load:
             self.load_models()
@@ -196,11 +200,78 @@ class EKYCPipelineServer:
             delta_yaw_threshold=HEAD_DELTA_YAW_THRESHOLD,
             delta_pitch_threshold=HEAD_DELTA_PITCH_THRESHOLD
         )
-        print("[EKYCPipelineServer] Tải toàn bộ AI Models thành công! (Ensemble Ready)\n")
+        self.identity_verifier = FaceIdentityVerifier()
+        print("[EKYCPipelineServer] Tải toàn bộ AI Models thành công! (Ensemble & Identity Ready)\n")
 
     def _ensure_models_loaded(self):
-        if self.detector is None:
+        if self.detector is None or self.identity_verifier is None:
             self.load_models()
+
+    def cleanup_expired_sessions(self, ttl_seconds: int = 180):
+        """Dọn dẹp các session liveness đã quá thời gian chờ (TTL 3 phút)."""
+        now = time.time()
+        expired = [sid for sid, s in self.liveness_sessions.items() if (now - s.get("created_at", now)) > ttl_seconds]
+        for sid in expired:
+            del self.liveness_sessions[sid]
+
+    def init_liveness_session(
+        self,
+        base_frame_input: Union[str, bytes, np.ndarray],
+        session_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Khởi tạo phiên thử thách Liveness từ ảnh chuẩn Bước 1 (Base Frame):
+        1. Kiểm tra nghiêm ngặt 1 người duy nhất trong khung hình (num_faces == 1).
+        2. Trích xuất Biometric Descriptor 3D của người chụp Bước 1.
+        3. Caching descriptor vào memory để đối chiếu liên tục trong Bước 2, Bước 3, Bước 4.
+        """
+        self._ensure_models_loaded()
+        self.cleanup_expired_sessions()
+
+        frame = load_image(base_frame_input)
+        num_faces, is_single = self.identity_verifier.count_faces(frame, self.detector)
+        if num_faces == 0:
+            return {
+                "success": False,
+                "error": "NO_FACE",
+                "message": "Không tìm thấy khuôn mặt trong ảnh chụp chuẩn Bước 1."
+            }
+        if num_faces > 1:
+            return {
+                "success": False,
+                "num_faces": num_faces,
+                "error": "MULTI_FACES",
+                "message": f"Phát hiện {num_faces} người trong khung hình! Vui lòng chỉ 1 người duy nhất thực hiện eKYC."
+            }
+
+        desc = self.identity_verifier.extract_descriptor(frame)
+        if desc is None:
+            return {
+                "success": False,
+                "error": "DESCRIPTOR_FAILED",
+                "message": "Không thể trích xuất đặc trưng sinh trắc học từ khuôn mặt."
+            }
+
+        sid = session_id or f"sess_{int(time.time()*1000)}"
+        self.liveness_sessions[sid] = {
+            "session_id": sid,
+            "created_at": time.time(),
+            "last_activity": time.time(),
+            "base_desc": desc,
+            "base_frame": frame.copy(),
+            "num_faces": 1,
+            "blink_passed": False,
+            "head_passed": False,
+            "blink_frame": None,
+            "head_frame": None
+        }
+
+        return {
+            "success": True,
+            "session_id": sid,
+            "num_faces": 1,
+            "message": "Đã khởi tạo phiên xác thực thành công. Bắt đầu thử thách sinh trắc học liên tục."
+        }
 
     # =========================================================================
     # 1. KIỂM TRA TƯ THẾ & CĂN CHỈNH KHUÔN MẶT (PRE-CAPTURE CHECK)
@@ -208,6 +279,7 @@ class EKYCPipelineServer:
     def validate_pose(self, image_input: Union[str, bytes, np.ndarray]) -> Dict[str, Any]:
         """
         Kiểm tra tư thế khuôn mặt (trước khi chụp):
+        - Phát hiện số lượng khuôn mặt (nghiêm ngặt 1 người duy nhất)
         - Phát hiện khuôn mặt và landmarks
         - Đánh giá khoảng cách camera (kích thước mặt)
         - Đánh giá 3 góc Euler (Yaw, Pitch, Roll)
@@ -219,10 +291,39 @@ class EKYCPipelineServer:
         frame = load_image(image_input)
         h, w = frame.shape[:2]
 
+        # Tọa độ khung Oval trung tâm
+        oval_center, oval_axes = get_default_oval_params(w, h)
+        oval_cx, oval_cy = oval_center
+        oval_ax, oval_ay = oval_axes
+
+        # 0. Kiểm tra số lượng người nghiêm ngặt (Single Person Strict Enforcement)
+        num_faces, is_single = self.identity_verifier.count_faces(frame, self.detector)
+        if num_faces > 1:
+            return {
+                "has_face": True,
+                "num_faces": num_faces,
+                "is_valid": False,
+                "face_in_oval": False,
+                "is_aligned_good": False,
+                "face_size_h": 0,
+                "is_too_far": False,
+                "is_too_close": False,
+                "is_off_center": False,
+                "off_center_hint": "",
+                "oval_guide": {
+                    "center": [oval_cx, oval_cy],
+                    "axes": [oval_ax, oval_ay]
+                },
+                "pose": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0, "status_text": "MULTI_FACES"},
+                "message": f"Phát hiện {num_faces} người trong khung hình (Yêu cầu 1 người duy nhất)",
+                "guide": "Vui lòng chỉ 1 người đứng trước camera"
+            }
+
         landmarks = self.landmark_detector.detect(frame)
-        if not landmarks:
+        if not landmarks or num_faces == 0:
             return {
                 "has_face": False,
+                "num_faces": 0,
                 "is_valid": False,
                 "face_size_h": 0,
                 "is_too_far": True,
@@ -231,10 +332,6 @@ class EKYCPipelineServer:
                 "guide": "Vui lòng đưa khuôn mặt vào giữa khung hình"
             }
 
-        # Tọa độ khung Oval trung tâm
-        oval_center, oval_axes = get_default_oval_params(w, h)
-        oval_cx, oval_cy = oval_center
-        oval_ax, oval_ay = oval_axes
 
         # Đánh giá kích thước và tọa độ khuôn mặt
         xs = [p[0] for p in landmarks]
@@ -456,18 +553,79 @@ class EKYCPipelineServer:
         frame_input: Union[str, bytes, np.ndarray],
         current_blink_counter: int = 0,
         current_blink_state: bool = False,
-        baseline_ear: float = 0.0
+        baseline_ear: float = 0.0,
+        session_id: Optional[str] = None,
+        base_frame_input: Optional[Union[str, bytes, np.ndarray]] = None
     ) -> Dict[str, Any]:
-        """Đo lường chỉ số EAR trên frame và cập nhật trạng thái chớp mắt (chuẩn src & test_pipeline_ensemble_full.py)."""
+        """Đo lường chỉ số EAR trên frame, kiểm tra 1 người duy nhất và kiểm tra nhận dạng cùng người chụp Bước 1."""
         self._ensure_models_loaded()
         frame = load_image(frame_input)
         h, w = frame.shape[:2]
 
+        # 0. Kiểm tra số lượng người nghiêm ngặt (Single Person Strict Enforcement)
+        num_faces, is_single = self.identity_verifier.count_faces(frame, self.detector)
+        if num_faces > 1:
+            return {
+                "has_face": True,
+                "num_faces": num_faces,
+                "same_person": False,
+                "passed": False,
+                "error": f"Phát hiện {num_faces} người trong khung hình (Yêu cầu 1 người duy nhất)",
+                "label": "⚠️ PHÁT HIỆN NHIỀU NGƯỜI",
+                "ear_left": 0.0,
+                "ear_right": 0.0,
+                "ear_avg": 0.0,
+                "baseline_ear": baseline_ear,
+                "closed_thresh": 0.18,
+                "open_thresh": 0.21,
+                "blink_counter": current_blink_counter,
+                "blink_state": current_blink_state,
+                "progress": 0.0
+            }
+
         # 1. Phát hiện landmarks trực tiếp trên frame nguyên bản để bảo toàn độ nét của mắt
         landmarks = self.landmark_detector.detect(frame)
 
-        has_face = bool(landmarks is not None and len(landmarks) >= 468)
+        has_face = bool(landmarks is not None and len(landmarks) >= 468 and num_faces > 0)
         ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks) if landmarks else (0.0, 0.0, 0.0)
+
+        # 2. Kiểm tra nhận dạng khuôn mặt (Face Identity Consistency Check)
+        base_desc = None
+        if session_id and session_id in self.liveness_sessions:
+            base_desc = self.liveness_sessions[session_id].get("base_desc")
+            self.liveness_sessions[session_id]["last_activity"] = time.time()
+        elif base_frame_input is not None:
+            try:
+                base_f = load_image(base_frame_input)
+                base_desc = self.identity_verifier.extract_descriptor(base_f)
+            except Exception:
+                base_desc = None
+
+        same_person = True
+        identity_details = None
+        if base_desc is not None and has_face:
+            cand_desc = self.identity_verifier.extract_descriptor(frame, precomputed_landmarks=landmarks)
+            if cand_desc is not None:
+                same_person, match_score, identity_details = self.identity_verifier.verify_identity(base_desc, cand_desc)
+                if not same_person:
+                    return {
+                        "has_face": True,
+                        "num_faces": 1,
+                        "same_person": False,
+                        "passed": False,
+                        "error": "CẢNH BÁO: Phát hiện đổi người! Yêu cầu đúng người chụp ảnh ban đầu thực hiện thử thách.",
+                        "label": "⚠️ PHÁT HIỆN ĐỔI NGƯỜI (MISMATCH)",
+                        "identity_details": identity_details,
+                        "ear_left": round(ear_l, 4),
+                        "ear_right": round(ear_r, 4),
+                        "ear_avg": round(ear_avg, 4),
+                        "baseline_ear": round(baseline_ear, 4),
+                        "closed_thresh": 0.18,
+                        "open_thresh": 0.21,
+                        "blink_counter": current_blink_counter,
+                        "blink_state": False,
+                        "progress": 0.0
+                    }
 
         new_counter = current_blink_counter
         new_state = current_blink_state
@@ -506,8 +664,14 @@ class EKYCPipelineServer:
             else ("Đang chớp mắt... (50%)" if new_state else "Đang đợi chớp mắt... (0%)")
         )
 
+        if passed and session_id and session_id in self.liveness_sessions:
+            self.liveness_sessions[session_id]["blink_passed"] = True
+            self.liveness_sessions[session_id]["blink_frame"] = frame.copy()
+
         return {
             "has_face": has_face,
+            "num_faces": num_faces,
+            "same_person": True,
             "ear_left": round(ear_l, 4),
             "ear_right": round(ear_r, 4),
             "ear_avg": round(ear_avg, 4),
@@ -532,14 +696,74 @@ class EKYCPipelineServer:
             "timeout_seconds": CHALLENGE_TIMEOUT_SECONDS
         }
 
-    def update_head_challenge(self, frame_input: Union[str, bytes, np.ndarray]) -> Dict[str, Any]:
-        """Cập nhật frame cho thử thách quay đầu hiện tại (chuẩn test_pipeline_ensemble_full.py)."""
+    def update_head_challenge(
+        self,
+        frame_input: Union[str, bytes, np.ndarray],
+        session_id: Optional[str] = None,
+        base_frame_input: Optional[Union[str, bytes, np.ndarray]] = None
+    ) -> Dict[str, Any]:
+        """Cập nhật frame cho thử thách quay đầu, kiểm tra 1 người duy nhất và kiểm tra nhận dạng cùng người chụp Bước 1."""
         self._ensure_models_loaded()
         frame = load_image(frame_input)
         h, w = frame.shape[:2]
 
+        # 0. Kiểm tra số lượng người nghiêm ngặt (Single Person Strict Enforcement)
+        num_faces, is_single = self.identity_verifier.count_faces(frame, self.detector)
+        if num_faces > 1:
+            return {
+                "state": "FAILED",
+                "action": "",
+                "passed": False,
+                "num_faces": num_faces,
+                "same_person": False,
+                "prompt": "VUI LÒNG CHỈ 1 NGƯỜI ĐỨNG TRƯỚC CAMERA",
+                "error": f"Phát hiện {num_faces} người trong khung hình (Yêu cầu 1 người duy nhất)",
+                "time_left": 0.0,
+                "progress": 0.0,
+                "current_angle": 0.0,
+                "target_threshold": 0.0,
+                "is_matched": False,
+                "pose": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+            }
+
         # Dò landmarks trực tiếp trên frame nguyên bản để giữ độ nét khuôn mặt khi quay góc nghiêng
         landmarks = self.landmark_detector.detect(frame)
+
+        # 1. Kiểm tra nhận dạng khuôn mặt (Face Identity Consistency Check)
+        base_desc = None
+        if session_id and session_id in self.liveness_sessions:
+            base_desc = self.liveness_sessions[session_id].get("base_desc")
+            self.liveness_sessions[session_id]["last_activity"] = time.time()
+        elif base_frame_input is not None:
+            try:
+                base_f = load_image(base_frame_input)
+                base_desc = self.identity_verifier.extract_descriptor(base_f)
+            except Exception:
+                base_desc = None
+
+        same_person = True
+        identity_details = None
+        if base_desc is not None and landmarks and len(landmarks) >= 468:
+            cand_desc = self.identity_verifier.extract_descriptor(frame, precomputed_landmarks=landmarks)
+            if cand_desc is not None:
+                same_person, match_score, identity_details = self.identity_verifier.verify_identity(base_desc, cand_desc)
+                if not same_person:
+                    return {
+                        "state": "FAILED",
+                        "action": "",
+                        "passed": False,
+                        "num_faces": 1,
+                        "same_person": False,
+                        "prompt": "⚠️ CẢNH BÁO: PHÁT HIỆN ĐỔI NGƯỜI!",
+                        "error": "CẢNH BÁO: Phát hiện đổi người! Yêu cầu đúng người chụp ảnh ban đầu thực hiện thử thách.",
+                        "identity_details": identity_details,
+                        "time_left": 0.0,
+                        "progress": 0.0,
+                        "current_angle": 0.0,
+                        "target_threshold": 0.0,
+                        "is_matched": False,
+                        "pose": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+                    }
 
         pose_dict = None
         if landmarks and len(landmarks) >= 468:
@@ -555,7 +779,9 @@ class EKYCPipelineServer:
             "progress": float(status.get("progress", 0.0)),
             "current_angle": float(status.get("current_angle", 0.0)),
             "target_threshold": float(status.get("target_threshold", 0.0)),
-            "is_matched": bool(status.get("is_matched", False))
+            "is_matched": bool(status.get("is_matched", False)),
+            "same_person": True,
+            "num_faces": num_faces
         }
         if pose_dict:
             clean_status["pose"] = {
@@ -565,6 +791,11 @@ class EKYCPipelineServer:
             }
         else:
             clean_status["pose"] = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+
+        if clean_status["passed"] and session_id and session_id in self.liveness_sessions:
+            self.liveness_sessions[session_id]["head_passed"] = True
+            self.liveness_sessions[session_id]["head_frame"] = frame.copy()
+
         return clean_status
 
     # =========================================================================
@@ -580,7 +811,10 @@ class EKYCPipelineServer:
         head_action_name: str = "TURN_LEFT",
         output_dir: Optional[str] = None,
         save_visuals: bool = True,
-        apply_oval_mask: bool = True
+        apply_oval_mask: bool = True,
+        session_id: Optional[str] = None,
+        blink_frame_input: Optional[Union[str, bytes, np.ndarray]] = None,
+        head_frame_input: Optional[Union[str, bytes, np.ndarray]] = None
     ) -> Dict[str, Any]:
         """
         Thực thi toàn diện quy trình kiểm tra eKYC tĩnh & tổng hợp quyết định:
@@ -722,7 +956,55 @@ class EKYCPipelineServer:
         has_any_spoof = any(not sd["is_real"] for sd in all_ensemble_dets) if all_ensemble_dets else False
         is_primary_real = bool(best_spoof["is_real"]) if best_spoof else False
 
-        # 6. Đánh giá Final Decision — 7 tiêu chí
+        # 5.5 Kiểm tra tính liên tục danh tính khuôn mặt giữa các bước (Biometric Face Identity Continuity)
+        c_same_person = True
+        identity_details = {}
+
+        # Trường hợp A: Sử dụng Session ID đã ghi nhận từ Bước 1
+        if session_id and session_id in self.liveness_sessions:
+            sess = self.liveness_sessions[session_id]
+            base_desc = sess.get("base_desc")
+            if base_desc is not None:
+                # 1. Kiểm tra ảnh chụp chớp mắt nếu có
+                bf = sess.get("blink_frame") or (load_image(blink_frame_input) if blink_frame_input is not None else None)
+                if bf is not None:
+                    cand_b = self.identity_verifier.extract_descriptor(bf)
+                    if cand_b:
+                        is_same_b, _, dt_b = self.identity_verifier.verify_identity(base_desc, cand_b)
+                        identity_details["blink_match"] = dt_b
+                        if not is_same_b:
+                            c_same_person = False
+
+                # 2. Kiểm tra ảnh chụp quay đầu nếu có
+                hf = sess.get("head_frame") or (load_image(head_frame_input) if head_frame_input is not None else None)
+                if hf is not None:
+                    cand_h = self.identity_verifier.extract_descriptor(hf)
+                    if cand_h:
+                        is_same_h, _, dt_h = self.identity_verifier.verify_identity(base_desc, cand_h)
+                        identity_details["head_match"] = dt_h
+                        if not is_same_h:
+                            c_same_person = False
+        # Trường hợp B: Gửi kèm blink_frame hoặc head_frame trực tiếp trong request
+        elif blink_frame_input is not None or head_frame_input is not None:
+            base_desc = self.identity_verifier.extract_descriptor(frame)
+            if base_desc is not None:
+                if blink_frame_input is not None:
+                    cand_b = self.identity_verifier.extract_descriptor(load_image(blink_frame_input))
+                    if cand_b:
+                        is_same_b, _, dt_b = self.identity_verifier.verify_identity(base_desc, cand_b)
+                        identity_details["blink_match"] = dt_b
+                        if not is_same_b:
+                            c_same_person = False
+
+                if head_frame_input is not None:
+                    cand_h = self.identity_verifier.extract_descriptor(load_image(head_frame_input))
+                    if cand_h:
+                        is_same_h, _, dt_h = self.identity_verifier.verify_identity(base_desc, cand_h)
+                        identity_details["head_match"] = dt_h
+                        if not is_same_h:
+                            c_same_person = False
+
+        # 6. Đánh giá Final Decision — 8 tiêu chí chuẩn ngân hàng
         face_position_ok = face_in_oval if apply_oval_mask else True
         c_face = (primary_face is not None) and face_position_ok
         c_single = (num_faces == 1)
@@ -758,10 +1040,12 @@ class EKYCPipelineServer:
             reasons.append("Chưa hoàn thành chớp mắt (Blink)")
         if not c_head:
             reasons.append("Chưa hoàn thành cử động đầu (Head Movement)")
+        if not c_same_person:
+            reasons.append("Phát hiện tráo đổi người thực hiện thử thách (Face Identity Mismatch)!")
 
         final_pass = bool(
             c_face and c_single and c_pose and c_spoof
-            and c_both_detected and c_blink and c_head
+            and c_both_detected and c_blink and c_head and c_same_person
         )
 
         # Xây dựng kết quả chi tiết
@@ -780,7 +1064,12 @@ class EKYCPipelineServer:
                 "anti_spoof_real": bool(c_spoof),
                 "both_models_detected": bool(c_both_detected),
                 "blink_passed": bool(c_blink),
-                "head_movement_passed": bool(c_head)
+                "head_movement_passed": bool(c_head),
+                "same_person_verified": bool(c_same_person)
+            },
+            "identity_verification": {
+                "same_person_verified": bool(c_same_person),
+                "details": identity_details
             },
             "face_detection": {
                 "num_faces": num_faces,

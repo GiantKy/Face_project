@@ -10,6 +10,7 @@ from .landmark_detection.utils import get_landmark_point
 from .pose_validation.validator import PoseValidator
 from .face_alignment_crop.face_align_crop import FaceAligner
 from .head_movement.head_movement_detector import HeadMovementDetector, HeadAction, ChallengeState
+from .face_identity_verifier import FaceIdentityVerifier
 
 __all__ = [
     "FaceDetector",
@@ -21,4 +22,6 @@ __all__ = [
     "HeadMovementDetector",
     "HeadAction",
     "ChallengeState",
+    "FaceIdentityVerifier",
 ]
+

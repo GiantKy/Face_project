@@ -336,32 +336,39 @@ async def verify_face(
     blink_count: Optional[int] = Form(1, description="Số lần chớp mắt"),
     head_passed: Optional[bool] = Form(True, description="Trạng thái quay đầu đạt"),
     head_action: Optional[str] = Form("TURN_LEFT", description="Hành động quay đầu"),
+    session_id: Optional[str] = Form(None, description="Mã phiên liveness đối chiếu sinh trắc học"),
+    blink_file: Optional[UploadFile] = File(None, description="Ảnh frame chớp mắt thành công"),
+    head_file: Optional[UploadFile] = File(None, description="Ảnh frame quay đầu thành công"),
     return_annotated_image: Optional[bool] = Form(True, description="Trả về ảnh vẽ HUD Base64"),
     return_crop_image: Optional[bool] = Form(True, description="Trả về ảnh crop 224x224 Base64"),
     apply_oval_mask: Optional[bool] = Form(True, description="Làm mờ bối cảnh ngoại vi trừ khung Oval"),
     output_dir: Optional[str] = Form(None, description="Thư mục lưu artifacts (nếu muốn)")
 ):
     """
-    Xác thực khuôn mặt toàn diện eKYC theo 7 tiêu chí chuẩn ngân hàng:
+    Xác thực khuôn mặt toàn diện eKYC theo 8 tiêu chí chuẩn ngân hàng:
     1. Phát hiện khuôn mặt (YOLO Face)
-    2. Một người duy nhất trong khung hình
+    2. Một người duy nhất trong khung hình (Single Person Strict Enforcement)
     3. Tư thế 3D Pose chuẩn (Yaw, Pitch, Roll)
     4. Chống giả mạo Ensemble (YOLO_4 + RF-DETR Small)
     5. Cả 2 mô hình đồng thuận nhận diện (Dual-Model Agreement)
     6. Hoàn thành kiểm tra chớp mắt (Blink Liveness)
     7. Hoàn thành kiểm tra quay đầu (Head Movement)
-
-    Hỗ trợ nhận đầu vào:
-    - **Multipart Form-Data**: Gửi qua key `file` (dành cho Node.js gửi qua `FormData`)
-    - **JSON Payload**: Gửi qua body `{ "image_base64": "...", ... }`
+    8. Xác thực cùng 1 người giữa các bước (Chống tráo đổi người / Face Swap)
     """
     t_start = time.time()
     pipeline: EKYCPipelineServer = request.app.state.pipeline
 
     # 1. Trích xuất dữ liệu ảnh từ Multipart hoặc JSON
     image_bytes = None
+    blink_bytes = None
+    head_bytes = None
+
     if file is not None:
         image_bytes = await file.read()
+        if blink_file is not None:
+            blink_bytes = await blink_file.read()
+        if head_file is not None:
+            head_bytes = await head_file.read()
     else:
         # Kiểm tra xem có gửi JSON Body không
         try:
@@ -374,6 +381,9 @@ async def verify_face(
             blink_count = json_req.blink_count
             head_passed = json_req.head_passed
             head_action = json_req.head_action
+            session_id = getattr(json_req, "session_id", None) or session_id
+            blink_bytes = getattr(json_req, "blink_image_base64", None)
+            head_bytes = getattr(json_req, "head_image_base64", None)
             return_annotated_image = json_req.return_annotated_image
             return_crop_image = json_req.return_crop_image
             apply_oval_mask = getattr(json_req, "apply_oval_mask", True)
@@ -410,7 +420,10 @@ async def verify_face(
             head_action_name=str(head_action),
             output_dir=output_dir,
             save_visuals=bool(output_dir is not None),
-            apply_oval_mask=bool(apply_oval_mask)
+            apply_oval_mask=bool(apply_oval_mask),
+            session_id=session_id,
+            blink_frame_input=blink_bytes,
+            head_frame_input=head_bytes
         )
     except Exception as e:
         raise HTTPException(
@@ -505,6 +518,7 @@ async def validate_face_pose(
     return PoseValidateResponse(
         success=True,
         has_face=res["has_face"],
+        num_faces=res.get("num_faces", 1),
         is_valid=res["is_valid"],
         face_in_oval=res.get("face_in_oval", False),
         is_aligned_good=res.get("is_aligned_good", False),
@@ -598,17 +612,15 @@ def _parse_bool_param(val) -> bool:
 
 
 @app.post(
-    "/api/v1/liveness/blink-frame",
-    summary="Đánh giá chỉ số EAR và trạng thái chớp mắt trên từng frame"
+    "/api/v1/liveness/init-session",
+    summary="Khởi tạo phiên thử thách Liveness từ ảnh chuẩn Bước 1"
 )
-async def evaluate_blink_frame_endpoint(
+async def init_liveness_session_endpoint(
     request: Request,
-    file: Optional[UploadFile] = File(None, description="Frame ảnh"),
-    blink_counter: Optional[int] = Form(0, description="Số lần chớp mắt hiện tại"),
-    blink_state: Optional[str] = Form("false", description="Trạng thái mắt đang nhắm"),
-    baseline_ear: Optional[float] = Form(0.0, description="Chỉ số EAR mốc khi mở mắt")
+    file: Optional[UploadFile] = File(None, description="Ảnh chuẩn Bước 1 (Base Frame)"),
+    session_id: Optional[str] = Form(None, description="Mã phiên tùy chọn")
 ):
-    """Phục vụ Web Client gửi frame đo chỉ số EAR và đếm số lần chớp mắt tự nhiên."""
+    """Khởi tạo phiên Liveness: kiểm tra 1 người duy nhất và trích xuất descriptor để chống tráo đổi người."""
     pipeline: EKYCPipelineServer = request.app.state.pipeline
 
     image_input = None
@@ -618,9 +630,60 @@ async def evaluate_blink_frame_endpoint(
         try:
             body = await request.json()
             image_input = body.get("image_base64")
+            session_id = body.get("session_id", session_id)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Vui lòng cung cấp file ảnh hoặc trường 'image_base64'."
+            )
+
+    if not image_input:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dữ liệu ảnh rỗng."
+        )
+
+    res = pipeline.init_liveness_session(image_input, session_id=session_id)
+    if not res.get("success", False):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=res.get("message", "Không thể khởi tạo phiên Liveness")
+        )
+
+    return res
+
+
+@app.post(
+    "/api/v1/liveness/blink-frame",
+    summary="Đánh giá chỉ số EAR và trạng thái chớp mắt trên từng frame"
+)
+async def evaluate_blink_frame_endpoint(
+    request: Request,
+    file: Optional[UploadFile] = File(None, description="Frame ảnh"),
+    blink_counter: Optional[int] = Form(0, description="Số lần chớp mắt hiện tại"),
+    blink_state: Optional[str] = Form("false", description="Trạng thái mắt đang nhắm"),
+    baseline_ear: Optional[float] = Form(0.0, description="Chỉ số EAR mốc khi mở mắt"),
+    session_id: Optional[str] = Form(None, description="Mã phiên liveness đối chiếu sinh trắc học"),
+    base_file: Optional[UploadFile] = File(None, description="Ảnh chuẩn Bước 1 (nếu không dùng session)")
+):
+    """Phục vụ Web Client gửi frame đo chỉ số EAR, kiểm tra 1 người và đối chiếu danh tính với Bước 1."""
+    pipeline: EKYCPipelineServer = request.app.state.pipeline
+
+    image_input = None
+    base_image_input = None
+    if file is not None:
+        image_input = await file.read()
+        if base_file is not None:
+            base_image_input = await base_file.read()
+    else:
+        try:
+            body = await request.json()
+            image_input = body.get("image_base64")
+            base_image_input = body.get("base_image_base64")
             blink_counter = body.get("blink_counter", blink_counter)
             blink_state = body.get("blink_state", blink_state)
             baseline_ear = body.get("baseline_ear", baseline_ear)
+            session_id = body.get("session_id", session_id)
         except Exception:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -641,7 +704,9 @@ async def evaluate_blink_frame_endpoint(
             frame_input=image_input,
             current_blink_counter=int(blink_counter or 0),
             current_blink_state=is_closed,
-            baseline_ear=b_ear
+            baseline_ear=b_ear,
+            session_id=session_id,
+            base_frame_input=base_image_input
         )
     except Exception as e:
         raise HTTPException(
@@ -675,18 +740,25 @@ async def start_head_challenge_endpoint(request: Request):
 )
 async def update_head_challenge_endpoint(
     request: Request,
-    file: Optional[UploadFile] = File(None, description="Frame ảnh")
+    file: Optional[UploadFile] = File(None, description="Frame ảnh"),
+    session_id: Optional[str] = Form(None, description="Mã phiên liveness đối chiếu sinh trắc học"),
+    base_file: Optional[UploadFile] = File(None, description="Ảnh chuẩn Bước 1 (nếu không dùng session)")
 ):
-    """Nhận frame từ Web Client để tính toán góc Euler 3D và tiến trình quay đầu."""
+    """Nhận frame từ Web Client để tính toán góc Euler 3D, tiến trình quay đầu và đối chiếu danh tính."""
     pipeline: EKYCPipelineServer = request.app.state.pipeline
 
     image_input = None
+    base_image_input = None
     if file is not None:
         image_input = await file.read()
+        if base_file is not None:
+            base_image_input = await base_file.read()
     else:
         try:
             body = await request.json()
             image_input = body.get("image_base64")
+            base_image_input = body.get("base_image_base64")
+            session_id = body.get("session_id", session_id)
         except Exception:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -700,7 +772,11 @@ async def update_head_challenge_endpoint(
         )
 
     try:
-        res = pipeline.update_head_challenge(image_input)
+        res = pipeline.update_head_challenge(
+            frame_input=image_input,
+            session_id=session_id,
+            base_frame_input=base_image_input
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
