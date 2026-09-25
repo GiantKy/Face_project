@@ -388,8 +388,8 @@ private:
         m_camera.setResolution(FRAMESIZE_VGA, 10);
         fb = m_camera.capturePhotoSafe();
 
-        // Duy trì độ phân giải VGA 640x480 với Quality 30 (nén nhẹ, truyền mượt mà)
-        m_camera.setResolution(FRAMESIZE_VGA, 30);
+        // Duy trì độ phân giải VGA 640x480 với Quality 20 theo chuẩn hệ thống
+        m_camera.setResolution(FRAMESIZE_VGA, 20);
 
         if (!fb) {
             xSemaphoreGive(m_cameraMutex);

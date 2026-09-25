@@ -87,13 +87,18 @@ void setup() {
     s->set_brightness(s, 1);   // up the brightness just a bit
     s->set_saturation(s, -2);  // lower the saturation
   }
-  // Cấu hình độ phân giải VGA 640x480 chuẩn và Quality 12 cho nhận diện khuôn mặt sắc nét
+  // Cấu hình độ phân giải VGA 640x480 chuẩn và Quality 20 cho nhận diện khuôn mặt sắc nét
   if (config.pixel_format == PIXFORMAT_JPEG) {
     s->set_framesize(s, FRAMESIZE_VGA);
-    s->set_quality(s, 12);
+    s->set_quality(s, 20);
     s->set_denoise(s, 0);     // Tắt khử nhiễu để tránh làm mờ bệt da mặt
     s->set_sharpness(s, 2);   // Tăng độ nét chi tiết khuôn mặt
     s->set_contrast(s, 1);    // Tăng tương phản tách nền
+    s->set_brightness(s, 0);  // Giữ mức sáng chuẩn
+    s->set_exposure_ctrl(s, 1); // AEC1 ổn định
+    s->set_aec2(s, 0);        // Tắt AEC2 để tránh trôi phơi sáng gây mờ
+    s->set_gainceiling(s, GAINCEILING_4X); // Khóa Gain 4X tránh nhiễu hồng
+    s->set_lenc(s, 0);        // Tắt lens correction tránh quầng tím ở tâm
   }
 
 #if defined(CAMERA_MODEL_M5STACK_WIDE) || defined(CAMERA_MODEL_M5STACK_ESP32CAM)

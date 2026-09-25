@@ -43,12 +43,12 @@ public:
 
         if (psramFound()) {
             config.frame_size   = FRAMESIZE_VGA;      // Độ phân giải VGA 640x480 trong PSRAM
-            config.jpeg_quality = 12;                 // Quality 12 (chỉ số nhỏ = chất lượng nét cao, không bị nén mờ)
+            config.jpeg_quality = 20;                 // Quality 20 theo chuẩn hệ thống
             config.fb_count     = 2;
             config.fb_location  = CAMERA_FB_IN_PSRAM;
         } else {
             config.frame_size   = FRAMESIZE_VGA;
-            config.jpeg_quality = 12;
+            config.jpeg_quality = 20;
             config.fb_count     = 1;
             config.fb_location  = CAMERA_FB_IN_DRAM;
         }
@@ -63,29 +63,29 @@ public:
         sensor_t *s = esp_camera_sensor_get();
         if (s != nullptr) {
             s->set_framesize(s, FRAMESIZE_VGA);     // Độ phân giải VGA 640x480
-            s->set_quality(s, 12);                  // Quality 12: sắc nét, không bị artifact nén
-            s->set_brightness(s, 1);                // Brightness = +1
-            s->set_contrast(s, 2);                  // Contrast = +2
+            s->set_quality(s, 20);                  // Quality 20: Sắc nét, nén tối ưu băng thông WiFi
+            s->set_brightness(s, 0);                // Brightness = 0 (chuẩn, không làm cháy sáng mặt)
+            s->set_contrast(s, 1);                  // Contrast = +1 (vừa phải, tách biệt biên mặt rõ ràng)
             s->set_saturation(s, 0);                // Saturation = 0 (tự nhiên)
-            s->set_sharpness(s, 2);                 // Sharpness = +2 (sắc nét)
-            s->set_denoise(s, 0);                   // De-Noise = 0 (TẮT khử nhiễu để tránh làm mờ/bệt chi tiết mắt & da)
+            s->set_sharpness(s, 2);                 // Sharpness = +2 (sắc nét chi tiết mắt & da)
+            s->set_denoise(s, 0);                   // De-Noise = 0 (TẮT khử nhiễu để tránh làm mờ/bệt chi tiết da)
             
-            // Các chế độ phơi sáng, cân bằng trắng và khử quang sai theo UI Toggle Settings:
-            s->set_gainceiling(s, GAINCEILING_16X); // Gainceiling 16X
-            s->set_exposure_ctrl(s, 1);             // AEC Enable = ON
-            s->set_aec2(s, 1);                      // AEC2 DSP nâng cao = ON
-            s->set_ae_level(s, 1);                  // Exposure Level = +1
+            // Các chế độ phơi sáng, cân bằng trắng và khử quang sai:
+            s->set_gainceiling(s, GAINCEILING_4X);  // Khóa Gain trần ở mức 4X (tránh nhiễu hạt hồng & bệt ảnh khi thiếu sáng)
+            s->set_exposure_ctrl(s, 1);             // AEC1 Hardware Auto Exposure = ON (chạy phần cứng ổn định)
+            s->set_aec2(s, 0);                      // TẮT AEC2 DSP: KHẮC PHỤC TRIỆT ĐỂ LỖI RUNAWAY KÉO DÀI MÀN TRẬP GÂY MỜ ẢNH VÀ TỤT FPS!
+            s->set_ae_level(s, 0);                  // Exposure Level = 0 (chuẩn)
             s->set_gain_ctrl(s, 1);                 // AGC Enable = ON
             s->set_bpc(s, 1);                       // BPC = ON
             s->set_wpc(s, 1);                       // WPC = ON
-            s->set_raw_gma(s, 1);                   // GMA Enable (Gamma) = ON (theo UI Toggle)
-            s->set_lenc(s, 1);                      // Lens Correction = ON (theo UI Toggle)
-            s->set_whitebal(s, 1);                  // AWB Enable = ON (theo UI Toggle)
-            s->set_awb_gain(s, 1);                  // Advanced AWB Gain = ON (theo UI Toggle)
+            s->set_raw_gma(s, 1);                   // GMA Enable (Gamma) = ON
+            s->set_lenc(s, 0);                      // Lens Correction = OFF (TẮT để loại bỏ hoàn toàn quầng hồng/tím ở tâm)
+            s->set_whitebal(s, 1);                  // AWB Enable = ON
+            s->set_awb_gain(s, 1);                  // Advanced AWB Gain = ON
             s->set_dcw(s, 1);                       // Advanced AWB DCW = ON
-            s->set_special_effect(s, 0);            // Special Effect = No Effect (theo UI)
-            s->set_hmirror(s, 1);                   // H-Mirror = ON (X-Mirror dao chieu ngang giup quay dau dung huong)
-            s->set_vflip(s, 1);                     // V-Flip = ON (theo UI Toggle)
+            s->set_special_effect(s, 0);            // Special Effect = No Effect
+            s->set_hmirror(s, 1);                   // H-Mirror = ON (đảo chiều ngang giúp quay đầu đúng hướng)
+            s->set_vflip(s, 1);                     // V-Flip = ON
         }
 
         // Xả 4 frame khởi động để ổn định DMA
@@ -95,7 +95,7 @@ public:
             delay(50);
         }
 
-        Serial.println("[CameraManager] Camera da san sang! (Resolution: VGA 640x480, JPEG Quality: 30)");
+        Serial.println("[CameraManager] Camera da san sang! (Resolution: VGA 640x480, JPEG Quality: 20)");
         m_initialized = true;
         return true;
     }
