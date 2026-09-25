@@ -71,10 +71,10 @@ public:
             s->set_denoise(s, 0);                   // De-Noise = 0 (TẮT khử nhiễu để tránh làm mờ/bệt chi tiết da)
             
             // Các chế độ phơi sáng, cân bằng trắng và khử quang sai:
-            s->set_gainceiling(s, GAINCEILING_4X);  // Khóa Gain trần ở mức 4X (tránh nhiễu hạt hồng & bệt ảnh khi thiếu sáng)
+            s->set_gainceiling(s, GAINCEILING_8X);  // Nâng Gainceiling lên 8X để ưu tiên bù sáng bằng Gain thay vì kéo dài màn trập gây mờ
             s->set_exposure_ctrl(s, 1);             // AEC1 Hardware Auto Exposure = ON (chạy phần cứng ổn định)
             s->set_aec2(s, 0);                      // TẮT AEC2 DSP: KHẮC PHỤC TRIỆT ĐỂ LỖI RUNAWAY KÉO DÀI MÀN TRẬP GÂY MỜ ẢNH VÀ TỤT FPS!
-            s->set_ae_level(s, 0);                  // Exposure Level = 0 (chuẩn)
+            s->set_ae_level(s, -2);                 // KHÓA MỤC TIÊU PHƠI SÁNG -2: Ngăn chặn cảm biến tiếp tục tăng sáng vô hạn gây cháy và nhoè mờ!
             s->set_gain_ctrl(s, 1);                 // AGC Enable = ON
             s->set_bpc(s, 1);                       // BPC = ON
             s->set_wpc(s, 1);                       // WPC = ON
@@ -88,11 +88,11 @@ public:
             s->set_vflip(s, 1);                     // V-Flip = ON
         }
 
-        // Xả 4 frame khởi động để ổn định DMA
-        for (int i = 0; i < 4; i++) {
+        // Xả 10 frame khởi động để AEC & DMA ổn định độ sáng chuẩn ngay khi mở (tránh lúc đầu bị tối)
+        for (int i = 0; i < 10; i++) {
             camera_fb_t *fb = esp_camera_fb_get();
             if (fb) esp_camera_fb_return(fb);
-            delay(50);
+            delay(30);
         }
 
         Serial.println("[CameraManager] Camera da san sang! (Resolution: VGA 640x480, JPEG Quality: 20)");

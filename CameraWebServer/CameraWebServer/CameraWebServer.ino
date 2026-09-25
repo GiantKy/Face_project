@@ -97,7 +97,8 @@ void setup() {
     s->set_brightness(s, 0);  // Giữ mức sáng chuẩn
     s->set_exposure_ctrl(s, 1); // AEC1 ổn định
     s->set_aec2(s, 0);        // Tắt AEC2 để tránh trôi phơi sáng gây mờ
-    s->set_gainceiling(s, GAINCEILING_4X); // Khóa Gain 4X tránh nhiễu hồng
+    s->set_ae_level(s, -2);   // Khóa mục tiêu phơi sáng -2 để tránh tăng sáng vô hạn gây nhoè
+    s->set_gainceiling(s, GAINCEILING_8X); // Tăng Gainceiling 8X để ưu tiên độ nét chuyển động
     s->set_lenc(s, 0);        // Tắt lens correction tránh quầng tím ở tâm
   }
 
