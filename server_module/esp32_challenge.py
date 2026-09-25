@@ -460,6 +460,28 @@ class ESP32ChallengeManager:
                 "captured_image_base64": captured_b64
             }
 
+        # Kiểm tra che mặt (Face Occlusion Check) trước khi cho phép vượt qua Bước 1
+        if hasattr(pipeline, "occlusion_detector") and pipeline.occlusion_detector is not None:
+            is_occ, occ_code, occ_msg = pipeline.occlusion_detector.check_occlusion(
+                frame=raw_frame,
+                landmarks=landmarks,
+                num_faces=num_faces
+            )
+            if is_occ:
+                captured_b64 = image_to_base64(raw_frame, quality=75)
+                return {
+                    "success": False,
+                    "step": "face_detect",
+                    "passed": False,
+                    "approved": False,
+                    "verdict": "FACE_OCCLUDED",
+                    "is_real": False,
+                    "message": occ_msg or "CẢNH BÁO: Phát hiện che mặt! Vui lòng không che mặt.",
+                    "reasons": ["FACE_OCCLUSION_DETECTED"],
+                    "hint": "Bỏ khẩu trang, tay hoặc vật cản ra khỏi khuôn mặt.",
+                    "captured_image_base64": captured_b64
+                }
+
         # Tính toán Baseline EAR
         ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks)
         baseline_ear = max(0.18, float(ear_avg)) if ear_avg > 0.10 else 0.25
@@ -729,6 +751,26 @@ class ESP32ChallengeManager:
                             "message": "CẢNH BÁO: Phát hiện đổi người! Yêu cầu đúng người chụp ảnh ban đầu thực hiện thử thách.",
                             "reasons": ["FACE_IDENTITY_MISMATCH"]
                         }
+
+        # Kiểm tra che mặt (Face Occlusion Defense) trong lúc đang thực hiện thử thách
+        # Nếu phát hiện che mặt: Dừng ngay lập tức, TUYỆT ĐỐI KHÔNG THAY ĐỔI EAR HOẶC HEAD YAW!
+        if hasattr(pipeline, "occlusion_detector") and pipeline.occlusion_detector is not None:
+            is_occ, occ_code, occ_msg = pipeline.occlusion_detector.check_occlusion(
+                frame=raw_frame,
+                landmarks=landmarks,
+                num_faces=num_faces
+            )
+            if is_occ:
+                return {
+                    "success": False,
+                    "session_id": session_id,
+                    "step": target_step,
+                    "passed": False,
+                    "is_occluded": True,
+                    "error": "FACE_OCCLUDED",
+                    "message": occ_msg or "CẢNH BÁO: Phát hiện che mặt! Vui lòng không che mặt khi thực hiện thử thách.",
+                    "reasons": ["FACE_OCCLUSION_DETECTED"]
+                }
 
         # ---------------------------------------------------------------------
         # XỬ LÝ BƯỚC 2: EYE BLINK (CHỚP MẮT) - State Machine: MỞ→NHẮM→MỞ = 1 blink

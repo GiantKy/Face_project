@@ -26,7 +26,8 @@ try:
         HeadMovementDetector,
         HeadAction,
         ChallengeState,
-        FaceIdentityVerifier
+        FaceIdentityVerifier,
+        FaceOcclusionDetector
     )
     from .config import (
         FACE_DETECTION_MODEL_PATH,
@@ -80,7 +81,8 @@ except (ImportError, ValueError):
         HeadMovementDetector,
         HeadAction,
         ChallengeState,
-        FaceIdentityVerifier
+        FaceIdentityVerifier,
+        FaceOcclusionDetector
     )
     from config import (
         FACE_DETECTION_MODEL_PATH,
@@ -175,6 +177,7 @@ class EKYCPipelineServer:
         self.ensemble_anti_spoof: Optional[EnsembleAntiSpoofDetector] = None
         self.head_movement_detector: Optional[HeadMovementDetector] = None
         self.identity_verifier: Optional[FaceIdentityVerifier] = None
+        self.occlusion_detector: Optional[FaceOcclusionDetector] = None
         self.liveness_sessions: Dict[str, Dict[str, Any]] = {}
 
         if not lazy_load:
@@ -201,10 +204,11 @@ class EKYCPipelineServer:
             delta_pitch_threshold=HEAD_DELTA_PITCH_THRESHOLD
         )
         self.identity_verifier = FaceIdentityVerifier()
-        print("[EKYCPipelineServer] Tải toàn bộ AI Models thành công! (Ensemble & Identity Ready)\n")
+        self.occlusion_detector = FaceOcclusionDetector()
+        print("[EKYCPipelineServer] Tải toàn bộ AI Models thành công! (Ensemble, Identity & Anti-Occlusion Ready)\n")
 
     def _ensure_models_loaded(self):
-        if self.detector is None or self.identity_verifier is None:
+        if self.detector is None or self.identity_verifier is None or self.occlusion_detector is None:
             self.load_models()
 
     def cleanup_expired_sessions(self, ttl_seconds: int = 180):
@@ -242,6 +246,21 @@ class EKYCPipelineServer:
                 "num_faces": num_faces,
                 "error": "MULTI_FACES",
                 "message": f"Phát hiện {num_faces} người trong khung hình! Vui lòng chỉ 1 người duy nhất thực hiện eKYC."
+            }
+
+        # Kiểm tra che mặt nghiêm ngặt ngay tại ảnh chụp Bước 1 (Anti-Occlusion Defense)
+        landmarks = self.landmark_detector.detect(frame)
+        is_occ, occ_code, occ_msg = self.occlusion_detector.check_occlusion(
+            frame=frame,
+            landmarks=landmarks,
+            num_faces=num_faces
+        )
+        if is_occ:
+            return {
+                "success": False,
+                "error": "FACE_OCCLUDED",
+                "occlusion_reason": occ_code,
+                "message": occ_msg or "CẢNH BÁO: Phát hiện khuôn mặt bị che khuất! Vui lòng không che mặt khi thực hiện eKYC."
             }
 
         desc = self.identity_verifier.extract_descriptor(frame)
@@ -372,6 +391,41 @@ class EKYCPipelineServer:
         # Đánh giá góc nghiêng 3D Pose
         pose_valid, text_status, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point, img_w=w, img_h=h)
         pose_data = pose_dict if pose_dict else {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+
+        # Kiểm tra che mặt (Face Occlusion Defense) trước khi cho phép chụp ảnh
+        is_occluded, occ_reason, occ_msg = self.occlusion_detector.check_occlusion(
+            frame=frame,
+            landmarks=landmarks,
+            num_faces=num_faces,
+            pose_dict=pose_dict
+        )
+        if is_occluded:
+            return {
+                "has_face": True,
+                "num_faces": num_faces,
+                "is_valid": False,
+                "is_aligned_good": False,
+                "is_occluded": True,
+                "occlusion_reason": occ_reason,
+                "face_in_oval": bool(face_in_oval),
+                "face_size_h": int(face_size_h),
+                "is_too_far": False,
+                "is_too_close": False,
+                "is_off_center": False,
+                "off_center_hint": "",
+                "oval_guide": {
+                    "center": [oval_cx, oval_cy],
+                    "axes": [oval_ax, oval_ay]
+                },
+                "pose": {
+                    "yaw": round(float(pose_data.get("yaw", 0.0)), 2),
+                    "pitch": round(float(pose_data.get("pitch", 0.0)), 2),
+                    "roll": round(float(pose_data.get("roll", 0.0)), 2),
+                    "status_text": "OCCLUDED"
+                },
+                "message": occ_msg or "CẢNH BÁO: PHÁT HIỆN CHE MẶT!",
+                "guide": "VUI LÒNG BỎ TAY HOẶC VẬT CẢN RA KHỎI KHUÔN MẶT"
+            }
 
         is_valid_overall = (
             face_in_oval and
@@ -596,6 +650,35 @@ class EKYCPipelineServer:
         has_face = bool(landmarks is not None and len(landmarks) >= 468 and num_faces > 0)
         ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks) if landmarks else (0.0, 0.0, 0.0)
 
+        # 1.5 Kiểm tra che mặt (Face Occlusion Defense)
+        # Nếu phát hiện che mặt: TUYỆT ĐỐI KHÔNG ĐƯỢC THAY ĐỔI CHỈ SỐ EAR HOẶC TĂNG BLINK COUNTER!
+        is_occluded, occ_reason, occ_msg = self.occlusion_detector.check_occlusion(
+            frame=frame,
+            landmarks=landmarks,
+            num_faces=num_faces
+        )
+        if is_occluded:
+            frozen_ear = round(baseline_ear, 4) if baseline_ear > 0 else 0.22
+            return {
+                "has_face": bool(has_face),
+                "num_faces": num_faces,
+                "is_occluded": True,
+                "occlusion_reason": occ_reason,
+                "same_person": True,
+                "passed": False,
+                "error": occ_msg or "CẢNH BÁO: Phát hiện che mặt! Vui lòng không che mặt khi chớp mắt.",
+                "label": "⚠️ PHÁT HIỆN CHE MẶT",
+                "ear_left": frozen_ear,
+                "ear_right": frozen_ear,
+                "ear_avg": frozen_ear,   # GIỮ NGUYÊN EAR, KHÔNG THAY ĐỔI
+                "baseline_ear": round(baseline_ear, 4),
+                "closed_thresh": 0.18,
+                "open_thresh": 0.21,
+                "blink_counter": current_blink_counter,  # GIỮ NGUYÊN BỘ ĐẾM CHỚP MẮT
+                "blink_state": current_blink_state,      # GIỮ NGUYÊN TRẠNG THÁI
+                "progress": 0.0
+            }
+
         # 2. Kiểm tra nhận dạng khuôn mặt (Face Identity Consistency Check) - CHỈ trong cùng 1 phiên
         base_desc = None
         if session_id and session_id in self.liveness_sessions:
@@ -763,6 +846,34 @@ class EKYCPipelineServer:
         pose_dict = None
         if landmarks and len(landmarks) >= 468:
             _, _, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point, img_w=w, img_h=h)
+
+        # 1.5 Kiểm tra che mặt (Face Occlusion Defense)
+        # Nếu phát hiện che mặt: TUYỆT ĐỐI KHÔNG ĐƯỢC TÍNH GÓC QUAY HEAD YAW HAY TĂNG TIẾN TRÌNH!
+        is_occluded, occ_reason, occ_msg = self.occlusion_detector.check_occlusion(
+            frame=frame,
+            landmarks=landmarks,
+            num_faces=num_faces,
+            pose_dict=pose_dict
+        )
+        if is_occluded:
+            action_name = self.head_movement_detector.action.value if self.head_movement_detector.action else "TURN_HEAD"
+            return {
+                "state": "WARNING",
+                "action": action_name,
+                "passed": False,
+                "num_faces": num_faces,
+                "is_occluded": True,
+                "occlusion_reason": occ_reason,
+                "same_person": True,
+                "prompt": "⚠️ CẢNH BÁO: KHÔNG ĐƯỢC CHE MẶT!",
+                "error": occ_msg or "CẢNH BÁO: Phát hiện che mặt! Vui lòng không che mặt khi quay đầu.",
+                "time_left": 10.0,
+                "progress": 0.0,        # KHÔNG ĐỔI TIẾN TRÌNH
+                "current_angle": 0.0,   # KHÔNG ĐỔI GÓC QUAY HEAD YAW
+                "target_threshold": 8.0,
+                "is_matched": False,
+                "pose": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+            }
 
         status = self.head_movement_detector.update(pose_dict)
         clean_status = {
@@ -1025,9 +1136,21 @@ class EKYCPipelineServer:
         if not c_same_person:
             reasons.append("Phát hiện tráo đổi người thực hiện thử thách (Face Identity Mismatch)!")
 
+        # 5.6 Kiểm tra che mặt trên ảnh thẩm định cuối (Anti-Occlusion Defense)
+        is_occluded_final, occ_reason_final, occ_msg_final = self.occlusion_detector.check_occlusion(
+            frame=frame,
+            landmarks=landmarks,
+            num_faces=num_faces,
+            pose_dict=pose_dict
+        )
+        c_occlusion_free = not is_occluded_final
+        if is_occluded_final:
+            reasons.append(f"Khuôn mặt bị che khuất hoặc che một phần ({occ_reason_final})!")
+
         final_pass = bool(
             c_face and c_single and c_pose and c_spoof
             and c_both_detected and c_blink and c_head and c_same_person
+            and c_occlusion_free
         )
 
         # Xây dựng kết quả chi tiết
@@ -1047,7 +1170,8 @@ class EKYCPipelineServer:
                 "both_models_detected": bool(c_both_detected),
                 "blink_passed": bool(c_blink),
                 "head_movement_passed": bool(c_head),
-                "same_person_verified": bool(c_same_person)
+                "same_person_verified": bool(c_same_person),
+                "no_face_occlusion": bool(c_occlusion_free)
             },
             "identity_verification": {
                 "same_person_verified": bool(c_same_person),

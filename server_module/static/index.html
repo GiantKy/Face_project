@@ -2570,6 +2570,15 @@
         return;
       }
 
+      if (data.is_occluded) {
+        oval.classList.add('state-warning');
+        pill.classList.add('state-warning');
+        text.textContent = (data.message || 'CẢNH BÁO: KHÔNG ĐƯỢC CHE MẶT! BỎ TAY/VẬT CẢN RA').toUpperCase();
+        consecutiveGoodFrames = 0;
+        cancelCountdown();
+        return;
+      }
+
       if (data.is_aligned_good) {
         oval.classList.add('state-aligned');
         pill.classList.add('state-aligned');
@@ -2828,6 +2837,21 @@
               return;
             }
 
+            // Kiểm tra che mặt trong lúc thực hiện thử thách chớp mắt
+            if (data.is_occluded) {
+              const oval = document.getElementById('faceGuideOval');
+              if (oval) oval.className = 'face-guide-oval state-warning';
+              updateChallengeHUD({
+                stageText: '⚠️ CẢNH BÁO: CHE MẶT!',
+                icon: '✋',
+                prompt: 'PHÁT HIỆN CHE MẶT! VUI LÒNG BỎ TAY/VẬT CẢN RA',
+                hint: 'Không được che mặt, che mắt hoặc che miệng khi chớp mắt!',
+                isTimerUrgent: true,
+                telemetry: 'Trạng thái: ĐÃ KHÓA CHỈ SỐ EAR (DO CHE MẶT)'
+              });
+              return;
+            }
+
             blinkCounter = data.blink_counter;
             blinkState = Boolean(data.blink_state);
             blinkBaselineEAR = data.baseline_ear || blinkBaselineEAR;
@@ -2962,6 +2986,21 @@
                 hint: 'Người đang quay đầu KHÔNG PHẢI người đã chụp ở Bước 1!',
                 isTimerUrgent: true,
                 telemetry: 'Định danh không khớp'
+              });
+              return;
+            }
+
+            // Kiểm tra che mặt trong lúc thực hiện thử thách quay đầu
+            if (data.is_occluded) {
+              const oval = document.getElementById('faceGuideOval');
+              if (oval) oval.className = 'face-guide-oval state-warning';
+              updateChallengeHUD({
+                stageText: '⚠️ CẢNH BÁO: CHE MẶT!',
+                icon: '✋',
+                prompt: 'PHÁT HIỆN CHE MẶT! VUI LÒNG BỎ TAY/VẬT CẢN RA',
+                hint: 'Không được che mặt trong khi quay đầu!',
+                isTimerUrgent: true,
+                telemetry: 'Góc quay: ĐÃ KHÓA (KHUÔN MẶT BỊ CHE)'
               });
               return;
             }
