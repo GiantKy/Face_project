@@ -1,20 +1,16 @@
 /**
  * ============================================================================
- * NODE.JS RECEIVER SERVER - TIẾP NHẬN KẾT QUẢ TỪ FASTAPI AI SERVER
+ * NODE.JS RECEIVER & STREAM RELAY HUB (:3000)
  * ============================================================================
  * 
- * Máy chủ này lắng nghe Webhook được đẩy tự động từ FastAPI AI Server sau khi
- * ESP32-CAM chụp và gửi ảnh lên.
+ * Máy chủ trung tâm đóng 3 vai trò:
+ * 1. STREAM INGESTION HUB: Tiếp nhận luồng frame JPEG liên tục từ ESP32-CAM qua POST /api/stream/frame.
+ * 2. STREAM BROADCASTER: Phát luồng video MJPEG tại GET /stream và GET /api/stream/latest cho
+ *    Trình duyệt Web và FastAPI AI Server quét tự động qua localhost.
+ * 3. WEB eKYC CONTROLLER: Phục vụ giao diện người dùng static/index.html tại http://localhost:3000
+ *    và đóng vai trò Reverse Proxy chuyển tiếp các API eKYC sang FastAPI AI Server (:8000).
  * 
- * TÍNH NĂNG:
- * 1. Chạy thuần bằng Node.js tiêu chuẩn (Không cần cài bất kỳ thư viện npm nào!).
- * 2. Tiếp nhận kết quả tại POST /api/ekyc/result.
- * 3. Hiển thị Dashboard kết quả trực quan trên Terminal với mã màu.
- * 4. Tự động trích xuất Base64 lưu ảnh khuôn mặt nhận diện vào thư mục `captured_faces/`.
- * 5. Cung cấp Web Dashboard trực tiếp tại http://localhost:3000 để giám sát trực tiếp.
- * 
- * HƯỚNG DẪN KHỞI ĐỘNG:
- *   node server_module/nodejs_server_receiver.js
+ * ĐẶC BIỆT: Chạy thuần 100% bằng thư viện tiêu chuẩn của Node.js (Không cần npm install!).
  * ============================================================================
  */
 
@@ -30,8 +26,20 @@ if (!fs.existsSync(SAVE_DIR)) {
   fs.mkdirSync(SAVE_DIR, { recursive: true });
 }
 
-// Lưu trữ 20 kết quả gần nhất trong RAM để hiển thị trên Web Dashboard
+// ============================================================================
+// BỘ NHỚ ĐỆM STREAM TRONG RAM
+// ============================================================================
+let latestFrame = null;            // Buffer JPEG của frame mới nhất
+let latestFrameTime = 0;           // Thời điểm nhận frame gần nhất (ms)
+let esp32DeviceIp = '';            // IP của thiết bị ESP32-CAM
+const streamClients = new Set();   // Danh sách client đang kết nối luồng MJPEG GET /stream
+
+// Lưu trữ 25 kết quả gần nhất trong RAM
 let recentVerifications = [];
+
+// Thống kê luồng ESP32 Ingestion
+let frameReceiveCounter = 0;
+let lastLogTimestamp = 0;
 
 // Mã màu ANSI cho Terminal
 const Colors = {
@@ -45,11 +53,41 @@ const Colors = {
   gray: '\x1b[90m',
 };
 
+/**
+ * Phát frame mới nhất tới tất cả các client đang kết nối MJPEG (/stream)
+ * CÓ CƠ CHẾ DROP FRAME CHỐNG NGHẼN BỘ ĐỆM TCP (ANTI BUFFER-BLOAT):
+ * Nếu client chưa gửi xong frame trước, bỏ qua frame này để giữ độ trễ 0ms!
+ */
+function broadcastFrame(frameBuffer) {
+  if (streamClients.size === 0) return;
+  const boundary = '--mjpeg_frame\r\n';
+  const header = `Content-Type: image/jpeg\r\nContent-Length: ${frameBuffer.length}\r\n\r\n`;
+  const footer = '\r\n';
+
+  for (const client of streamClients) {
+    // Nếu client socket còn dữ liệu đang xếp hàng trong buffer (chưa gửi xong ra mạng),
+    // BỎ QUA frame này đối với client này! Không nhồi thêm vào hàng đợi TCP!
+    // Trình duyệt sẽ luôn nhận frame mới nhất với độ trễ 0ms!
+    if (client.writableLength > 0 || (client.socket && client.socket.bufferSize > 0)) {
+      continue;
+    }
+
+    try {
+      client.write(boundary);
+      client.write(header);
+      client.write(frameBuffer);
+      client.write(footer);
+    } catch (err) {
+      streamClients.delete(client);
+    }
+  }
+}
+
 const server = http.createServer((req, res) => {
   // Bật CORS cho mọi nguồn
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Device-ID, X-ESP32-IP');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -57,28 +95,140 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // --------------------------------------------------------------------------
-  // 1. ROUTE WEBHOOK: POST /api/ekyc/result (Nhận kết quả từ FastAPI AI Server)
-  // --------------------------------------------------------------------------
-  if (req.method === 'POST' && req.url === '/api/ekyc/result') {
-    let bodyChunks = [];
+  const parsedUrl = new URL(req.url, 'http://localhost');
+  const pathname = parsedUrl.pathname;
 
-    req.on('data', chunk => {
-      bodyChunks.push(chunk);
+  // --------------------------------------------------------------------------
+  // 1. INGESTION ROUTE: POST /api/stream/frame (ESP32 đẩy frame JPEG liên tục)
+  // --------------------------------------------------------------------------
+  if (req.method === 'POST' && pathname === '/api/stream/frame') {
+    if (req.socket) req.socket.setNoDelay(true);
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    req.on('end', () => {
+      const buffer = Buffer.concat(chunks);
+      if (buffer.length > 500) {
+        latestFrame = buffer;
+        latestFrameTime = Date.now();
+
+        // Ghi nhận IP ESP32
+        const rawIp = req.headers['x-esp32-ip'] || req.socket.remoteAddress || '';
+        esp32DeviceIp = rawIp.replace(/^::ffff:/, '');
+
+        frameReceiveCounter++;
+        const now = Date.now();
+        if (now - lastLogTimestamp >= 5000) {
+          const fps = Math.round((frameReceiveCounter * 1000) / Math.max(1, now - lastLogTimestamp));
+          console.log(`${Colors.cyan}[ESP32 STREAM INGEST] Đang nhận frame từ ${esp32DeviceIp || 'ESP32'} (~${fps} FPS, ${buffer.length} bytes, viewers: ${streamClients.size})${Colors.reset}`);
+          frameReceiveCounter = 0;
+          lastLogTimestamp = now;
+        }
+
+        // Broadcast ngay lập tức cho các client đang xem
+        broadcastFrame(buffer);
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'text/plain',
+        'Content-Length': '2',
+        'Connection': 'keep-alive'
+      });
+      res.end('OK');
+    });
+    req.on('error', (err) => {
+      // Bỏ qua lỗi ngắt kết nối tạm thời từ ESP32
+    });
+    return;
+  }
+
+  // --------------------------------------------------------------------------
+  // 2. BROADCAST ROUTE: GET /stream (Phát luồng MJPEG thời gian thực)
+  // --------------------------------------------------------------------------
+  if (req.method === 'GET' && pathname === '/stream') {
+    res.writeHead(200, {
+      'Content-Type': 'multipart/x-mixed-replace; boundary=mjpeg_frame',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Connection': 'close',
+      'Access-Control-Allow-Origin': '*'
     });
 
+    if (res.socket) {
+      res.socket.setNoDelay(true); // Gửi gói tin TCP ngay tức thì, tắt thuật toán Nagle
+      res.socket.setKeepAlive(true, 1000);
+    }
+
+    streamClients.add(res);
+
+    // Gửi ngay frame mới nhất trong RAM nếu có
+    if (latestFrame) {
+      try {
+        res.write('--mjpeg_frame\r\n');
+        res.write(`Content-Type: image/jpeg\r\nContent-Length: ${latestFrame.length}\r\n\r\n`);
+        res.write(latestFrame);
+        res.write('\r\n');
+      } catch (e) {}
+    }
+
+    req.on('close', () => {
+      streamClients.delete(res);
+    });
+    return;
+  }
+
+  // --------------------------------------------------------------------------
+  // 3. SINGLE FRAME ROUTE: GET /api/stream/latest (Trả về 1 frame JPEG mới nhất)
+  //    Dành cho AI Server chụp snapshot với độ trễ 0ms qua localhost
+  // --------------------------------------------------------------------------
+  if (req.method === 'GET' && pathname === '/api/stream/latest') {
+    if (!latestFrame) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Chưa nhận được frame nào từ ESP32-CAM' }));
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'image/jpeg',
+      'Content-Length': latestFrame.length,
+      'Cache-Control': 'no-cache, no-store',
+      'Access-Control-Allow-Origin': '*'
+    });
+    res.end(latestFrame);
+    return;
+  }
+
+  // --------------------------------------------------------------------------
+  // 4. DEVICE INFO ROUTE: GET /api/device/info (Trạng thái kết nối ESP32)
+  // --------------------------------------------------------------------------
+  if (req.method === 'GET' && pathname === '/api/device/info') {
+    const isLive = latestFrame !== null && (latestFrameTime > 0) && ((Date.now() - latestFrameTime) < 15000);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      is_live: isLive,
+      has_frame: latestFrame !== null,
+      esp32_ip: esp32DeviceIp || '192.168.137.1',
+      last_frame_ago_ms: latestFrameTime > 0 ? (Date.now() - latestFrameTime) : -1,
+      active_viewers: streamClients.size
+    }));
+    return;
+  }
+
+  // --------------------------------------------------------------------------
+  // 5. WEBHOOK ROUTE: POST /api/ekyc/result (Nhận kết quả từ FastAPI AI Server)
+  // --------------------------------------------------------------------------
+  if (req.method === 'POST' && pathname === '/api/ekyc/result') {
+    let bodyChunks = [];
+    req.on('data', chunk => bodyChunks.push(chunk));
     req.on('end', () => {
       try {
         const rawBody = Buffer.concat(bodyChunks).toString('utf-8');
         const payload = JSON.parse(rawBody);
 
-        // Xử lý dữ liệu nhận diện
         const result = processEKYCResult(payload);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           status: 'SUCCESS',
-          message: 'Node.js Server đã tiếp nhận kết quả xác thực thành công!',
+          message: 'Node.js Server đã lưu kết quả xác thực thành công!',
           received_at: new Date().toISOString(),
           record_id: result.id
         }));
@@ -92,9 +242,9 @@ const server = http.createServer((req, res) => {
   }
 
   // --------------------------------------------------------------------------
-  // 2. ROUTE API LỊCH SỬ: GET /api/ekyc/history
+  // 6. ROUTE API LỊCH SỬ: GET /api/ekyc/history
   // --------------------------------------------------------------------------
-  if (req.method === 'GET' && req.url === '/api/ekyc/history') {
+  if (req.method === 'GET' && pathname === '/api/ekyc/history') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       total: recentVerifications.length,
@@ -104,19 +254,87 @@ const server = http.createServer((req, res) => {
   }
 
   // --------------------------------------------------------------------------
-  // 3. ROUTE WEB DASHBOARD: GET / (Giao diện giám sát Realtime)
+  // 6.5. PROXY ROUTE: /api/v1/* -> Chuyển tiếp tới FastAPI AI Server (:8000)
   // --------------------------------------------------------------------------
-  if (req.method === 'GET' && req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(generateDashboardHTML());
+  if (pathname.startsWith('/api/v1/')) {
+    const aiServerHost = process.env.AI_SERVER_HOST || '127.0.0.1';
+    const aiServerPort = parseInt(process.env.AI_SERVER_PORT || '8000', 10);
+
+    const proxyOptions = {
+      hostname: aiServerHost,
+      port: aiServerPort,
+      path: req.url,
+      method: req.method,
+      headers: { ...req.headers, host: `${aiServerHost}:${aiServerPort}` }
+    };
+
+    const proxyReq = http.request(proxyOptions, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
+
+    proxyReq.on('error', (err) => {
+      console.error(`${Colors.red}[PROXY ERROR]: Không thể kết nối tới FastAPI AI Server (${aiServerHost}:${aiServerPort}): ${err.message}${Colors.reset}`);
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        detail: `Không thể kết nối tới FastAPI AI Server tại ${aiServerHost}:${aiServerPort}. Hãy kiểm tra xem server AI đã bật chưa (python app.py). Lỗi: ${err.message}`
+      }));
+    });
+
+    req.pipe(proxyReq);
     return;
   }
 
   // --------------------------------------------------------------------------
-  // 4. PHỤC VỤ ẢNH ĐÃ LƯU: GET /images/:filename
+  // 7. ROUTE WEB DASHBOARD: GET / và GET /index.html (Giao diện static/index.html)
   // --------------------------------------------------------------------------
-  if (req.method === 'GET' && req.url.startsWith('/images/')) {
-    const filename = path.basename(req.url);
+  if (req.method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
+    const htmlPath = path.join(__dirname, 'static', 'index.html');
+    if (fs.existsSync(htmlPath)) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      fs.createReadStream(htmlPath).pipe(res);
+      return;
+    } else {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Lỗi: Không tìm thấy file static/index.html');
+      return;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 7.1. PHỤC VỤ STATIC ASSETS: GET /static/*
+  // --------------------------------------------------------------------------
+  if (req.method === 'GET' && pathname.startsWith('/static/')) {
+    const staticBase = path.join(__dirname, 'static');
+    const cleanUrl = pathname.replace(/^\/static\//, '');
+    const safePath = path.normalize(cleanUrl).replace(/^(\.\.[\/\\])+/, '');
+    const targetFile = path.join(staticBase, safePath);
+
+    if (targetFile.startsWith(staticBase) && fs.existsSync(targetFile) && fs.statSync(targetFile).isFile()) {
+      const ext = path.extname(targetFile).toLowerCase();
+      const mimeTypes = {
+        '.html': 'text/html; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+        '.js': 'application/javascript; charset=utf-8',
+        '.json': 'application/json; charset=utf-8',
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon'
+      };
+      res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+      fs.createReadStream(targetFile).pipe(res);
+      return;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 8. PHỤC VỤ ẢNH ĐÃ LƯU: GET /images/:filename
+  // --------------------------------------------------------------------------
+  if (req.method === 'GET' && pathname.startsWith('/images/')) {
+    const filename = path.basename(pathname);
     const filePath = path.join(SAVE_DIR, filename);
 
     if (fs.existsSync(filePath)) {
@@ -136,9 +354,9 @@ const server = http.createServer((req, res) => {
  */
 function processEKYCResult(data) {
   const timestamp = data.timestamp || new Date().toLocaleString('vi-VN');
-  const deviceId = data.device_id || 'UNKNOWN_DEVICE';
+  const deviceId = data.device_id || 'ESP32_S3_GATE_01';
   const approved = data.approved === true;
-  const verdict = data.verdict || (approved ? 'REAL' : 'SPOOF');
+  const verdict = data.verdict || (approved ? 'APPROVED' : 'REJECTED');
   const isReal = data.is_real === true;
   const confidence = typeof data.confidence === 'number' ? (data.confidence * 100).toFixed(1) : 'N/A';
   const procTime = data.processing_time_ms || 'N/A';
@@ -146,11 +364,27 @@ function processEKYCResult(data) {
   const recordId = `REC_${Date.now()}`;
   let savedImagePath = null;
   let savedImageRelUrl = null;
+  let savedDualPath = null;
+  let savedDualRelUrl = null;
 
-  // Tự động lưu ảnh khuôn mặt nếu có chuỗi base64
-  if (data.crop_face_base64) {
+  // Lưu ảnh Dual Window Side-by-Side nếu có
+  if (data.dual_window_image_base64) {
     try {
-      let b64Data = data.crop_face_base64;
+      let b64Dual = data.dual_window_image_base64;
+      if (b64Dual.includes(',')) b64Dual = b64Dual.split(',')[1];
+      const dualFilename = `dual_${Date.now()}_${verdict}.jpg`;
+      savedDualPath = path.join(SAVE_DIR, dualFilename);
+      fs.writeFileSync(savedDualPath, Buffer.from(b64Dual, 'base64'));
+      savedDualRelUrl = `/images/${dualFilename}`;
+    } catch (e) {
+      console.error(`Không thể lưu file Dual Window: ${e.message}`);
+    }
+  }
+
+  // Lưu ảnh khuôn mặt crop/captured
+  if (data.crop_face_base64 || data.captured_image_base64) {
+    try {
+      let b64Data = data.crop_face_base64 || data.captured_image_base64;
       if (b64Data.includes(',')) {
         b64Data = b64Data.split(',')[1];
       }
@@ -163,7 +397,6 @@ function processEKYCResult(data) {
     }
   }
 
-  // Lưu vào bộ nhớ RAM phục vụ Web Dashboard
   const record = {
     id: recordId,
     timestamp,
@@ -174,6 +407,7 @@ function processEKYCResult(data) {
     confidence,
     reasons: data.reasons || [],
     image_url: savedImageRelUrl,
+    dual_window_url: savedDualRelUrl,
     processing_time_ms: procTime
   };
 
@@ -182,15 +416,10 @@ function processEKYCResult(data) {
     recentVerifications.pop();
   }
 
-  // In thông tin ra Terminal Dashboard
   printTerminalDashboard(record);
-
   return record;
 }
 
-/**
- * In giao diện Terminal Dashboard
- */
 function printTerminalDashboard(r) {
   const isPass = r.approved;
   const statusColor = isPass ? Colors.green : Colors.red;
@@ -198,178 +427,33 @@ function printTerminalDashboard(r) {
   const border = '═'.repeat(65);
 
   console.log(`\n${statusColor}${border}${Colors.reset}`);
-  console.log(` ${icon} ${Colors.bright}SỰ KIỆN eKYC ESP32-CAM: [${r.verdict}]${Colors.reset}  (${r.timestamp})`);
+  console.log(` ${icon} ${Colors.bright}SỰ KIỆN eKYC: [${r.verdict}]${Colors.reset}  (${r.timestamp})`);
   console.log(`${statusColor}${border}${Colors.reset}`);
-  console.log(` • Thiết bị gửi:  ${Colors.cyan}${r.device_id}${Colors.reset}`);
-  console.log(` • Kết luận:      ${statusColor}${r.verdict} (${isPass ? 'ĐƯỢC DUYỆT' : 'BỊ TỪ CHỐI'})${Colors.reset}`);
-  console.log(` • Độ tin cậy:    ${Colors.yellow}${r.confidence}%${Colors.reset}`);
-  console.log(` • Thời gian AI:  ${Colors.gray}${r.processing_time_ms} ms${Colors.reset}`);
-  if (r.reasons && r.reasons.length > 0) {
-    console.log(` • Chi tiết:      ${r.reasons.join(', ')}`);
-  }
+  console.log(` • Thiết bị gửi:     ${Colors.cyan}${r.device_id}${Colors.reset}`);
+  console.log(` • Kết luận:         ${statusColor}${r.verdict} (${isPass ? 'ĐƯỢC DUYỆT' : 'BỊ TỪ CHỐI'})${Colors.reset}`);
+  console.log(` • Độ tin cậy:       ${Colors.yellow}${r.confidence}%${Colors.reset}`);
+  console.log(` • Thời gian AI:     ${Colors.gray}${r.processing_time_ms} ms${Colors.reset}`);
   if (r.image_url) {
-    console.log(` • Ảnh khuôn mặt: ${Colors.blue}${r.image_url}${Colors.reset}`);
+    console.log(` • Ảnh khuôn mặt:    ${Colors.blue}${r.image_url}${Colors.reset}`);
+  }
+  if (r.dual_window_url) {
+    console.log(` • Bảng Dual-Window: ${Colors.green}${r.dual_window_url}${Colors.reset}`);
   }
   console.log(`${statusColor}${border}${Colors.reset}\n`);
 }
 
-/**
- * Tạo giao diện HTML Web Dashboard đơn giản
- */
-function generateDashboardHTML() {
-  return `
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>eKYC Access Control - Node.js Monitor</title>
-  <style>
-    :root {
-      --bg: #090d16;
-      --card-bg: #131b2e;
-      --border: #222f4c;
-      --text: #e2e8f0;
-      --text-dim: #94a3b8;
-      --green: #10b981;
-      --red: #ef4444;
-      --accent: #38bdf8;
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--bg);
-      color: var(--text);
-      margin: 0;
-      padding: 24px;
-    }
-    .container {
-      max-width: 1000px;
-      margin: 0 auto;
-    }
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 16px;
-      margin-bottom: 24px;
-    }
-    h1 {
-      font-size: 22px;
-      margin: 0;
-      color: var(--accent);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .badge-live {
-      background: rgba(16, 185, 129, 0.2);
-      color: var(--green);
-      border: 1px solid var(--green);
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-      gap: 16px;
-    }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 16px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      display: flex;
-      gap: 14px;
-    }
-    .card.pass { border-left: 4px solid var(--green); }
-    .card.fail { border-left: 4px solid var(--red); }
-    .avatar {
-      width: 80px;
-      height: 80px;
-      border-radius: 8px;
-      object-fit: cover;
-      background: #020617;
-      border: 1px solid var(--border);
-    }
-    .info {
-      flex: 1;
-    }
-    .verdict {
-      font-size: 15px;
-      font-weight: 700;
-      margin-bottom: 4px;
-    }
-    .pass .verdict { color: var(--green); }
-    .fail .verdict { color: var(--red); }
-    .meta {
-      font-size: 12px;
-      color: var(--text-dim);
-      margin-bottom: 3px;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <header>
-      <h1>🛡️ eKYC Gate Access Monitor (Node.js)</h1>
-      <div class="badge-live">● SẴN SÀNG</div>
-    </header>
-
-    <div id="cardsList" class="grid">
-      <div style="color: var(--text-dim); font-size: 14px;">Đang tải dữ liệu...</div>
-    </div>
-  </div>
-
-  <script>
-    async function loadData() {
-      try {
-        const res = await fetch('/api/ekyc/history');
-        const data = await res.json();
-        const list = document.getElementById('cardsList');
-
-        if (!data.history || data.history.length === 0) {
-          list.innerHTML = '<div style="color: var(--text-dim); font-size: 14px;">Chưa có lượt xác thực nào từ ESP32-CAM. Hãy bấm chụp trên camera!</div>';
-          return;
-        }
-
-        list.innerHTML = data.history.map(item => \`
-          <div class="card \${item.approved ? 'pass' : 'fail'}">
-            \${item.image_url ? \`<img class="avatar" src="\${item.image_url}" alt="Face">\` : '<div class="avatar" style="display:flex;align-items:center;justify-content:center;font-size:24px;">👤</div>'}
-            <div class="info">
-              <div class="verdict">\${item.approved ? '✅' : '❌'} \${item.verdict}</div>
-              <div class="meta">📍 \${item.device_id}</div>
-              <div class="meta">🎯 Độ tin cậy: \${item.confidence}%</div>
-              <div class="meta">⏱️ \${item.processing_time_ms} ms</div>
-              <div class="meta">🕒 \${item.timestamp}</div>
-            </div>
-          </div>
-        \`).join('');
-      } catch (err) {
-        console.error(err);
-      }
-    }
-
-    loadData();
-    setInterval(loadData, 2000);
-  </script>
-</body>
-</html>
-  `;
-}
-
+// ============================================================================
+// KHỞI ĐỘNG SERVER
+// ============================================================================
 server.listen(PORT, () => {
   console.log(`\n${Colors.bright}${Colors.green}===============================================================${Colors.reset}`);
-  console.log(`${Colors.bright} [NODE.JS RECEIVER SERVER ĐÃ SẴN SÀNG]${Colors.reset}`);
+  console.log(`${Colors.bright} [NODE.JS STREAM RELAY & eKYC HUB ĐÃ SẴN SÀNG]${Colors.reset}`);
   console.log(`${Colors.green}===============================================================${Colors.reset}`);
-  console.log(` • Lắng nghe Webhook tại:  ${Colors.cyan}http://127.0.0.1:${PORT}/api/ekyc/result${Colors.reset}`);
-  console.log(` • Web Realtime Dashboard:  ${Colors.yellow}http://localhost:${PORT}/${Colors.reset}`);
-  console.log(` • Thư mục lưu ảnh:        ${Colors.blue}${SAVE_DIR}${Colors.reset}`);
+  console.log(` • Cổng Ingestion (ESP32 đẩy frame): ${Colors.cyan}POST http://127.0.0.1:${PORT}/api/stream/frame${Colors.reset}`);
+  console.log(` • Cổng phát MJPEG Stream:          ${Colors.cyan}GET  http://127.0.0.1:${PORT}/stream${Colors.reset}`);
+  console.log(` • Cổng lấy 1 frame mới nhất:       ${Colors.cyan}GET  http://127.0.0.1:${PORT}/api/stream/latest${Colors.reset}`);
+  console.log(` • Web eKYC Dashboard:              ${Colors.yellow}http://localhost:${PORT}/${Colors.reset}`);
+  console.log(` • Webhook kết quả:                 ${Colors.cyan}POST http://127.0.0.1:${PORT}/api/ekyc/result${Colors.reset}`);
+  console.log(` • Thư mục lưu ảnh:                 ${Colors.blue}${SAVE_DIR}${Colors.reset}`);
   console.log(`${Colors.green}===============================================================${Colors.reset}\n`);
 });

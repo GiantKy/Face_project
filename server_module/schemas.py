@@ -126,6 +126,7 @@ class VerifyResponse(BaseModel):
     active_liveness: ActiveLivenessDetail = Field(..., description="Dữ liệu kiểm tra cử động")
     crop_face_base64: Optional[str] = Field(None, description="Ảnh khuôn mặt crop 224x224 Base64 chuẩn hóa (lưu DB)")
     annotated_image_base64: Optional[str] = Field(None, description="Ảnh đã vẽ HUD và khung nhận diện (hiển thị UI)")
+    dual_window_image_base64: Optional[str] = Field(None, description="Ảnh Dual Window (Side-by-Side) kết hợp ảnh khuôn mặt và dashboard AI 5 phần")
     oval_guide: Optional[Dict[str, Any]] = Field(None, description="Tọa độ và thông tin khung oval hướng dẫn")
     processing_time_ms: float = Field(..., description="Tổng thời gian xử lý toàn bộ quy trình (ms)")
 

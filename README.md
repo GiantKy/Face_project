@@ -2,28 +2,34 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11-blue?logo=python" alt="Python Version" />
+  <img src="https://img.shields.io/badge/Node.js-v18+-green?logo=node.js" alt="Node.js" />
   <img src="https://img.shields.io/badge/FastAPI-v0.110+-009688?logo=fastapi" alt="FastAPI" />
   <img src="https://img.shields.io/badge/PyTorch-%3E%3D2.0-orange?logo=pytorch" alt="PyTorch" />
   <img src="https://img.shields.io/badge/OpenCV-%3E%3D4.8-green?logo=opencv" alt="OpenCV" />
   <img src="https://img.shields.io/badge/ESP32--S3-CAM%20WROOM%20N16R8-red?logo=espressif" alt="ESP32-S3" />
-  <img src="https://img.shields.io/badge/YOLO-v8%20Face%20%26%20Anti--Spoof%204-yellow" alt="YOLO" />
-  <img src="https://img.shields.io/badge/Roboflow-RF--DETR%20Small%20Transformer-red" alt="RF-DETR" />
+  <img src="https://img.shields.io/badge/Model%201-YOLO__4%20Anti--Spoof%20(Latest)-yellow" alt="YOLO 4" />
+  <img src="https://img.shields.io/badge/Model%202-RF--DETR%20Small%20Transformer%20(Latest)-red" alt="RF-DETR" />
   <img src="https://img.shields.io/badge/MediaPipe-Face%20Landmarker%20478-blueviolet" alt="MediaPipe" />
 </p>
 
-Hệ thống xác thực danh tính sinh trắc học khuôn mặt chuẩn FinTech / Ngân hàng (**eKYC Face Verification & Access Control**). Dự án kết hợp khép kín giữa **Thiết bị nhúng ESP32-S3 CAM (Điều khiển cửa Relay)** và **AI Server Microservice (FastAPI + PyTorch + Tensor/ONNX)**, tích hợp: phát hiện khuôn mặt, trích xuất 478 điểm mốc 3D, **chống giả mạo đa tầng kết hợp Ensemble (YOLO_4 + RF-DETR Small Transformer)** và xác thực cử động sống chủ động (Active Liveness: Chớp mắt & Quay đầu).
+Hệ thống xác thực danh tính sinh trắc học khuôn mặt chuẩn FinTech / Ngân hàng (**eKYC Face Verification & Access Control**). Dự án kết hợp khép kín giữa **Thiết bị nhúng ESP32-S3 CAM (hoặc Webcam)**, **Node.js Stream Relay & Web Controller (:3000)** và **AI Server Microservice (FastAPI + PyTorch + ONNX Runtime :8000)**.
+
+> [!IMPORTANT]
+> **Hệ thống đang sử dụng kết hợp đồng thời CẢ 2 MÔ HÌNH CHỐNG GIẢ MẠO MỚI NHẤT (Ensemble Dual-Model Architecture):**
+> 1. ⚡ **YOLO_4 (`Anti_Spoof_YOLO_4.pt`)**: Mô hình CNN YOLOv8 mới nhất chuyên biệt cho Face Anti-Spoofing, phản hồi siêu tốc, cực nhạy với vân in và viền màn hình.
+> 2. 🧠 **RF-DETR Small Transformer (`weights.onnx`)**: Mô hình Real-Time DEtection TRansformer mới nhất từ Roboflow, sử dụng cơ chế Self-Attention đa tầng để soi cấu trúc ánh sáng, chiều sâu và các chiêu trò giả mạo tinh vi (Replay Attack, Silicone Mask, Màn hình OLED).
 
 ---
 
 ## 📑 Mục Lục
 1. [Link Tải Tất Cả Mô Hình AI (Google Drive)](#-link-tải-tất-cả-mô-hình-ai-google-drive)
-2. [Kiến Trúc Xác Thực 3 Bước eKYC (Pipeline Overview)](#-kiến-trúc-xác-thực-3-bước-ekyc-pipeline-overview)
-3. [Công Nghệ & Tính Năng Nổi Bật](#-công-nghệ--tính-năng-nổi-bật)
-4. [Cấu Trúc Thư Mục Dự Án](#-cấu-trúc-thư-mục-dự-án)
-5. [Cài Đặt & Khởi Chạy Máy Chủ AI](#-cài-đặt--khởi-chạy-máy-chủ-ai)
-6. [Cài Đặt & Nạp Code Firmware ESP32-S3 CAM](#-cài-đặt--nạp-code-firmware-esp32-s3-cam)
-7. [Tài Liệu API Endpoints (FastAPI)](#-tài-liệu-api-endpoints-fastapi)
-8. [Tích Hợp Webhook Node.js Backend](#-tích-hợp-webhook-nodejs-backend)
+2. [Chi Tiết 2 Mô Hình AI Mới Nhất (YOLO_4 & RF-DETR)](#-chi-tiết-2-mô-hình-ai-mới-nhất-yolo_4--rf-detr)
+3. [Kiến Trúc Xác Thực 3 Bước eKYC (Pipeline Overview)](#-kiến-trúc-xác-thực-3-bước-ekyc-pipeline-overview)
+4. [Tính Năng Nổi Bật & Giao Diện Web UI](#-tính-năng-nổi-bật--giao-diện-web-ui)
+5. [Cấu Trúc Thư Mục Dự Án](#-cấu-trúc-thư-mục-dự-án)
+6. [Cài Đặt & Khởi Chạy Máy Chủ AI & Node.js](#-cài-đặt--khởi-chạy-máy-chủ-ai--nodejs)
+7. [Cài Đặt & Nạp Code Firmware ESP32-S3 CAM](#-cài-đặt--nạp-code-firmware-esp32-s3-cam)
+8. [Tài Liệu API Endpoints (FastAPI)](#-tài-liệu-api-endpoints-fastapi)
 9. [Khắc Phục Sự Cố Thường Gặp (Troubleshooting)](#-khắc-phục-sự-cố-thường-gặp-troubleshooting)
 
 ---
@@ -33,32 +39,77 @@ Hệ thống xác thực danh tính sinh trắc học khuôn mặt chuẩn FinTe
 Toàn bộ trọng số mô hình đã huấn luyện được lưu trữ tại Google Drive:
 * 🔗 **Google Drive Repository:** [Google Drive - Face Project Models Folder](https://drive.google.com/drive/folders/1O7lqzhpJ8DE9x2AFzMyrd3M2-8sNdYBn)
 
-### Bảng đối chiếu model sử dụng:
-| Tên File Model | Vị trí trong Project | Kích thước | Chức năng chính |
-|:---|:---|:---:|:---|
-| `Face_Detection.pt` | `server_module/models/` & `models/` | ~19 MB | YOLO Face Detection độ nhạy cao |
-| `face_landmarker.task` | `server_module/models/` & `models/` | ~3.7 MB | Google MediaPipe 478 Landmarks 3D |
-| `Anti_Spoof_YOLO_4.pt` | `server_module/models/` & `models/` | ~6.2 MB | Model 1: YOLOv8 Face Anti-Spoofing |
-| `roboflow/**/weights.onnx` | `server_module/models/` & `models/` | ~108.9 MB | Model 2: RF-DETR Small Transformer |
-| `Anti_Spoof_minifasnet.pth` | `models/` | ~240 KB | CNN MiniFASNetV2 PyTorch |
-| `Model_MobilenetV2/` | `models/` | ~9 MB | MobileNetV2 Safetensors |
+### Bảng đối chiếu model sử dụng trong hệ thống:
+| Phân loại | Tên File Model | Vị trí trong Project | Kích thước | Chức năng chính & Trạng thái |
+|:---|:---|:---|:---:|:---|
+| **Lõi AI Chính 1** | `Anti_Spoof_YOLO_4.pt` | `server_module/models/` | ~6.2 MB | **Model Mới Nhất 1:** YOLO_4 Face Anti-Spoofing CNN chuyên biệt |
+| **Lõi AI Chính 2** | `roboflow/.../weights.onnx` | `server_module/models/` | ~108.9 MB | **Model Mới Nhất 2:** RF-DETR Small Vision Transformer đa tầng |
+| **Phát Hiện Mặt** | `Face_Detection.pt` | `server_module/models/` | ~19 MB | YOLO Face Detection độ nhạy cao (IoU $\ge 0.40$) |
+| **3D Landmarks** | `face_landmarker.task` | `server_module/models/` | ~3.7 MB | MediaPipe 478 Landmark 3D đo EAR chớp mắt & Yaw quay đầu |
+| *Tham chiếu cũ* | `Anti_Spoof_minifasnet.pth` | `models/` | ~240 KB | CNN MiniFASNetV2 (bản benchmark đối chứng) |
+| *Tham chiếu cũ* | `Model_MobilenetV2/` | `models/` | ~9 MB | MobileNetV2 Safetensors (bản benchmark đối chứng) |
+
+---
+
+## 🔬 Chi Tiết 2 Mô Hình AI Mới Nhất (YOLO_4 & RF-DETR)
+
+Hệ thống kết hợp sức mạnh cộng hưởng giữa **CNN (Đặc trưng cục bộ)** và **Transformer (Ngữ cảnh toàn cục)**:
+
+```
+                                  ┌───────────────────────────────┐
+                                  │   Ảnh Khuôn Mặt (224x224)    │
+                                  └──────────────┬────────────────┘
+                                                 │
+                        ┌────────────────────────┴────────────────────────┐
+                        │                                                 │
+                        ▼                                                 ▼
+        ┌───────────────────────────────┐                 ┌───────────────────────────────┐
+        │  MODEL 1: YOLO_4 (v8 CNN)     │                 │  MODEL 2: RF-DETR TRANSFORMER │
+        │  File: Anti_Spoof_YOLO_4.pt   │                 │  File: weights.onnx (ONNX RT) │
+        ├───────────────────────────────┤                 ├───────────────────────────────┤
+        │ • Trích xuất đặc trưng vi mô  │                 │ • Multi-Head Self-Attention   │
+        │ • Vân giấy in, viền cắt ảnh   │                 │ • Bối cảnh toàn cục (Global)  │
+        │ • Chói lóa mép kính điện thoại│                 │ • Màn hình OLED, video replay │
+        │ • Tốc độ: ~15-25ms            │                 │ • Tốc độ: ~45-60ms            │
+        └──────────────┬────────────────┘                 └───────────────┬───────────────┘
+                       │ (Conf_YOLO, Label_YOLO)                          │ (Conf_RF, Label_RF)
+                       └────────────────────────┬─────────────────────────┘
+                                                │
+                                                ▼
+                         ┌──────────────────────────────────────────────┐
+                         │   ENSEMBLE ENGINE & STRICT VETO ARBITRATION  │
+                         │   • IoU Matching khuôn mặt >= 0.40           │
+                         │   • Soft-Voting Confidence Fusion            │
+                         │   • Phủ quyết an ninh (Strict Veto >= 68%)   │
+                         │   • Đạt cả 2 model mới duyệt APPROVED        │
+                         └──────────────────────────────────────────────┘
+```
+
+1. **Model 1: YOLO_4 (`Anti_Spoof_YOLO_4.pt`):**
+   - Được huấn luyện tối ưu hóa trên nền YOLOv8 mới nhất dành riêng cho khuôn mặt.
+   - Tập trung vào các sai khác tần số cao (High-frequency details): hạt mực in, độ thô ráp của bề mặt da thật so với bề mặt nhẵn bóng của màn hình, viền cắt mép ảnh giả mạo.
+2. **Model 2: RF-DETR Small Transformer (`weights.onnx`):**
+   - Ứng dụng kiến trúc Real-Time Detection Transformer hiện đại từ Roboflow.
+   - Nhờ cơ chế Self-Attention, mô hình phân tích mối tương quan ánh sáng giữa khuôn mặt và môi trường xung quanh, phát hiện các trường hợp giả mạo tinh vi mà CNN dễ bỏ sót (ảnh chiếu lại trên màn hình iPad/TV, mặt nạ 3D silicone, ảnh in xuyên sáng).
+3. **Cơ chế Phủ Quyết An Ninh (Strict Spoof Veto):**
+   - Nếu **bất kỳ model nào** đưa ra cảnh báo giả mạo với độ tin cậy $\ge 68\%$, hệ thống lập tức phủ quyết thành **SPOOF**, ngăn chặn triệt để tình trạng lọt gian lận.
+   - Bảng kết quả trả về hiển thị chi tiết độ tin cậy của từng model: `both_detected` (cả 2 model đều phát hiện mặt) và `agreement` (cả 2 đồng thuận kết luận).
 
 ---
 
 ## 🔄 Kiến Trúc Xác Thực 3 Bước eKYC (Pipeline Overview)
 
-Hệ thống hoạt động theo mô hình **Push-Image linh hoạt từ ESP32-S3 lên AI Server**:
+Hệ thống hoạt động theo quy trình xác thực khép kín:
 
 ```
                     [ KHỞI ĐẦU: NGƯỜI DÙNG TIẾP CẬN ]
                                    │
                                    ▼
  ┌───────────────────────────────────────────────────────────────────┐
- │ BƯỚC 1: SNAPSHOT VGA 640x480 - FACE DETECT & ENSEMBLE ANTI-SPOOF  │
- │ • Chụp 1 ảnh tĩnh VGA sắc nét (Pixel size lớn, chống bết dính)    │
- │ • Phát hiện mặt 5 tầng (YOLO 0.28 -> CLAHE -> MediaPipe BlazeFace)│
- │ • Đánh giá tư thế nhìn thẳng (|Yaw| <= 25°, |Pitch| <= 22°)       │
- │ • Cụm Ensemble Anti-Spoof: YOLO_4 + RF-DETR Small (Strict Veto)   │
+ │ BƯỚC 1: CANH OVAL & ENSEMBLE ANTI-SPOOF (YOLO_4 + RF-DETR)        │
+ │ • Chụp ảnh khuôn mặt sắc nét trong khung Oval phát sáng neon      │
+ │ • Phát hiện mặt & Đánh giá 3D Pose nhìn thẳng (|Yaw|<=25°, Pitch) │
+ │ • Đồng thuận 2 model mới nhất: YOLO_4 + RF-DETR (Strict Veto)     │
  └─────────────────────────────────┬─────────────────────────────────┘
                                    │
                     ┌──────────────┴──────────────┐
@@ -67,31 +118,48 @@ Hệ thống hoạt động theo mô hình **Push-Image linh hoạt từ ESP32-S
                     │                             │
                     ▼                             ▼
          [FAIL-FAST: DỪNG NGAY]       [TẠO SESSION_ID + GIAO THỬ THÁCH]
-         • Hiển thị ảnh chụp viền đỏ              │
+         • Hiển thị viền đỏ cảnh báo              │
          • KHÔNG chạy tiếp các bước sau           ▼
                                 ┌────────────────────────────────────┐
-                                │ BƯỚC 2: PUSH-IMAGE 240x240 - BLINK │
-                                │ • Tự động hạ về 240x240 (FPS cao)  │
-                                │ • Giới hạn thời gian: 10 giây      │
-                                │ • EAR giảm > 15% so với baseline   │
+                                │ BƯỚC 2: THỬ THÁCH CHỚP MẮT (BLINK) │
+                                │ • Đo lường chỉ số mở mắt EAR       │
+                                │ • Baseline thích ứng từng cá nhân  │
                                 │ • Chu kỳ: Mở -> Nhắm -> Mở         │
                                 └─────────────────┬──────────────────┘
                                                   │ (Chớp mắt ĐẠT)
                                                   ▼
                                 ┌────────────────────────────────────┐
-                                │ BƯỚC 3: PUSH-IMAGE 240x240 - HEAD  │
+                                │ BƯỚC 3: THỬ THÁCH QUAY ĐẦU (HEAD)  │
                                 │ • Thử thách ngẫu nhiên TRÁI / PHẢI │
-                                │ • Giới hạn thời gian: 10 giây      │
-                                │ • PnP Pose chuẩn: Quay Trái: Yaw-  │
-                                │                   Quay Phải: Yaw+  │
-                                │ • Biên độ >= 5.0° (pass sau 1 shot)│
+                                │ • Đo góc Euler Yaw qua 3D PnP      │
+                                │ • Nhích nhẹ ~8 độ là vượt qua      │
                                 └─────────────────┬──────────────────┘
                                                   │ (Quay đầu ĐẠT)
                                                   ▼
                                 ┌────────────────────────────────────┐
-                                │ KẾT QUẢ CUỐI CÙNG (APPROVED REAL)  │
+                                │ BƯỚC 4: KẾT QUẢ DUAL WINDOW        │
                                 │ 1. Kích hoạt Relay mở cửa ESP32    │
-                                │ 2. Nháy đèn LED flash xác nhận     │
+                                │ 2. Xuất bảng Side-by-Side 5 phần   │
+                                │ 3. Bắn Webhook sang Node.js Backend│
+                                └────────────────────────────────────┘
+```
+
+---
+
+## 🌟 Tính Năng Nổi Bật & Giao Diện Web UI
+
+### 1. Web UI Hiện Đại Với Nút Chuyển Đổi Camera (Webcam ↔ ESP32-CAM)
+* Giao diện điều khiển tại `http://localhost:3000/` được tích hợp sẵn 3 chế độ nguồn hình ảnh:
+  - **[💻 Webcam]:** Sử dụng webcam để kiểm thử nhanh.
+  - **[📡 ESP32-CAM Stream]:** Chuyển sang thu nhận luồng video thời gian thực từ ESP32-CAM truyền lên Node.js.
+  - **[📁 Tải File]:** Thẩm định file ảnh có sẵn trên máy.
+  - **Phím tắt nhanh `C`:** Bấm phím `C` trên bàn phím để chuyển đổi camera tức thì.
+
+### 2. Bảng Kết Quả Dual Window (Side-by-Side) Chuẩn `test_pipeline_ensemble_full.py`
+* Kết quả hiển thị song song gồm 2 cửa sổ:
+  - **Cửa sổ trái:** Ảnh khuôn mặt gốc với khung Bbox và hiệu ứng Bokeh mask làm mờ bối cảnh ngoại vi.
+  - **Cửa sổ phải:** Dashboard chẩn đoán AI 5 phần: Tiêu đề duyệt, Khuôn mặt crop 224x224, Góc Euler 3D Pose, Chi tiết đồng thuận 2 model YOLO_4 & RF-DETR, và Trạng thái Active Liveness (EAR + Yaw).
+  - Hỗ trợ nút **[🔍 Xem To]** mở Modal phóng to toàn màn hình và **[💾 Tải Ảnh]** để lưu trữ bằng chứng xác thực.          │ 2. Nháy đèn LED flash xác nhận     │
                                 │ 3. Bắn Webhook sang Node.js Backend│
                                 └────────────────────────────────────┘
 ```
@@ -176,19 +244,31 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Khởi chạy AI Server
-Cách 1: Chạy file script tự động:
-```cmd
-start_ai_server.bat
-```
-Cách 2: Chạy trực tiếp qua Python:
-```bash
-python server_module/app.py
-```
-Sau khi khởi động thành công:
-* **API Server:** Chạy tại [http://0.0.0.0:8000](http://0.0.0.0:8000)
-* **Tài liệu API Swagger UI:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-* **Web Scanner Client:** [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
+### 2. Khởi chạy Hệ Thống (AI Server + Node.js Web Relay)
+
+Hệ thống hoạt động theo mô hình 2 máy chủ phối hợp nhịp nhàng:
+
+#### A. Khởi chạy FastAPI AI Server (:8000)
+Chạy suy luận cụm mô hình chống giả mạo mới nhất **YOLO_4 + RF-DETR + MediaPipe 3D**:
+* **Cách 1 (Khuyên dùng):** Nhấp đúp file [start_ai_server.bat](file:///c:/Users/HP/Desktop/Face-Project/start_ai_server.bat)
+* **Cách 2:** Chạy lệnh terminal:
+  ```bash
+  python server_module/app.py
+  ```
+
+#### B. Khởi chạy Node.js Stream Relay & Web Controller (:3000)
+Chịu trách nhiệm nhận luồng ESP32, broadcast MJPEG stream, reverse proxy API và phục vụ giao diện Web UI:
+* **Cách 1 (Khuyên dùng):** Nhấp đúp file [start_nodejs_receiver.bat](file:///c:/Users/HP/Desktop/Face-Project/start_nodejs_receiver.bat)
+* **Cách 2:** Chạy lệnh terminal (100% thư viện chuẩn Node.js, không cần npm install):
+  ```bash
+  node server_module/nodejs_server_receiver.js
+  ```
+
+#### Các cổng dịch vụ sau khi khởi động:
+* 🌐 **Web eKYC Controller (Giao diện chính):** [http://localhost:3000/](http://localhost:3000/) *(Hỗ trợ nút chuyển Webcam / ESP32-CAM và xem kết quả Dual-Window)*
+* 📡 **Luồng Video MJPEG ESP32:** [http://localhost:3000/stream](http://localhost:3000/stream)
+* 🚀 **FastAPI AI Server:** [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
+* 📚 **Tài liệu API Swagger UI:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 ---
 
@@ -269,30 +349,30 @@ Sau khi khởi động thành công:
 
 ---
 
-## 💻 Tích Hợp Webhook Node.js Backend
+## 💻 Tích Hợp Webhook & Node.js Receiver Hub
 
-Khi người dùng hoàn tất toàn bộ 3 bước, AI Server tự động bắn kết quả tới Backend Node.js qua Webhook:
+Hệ thống đã tích hợp sẵn máy chủ **Node.js Receiver Hub** tại [server_module/nodejs_server_receiver.js](file:///c:/Users/HP/Desktop/Face-Project/server_module/nodejs_server_receiver.js) (chạy thuần 100% Node.js tiêu chuẩn, không cần cài thư viện ngoài).
 
-```javascript
-// Example Express.js Webhook Handler
-const express = require('express');
-const app = express();
-app.use(express.json({ limit: '10mb' }));
+Khi người dùng hoàn tất quá trình xác thực, AI Server tự động gửi toàn bộ kết quả chẩn đoán qua Webhook:
+* **Endpoint tiếp nhận:** `POST http://localhost:3000/api/ekyc/result`
+* **Xử lý tự động của Node.js:**
+  - Lưu ảnh khuôn mặt Crop vào `server_module/captured_faces/face_<timestamp>_<verdict>.jpg`.
+  - Lưu ảnh **Dual-Window Side-by-Side** vào `server_module/captured_faces/dual_<timestamp>_<verdict>.jpg`.
+  - Cập nhật danh sách lịch sử xác thực thời gian thực tại `GET /api/ekyc/history`.
+  - In thông báo màu trực quan lên Terminal máy chủ Node.js.
 
-app.post('/api/ekyc/result', (req, res) => {
-  const { session_id, approved, is_real, confidence, crop_face_base64 } = req.body;
-
-  if (approved) {
-    console.log(`[PASS] Phiên ${session_id} thành công! Độ tin cậy: ${(confidence * 100).toFixed(1)}%`);
-    // Lưu ảnh khuôn mặt và mở khóa tài khoản/ghi log chấm công
-  } else {
-    console.log(`[REJECT] Phiên ${session_id} bị từ chối xác thực!`);
-  }
-
-  res.json({ received: true });
-});
-
-app.listen(3000, () => console.log('Node.js Webhook Server chạy tại port 3000'));
+```bash
+# Cấu trúc payload gửi từ AI Server:
+{
+  "session_id": "SES_1727170000",
+  "approved": true,
+  "verdict": "APPROVED",
+  "is_real": true,
+  "confidence": 0.942,
+  "dual_window_image_base64": "data:image/jpeg;base64,...",
+  "crop_face_base64": "data:image/jpeg;base64,...",
+  "processing_time_ms": 78.5
+}
 ```
 
 ---

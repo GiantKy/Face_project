@@ -239,10 +239,44 @@ def _extract_crop_and_annotation(
                         cv2.FONT_HERSHEY_SIMPLEX, 0.58, badge_col, 2, cv2.LINE_AA)
 
             annotated_b64 = image_to_base64(clean_img)
+
+            # 6. Tạo ảnh Dual Window (Side-by-Side) chuẩn test_pipeline_ensemble_full.py
+            try:
+                face_crop_arr = None
+                if primary_face and primary_face.get("bbox"):
+                    face_crop_arr = pipeline.aligner.crop_face(
+                        frame, bbox=primary_face["bbox"], padding=25, output_size=(224, 224), mode="bbox"
+                    )
+
+                dashboard_img = create_pipeline_result_dashboard(
+                    img_idx=report.get("image_id", "1"),
+                    face_info=primary_face,
+                    num_faces=report["face_detection"].get("num_faces", 1),
+                    pose_info=report.get("pose_3d"),
+                    pose_valid=report["criteria"].get("pose_valid", False),
+                    anti_spoof_info=report.get("ensemble_anti_spoof"),
+                    spoof_iou=0.85,
+                    blink_passed=report["criteria"].get("blink_passed", False),
+                    blink_count=report["active_liveness"].get("blink_count", 0),
+                    head_movement_passed=report["criteria"].get("head_movement_passed", False),
+                    head_action_name=report["active_liveness"].get("head_action", "NONE"),
+                    final_pass=final_pass,
+                    reasons=report["final_decision"].get("reasons", []),
+                    face_crop=face_crop_arr,
+                    target_height=h_f
+                )
+                side_by_side = create_side_by_side_result(clean_img, dashboard_img)
+                dual_b64 = image_to_base64(side_by_side, quality=85)
+            except Exception as e:
+                print(f"[WARN] Không thể tạo Side-by-Side Dual Window: {e}")
+                dual_b64 = None
         except Exception as e:
             print(f"[WARN] Không thể vẽ annotated image: {e}")
+            dual_b64 = None
+    else:
+        dual_b64 = None
 
-    return crop_b64, annotated_b64
+    return crop_b64, annotated_b64, dual_b64
 
 
 # =============================================================================
@@ -384,8 +418,8 @@ async def verify_face(
             detail=f"Lỗi trong quá trình suy luận mô hình AI: {str(e)}"
         )
 
-    # 4. Trích xuất Crop 224x224 và Annotated Image Base64 để trả về trực tiếp
-    crop_b64, annotated_b64 = _extract_crop_and_annotation(
+    # 4. Trích xuất Crop 224x224, Annotated Image và Dual Window Image Base64 để trả về trực tiếp
+    crop_b64, annotated_b64, dual_b64 = _extract_crop_and_annotation(
         pipeline=pipeline,
         frame=frame,
         report=report,
@@ -415,6 +449,7 @@ async def verify_face(
         active_liveness=report["active_liveness"],
         crop_face_base64=crop_b64,
         annotated_image_base64=annotated_b64,
+        dual_window_image_base64=dual_b64,
         oval_guide=report.get("oval_guide"),
         processing_time_ms=round(t_total, 2)
     )
@@ -965,9 +1000,11 @@ async def esp32_challenge_step(
             "verdict": res.get("verdict", "REJECTED"),
             "is_real": res.get("is_real", False),
             "confidence": res.get("confidence", 0.0),
+            "reasons": res.get("reasons", []),
             "steps_summary": res.get("steps_summary", {}),
             "challenge_details": res.get("challenge_details", {}),
             "crop_face_base64": res.get("crop_face_base64"),
+            "dual_window_image_base64": res.get("dual_window_image_base64"),
             "processing_time_ms": res.get("processing_time_ms", 0.0)
         }
         background_tasks.add_task(dispatch_webhook_to_nodejs, webhook_payload)
@@ -1000,6 +1037,122 @@ async def esp32_challenge_reset(request: Request, session_id: Optional[str] = No
 
     ok = esp32_challenge_manager.reset_session(sess_id)
     return {"success": ok, "message": f"Đã hủy session {sess_id}" if ok else "Session không tồn tại."}
+
+
+# =============================================================================
+# STREAM SCANNING ENDPOINTS (AI Server tự quét luồng từ Node.js :3000)
+# =============================================================================
+
+def _fetch_frame_from_stream(stream_url: str = "http://127.0.0.1:3000/api/stream/latest") -> bytes:
+    """Tải 1 frame ảnh JPEG mới nhất từ Node.js Stream Hub."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            stream_url,
+            headers={"User-Agent": "FastAPI-AI-Server/2.0"}
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as response:
+            data = response.read()
+            if not data or len(data) < 500:
+                raise ValueError("Frame ảnh từ Node.js quá nhỏ hoặc không hợp lệ.")
+            return data
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Không thể đọc frame từ Node.js Stream ({stream_url}): {str(e)}. Hãy đảm bảo start_nodejs_receiver.bat đang chạy và ESP32 đang gửi luồng!"
+        )
+
+
+@app.post(
+    "/api/v1/stream/challenge/start",
+    summary="BƯỚC 1: AI Server tự quét frame từ Node.js Stream, Face Detect & Duyệt Anti-Spoofing"
+)
+async def stream_challenge_start(request: Request):
+    """
+    Nhận yêu cầu bắt đầu từ Node.js Web Dashboard.
+    AI Server tự động lấy frame mới nhất từ Node.js (:3000) và thực hiện Face Detect + Ensemble Anti-Spoofing.
+    """
+    pipeline: EKYCPipelineServer = request.app.state.pipeline
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    stream_url = body.get("stream_url") or "http://127.0.0.1:3000/api/stream/latest"
+    dev_id = body.get("device_id") or "ESP32_S3_GATE_01"
+
+    image_bytes = _fetch_frame_from_stream(stream_url)
+
+    try:
+        res = esp32_challenge_manager.start_challenge(
+            image_input=image_bytes,
+            pipeline=pipeline,
+            device_id=dev_id
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khởi tạo thử thách eKYC từ Stream: {str(e)}")
+
+
+@app.post(
+    "/api/v1/stream/challenge/step",
+    summary="BƯỚC 2 & 3: AI Server tự quét frame từ Node.js Stream cho thử thách Chớp mắt và Quay đầu"
+)
+async def stream_challenge_step(request: Request, background_tasks: BackgroundTasks):
+    """
+    AI Server tự động lấy frame mới nhất từ Node.js Stream và kiểm tra chớp mắt / quay đầu theo session_id.
+    Khi hoàn tất ('completed') và approved=True:
+    - Tự động kích hoạt mở cửa relay ESP32 (/open).
+    - Gửi Webhook sang Node.js (:3000).
+    """
+    pipeline: EKYCPipelineServer = request.app.state.pipeline
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    sess_id = body.get("session_id")
+    target_step = body.get("step") or "eye_blink"
+    stream_url = body.get("stream_url") or "http://127.0.0.1:3000/api/stream/latest"
+    target_esp_ip = body.get("esp32_ip") or "192.168.137.1"
+
+    if not sess_id:
+        raise HTTPException(status_code=400, detail="Thiếu 'session_id'.")
+
+    image_bytes = _fetch_frame_from_stream(stream_url)
+
+    try:
+        res = esp32_challenge_manager.process_step(
+            session_id=sess_id,
+            image_input=image_bytes,
+            pipeline=pipeline,
+            step_name=target_step
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi xử lý bước thử thách eKYC từ Stream: {str(e)}")
+
+    if res.get("step") == "completed" and res.get("success"):
+        webhook_payload = {
+            "event": "EKYC_ESP32_MULTISTEP_VERIFICATION",
+            "device_id": res.get("device_id", "ESP32_S3_GATE_01"),
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "approved": res.get("approved", False),
+            "verdict": res.get("verdict", "REJECTED"),
+            "is_real": res.get("is_real", False),
+            "confidence": res.get("confidence", 0.0),
+            "reasons": res.get("reasons", []),
+            "steps_summary": res.get("steps_summary", {}),
+            "challenge_details": res.get("challenge_details", {}),
+            "crop_face_base64": res.get("crop_face_base64"),
+            "dual_window_image_base64": res.get("dual_window_image_base64"),
+            "processing_time_ms": res.get("processing_time_ms", 0.0)
+        }
+        background_tasks.add_task(dispatch_webhook_to_nodejs, webhook_payload)
+
+        if res.get("approved") and target_esp_ip:
+            background_tasks.add_task(trigger_esp32_relay, target_esp_ip)
+
+    return res
 
 
 # =============================================================================

@@ -27,7 +27,7 @@
 static CameraManager      cameraManager;
 static HardwareController hardwareCtrl;
 static NetworkManager     networkManager(WIFI_SSID, WIFI_PASSWORD);
-static EKYCService        ekycService(cameraManager, hardwareCtrl, DEFAULT_AI_SERVER_IP, DEFAULT_AI_SERVER_PORT, DEFAULT_DEVICE_ID);
+static EKYCService        ekycService(cameraManager, hardwareCtrl, DEFAULT_AI_SERVER_IP, DEFAULT_AI_SERVER_PORT, DEFAULT_DEVICE_ID, DEFAULT_NODEJS_SERVER_PORT);
 
 void setup() {
     Serial.begin(115200);
@@ -53,6 +53,7 @@ void setup() {
 }
 
 void loop() {
-    ekycService.handleClient();
-    delay(5);
+    // Toàn bộ Web Server (Cổng 80) và MJPEG Live Stream (Cổng 81) được vận hành
+    // tự động trên các FreeRTOS Task chạy ngầm độc lập bởi esp_http_server.
+    vTaskDelay(pdMS_TO_TICKS(1000));
 }

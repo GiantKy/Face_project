@@ -42,13 +42,13 @@ public:
         config.grab_mode    = CAMERA_GRAB_LATEST;
 
         if (psramFound()) {
-            config.frame_size   = FRAMESIZE_VGA;      // Cấp phát buffer tối đa VGA 640x480 trong PSRAM
-            config.jpeg_quality = 10;
+            config.frame_size   = FRAMESIZE_VGA;      // Độ phân giải VGA 640x480 trong PSRAM
+            config.jpeg_quality = 30;                 // Quality 30 (nén nhẹ, truyền mượt)
             config.fb_count     = 2;
             config.fb_location  = CAMERA_FB_IN_PSRAM;
         } else {
             config.frame_size   = FRAMESIZE_VGA;
-            config.jpeg_quality = 12;
+            config.jpeg_quality = 30;
             config.fb_count     = 1;
             config.fb_location  = CAMERA_FB_IN_DRAM;
         }
@@ -62,26 +62,30 @@ public:
 
         sensor_t *s = esp_camera_sensor_get();
         if (s != nullptr) {
-            s->set_framesize(s, FRAMESIZE_240X240); // Mặc định preview ở 240x240 nhẹ nhàng
-            s->set_brightness(s, 2);                // Tăng sáng tối đa (+2) cứu sáng khuôn mặt
-            s->set_contrast(s, 0);                  // Contrast = 0 (tránh bệt đen kịt vùng shadow)
-            s->set_saturation(s, 0);                // Màu tự nhiên
-            s->set_sharpness(s, 0);                 // Độ nét chuẩn
+            s->set_framesize(s, FRAMESIZE_VGA);     // Độ phân giải VGA 640x480
+            s->set_quality(s, 30);                  // Quality 30 theo yêu cầu
+            s->set_brightness(s, 1);                // Brightness = +1 (theo UI settings slider -3 đến 3)
+            s->set_contrast(s, 2);                  // Contrast = +2 (theo UI slider contrast gần sát cực đại)
+            s->set_saturation(s, 0);                // Saturation = 0 (màu tự nhiên trung tính theo UI settings)
+            s->set_sharpness(s, 2);                 // Sharpness = +2 (theo UI slider sharpness sắc nét)
+            s->set_denoise(s, 1);                   // De-Noise = 1 (khử nhiễu Auto theo UI settings)
             
-            // Tự động bù sáng & phơi sáng mạnh:
-            s->set_gainceiling(s, GAINCEILING_16X); // 16X khuếch đại sáng tối đa trong phòng
-            s->set_exposure_ctrl(s, 1);             // Bật tự động phơi sáng (AEC)
-            s->set_aec2(s, 1);                      // Bật thuật toán DSP AEC2 nâng cao
-            s->set_ae_level(s, 2);                  // Bù phơi sáng mức cao nhất (+2) cứu sáng khuôn mặt
-            s->set_gain_ctrl(s, 1);                 // Bật tự động điều khiển Gain (AGC)
-            s->set_bpc(s, 1);                       // Sửa điểm ảnh đen
-            s->set_wpc(s, 1);                       // Sửa điểm ảnh trắng
-            s->set_lenc(s, 1);                      // Bật Lens Correction chống tối 4 góc
-            s->set_whitebal(s, 1);                  // Cân bằng trắng tự động (AWB)
-            s->set_awb_gain(s, 1);                  // Gain cân bằng trắng
-#if defined(CAMERA_MODEL_ESP32S3_EYE)
-            s->set_vflip(s, 1);
-#endif
+            // Các chế độ phơi sáng, cân bằng trắng và khử quang sai theo UI Toggle Settings:
+            s->set_gainceiling(s, GAINCEILING_16X); // Gainceiling 16X
+            s->set_exposure_ctrl(s, 1);             // AEC Enable = ON
+            s->set_aec2(s, 1);                      // AEC2 DSP nâng cao = ON
+            s->set_ae_level(s, 1);                  // Exposure Level = +1
+            s->set_gain_ctrl(s, 1);                 // AGC Enable = ON
+            s->set_bpc(s, 1);                       // BPC = ON
+            s->set_wpc(s, 1);                       // WPC = ON
+            s->set_raw_gma(s, 1);                   // GMA Enable (Gamma) = ON (theo UI Toggle)
+            s->set_lenc(s, 1);                      // Lens Correction = ON (theo UI Toggle)
+            s->set_whitebal(s, 1);                  // AWB Enable = ON (theo UI Toggle)
+            s->set_awb_gain(s, 1);                  // Advanced AWB Gain = ON (theo UI Toggle)
+            s->set_dcw(s, 1);                       // Advanced AWB DCW = ON
+            s->set_special_effect(s, 0);            // Special Effect = No Effect (theo UI)
+            s->set_hmirror(s, 1);                   // H-Mirror = ON (X-Mirror dao chieu ngang giup quay dau dung huong)
+            s->set_vflip(s, 1);                     // V-Flip = ON (theo UI Toggle)
         }
 
         // Xả 4 frame khởi động để ổn định DMA
@@ -91,7 +95,7 @@ public:
             delay(50);
         }
 
-        Serial.println("[CameraManager] Camera da san sang! (Buffer VGA 640x480, Active 240x240)");
+        Serial.println("[CameraManager] Camera da san sang! (Resolution: VGA 640x480, JPEG Quality: 30)");
         m_initialized = true;
         return true;
     }
@@ -116,34 +120,22 @@ public:
     }
 
     /**
-     * @brief Chụp ảnh an toàn có xả 5 frame đệm để AEC/AGC kịp đo sáng
+     * @brief Chụp ảnh an toàn lấy ngay frame mới nhất từ bộ đệm kép DMA/PSRAM
      */
     camera_fb_t* capturePhotoSafe() {
-        for (int i = 0; i < 5; i++) {
-            camera_fb_t *dummy = esp_camera_fb_get();
-            if (dummy) {
-                esp_camera_fb_return(dummy);
-                delay(30);
-            }
-        }
         camera_fb_t *fb = esp_camera_fb_get();
         if (!fb) {
-            delay(40);
+            vTaskDelay(pdMS_TO_TICKS(10));
             fb = esp_camera_fb_get();
         }
         return fb;
     }
 
     /**
-     * @brief Chụp nhanh không xả đệm dành cho chuỗi frame thử thách cử động (Bước 2 & 3)
+     * @brief Chụp nhanh không delay dành cho chuỗi frame thử thách cử động (Bước 2 & 3)
      */
     camera_fb_t* capturePhotoFast() {
-        camera_fb_t *fb = esp_camera_fb_get();
-        if (!fb) {
-            delay(10);
-            fb = esp_camera_fb_get();
-        }
-        return fb;
+        return esp_camera_fb_get();
     }
 
     void returnFrameBuffer(camera_fb_t* fb) {

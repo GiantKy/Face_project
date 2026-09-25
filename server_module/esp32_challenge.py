@@ -13,9 +13,14 @@ import time
 import math
 import random
 import uuid
+import json
 from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
 import cv2
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
 
 try:
     from server_module.utils import (
@@ -24,7 +29,9 @@ try:
         calculate_iou,
         get_default_oval_params,
         is_face_in_oval,
-        compute_eye_aspect_ratio
+        compute_eye_aspect_ratio,
+        create_pipeline_result_dashboard,
+        create_side_by_side_result
     )
     from server_module.components.pose_validation.utils import get_landmark_point
 except ImportError:
@@ -34,7 +41,9 @@ except ImportError:
         calculate_iou,
         get_default_oval_params,
         is_face_in_oval,
-        compute_eye_aspect_ratio
+        compute_eye_aspect_ratio,
+        create_pipeline_result_dashboard,
+        create_side_by_side_result
     )
     from components.pose_validation.utils import get_landmark_point
 
@@ -104,6 +113,14 @@ class ChallengeSession:
         self.baseline_ear: float = 0.28
         self.baseline_pose: Dict[str, float] = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
         self.primary_face_bbox: Optional[List[int]] = None
+        self.num_faces: int = 1
+        self.pose_dict_static: Optional[Dict[str, Any]] = None
+        self.pose_valid_static: bool = True
+        self.best_spoof_static: Optional[Dict[str, Any]] = None
+        self.primary_spoof_iou: float = 0.0
+        self.reasons: List[str] = []
+        self.face_crop_static: Optional[np.ndarray] = None
+        self.aligned_img_static: Optional[np.ndarray] = None
         self.frontal_frame: Optional[np.ndarray] = None
         self.face_crop_224: Optional[np.ndarray] = None
 
@@ -158,6 +175,123 @@ class ESP32ChallengeManager:
             del self.sessions[session_id]
             return True
         return False
+
+    def _generate_dual_window_report(
+        self,
+        session: ChallengeSession,
+        approved: bool,
+        reasons: Optional[List[str]] = None
+    ) -> Tuple[np.ndarray, str, Dict[str, Any]]:
+        """
+        Tạo ảnh Dual Window (Side-by-Side) và báo cáo 4_report.json chuẩn test_pipeline_ensemble_full.py:
+        - Nửa trái: Ảnh khuôn mặt có Bounding Box, nhãn REAL/SPOOF, điểm tin cậy %, sub-tag YOLO & RF-DETR,
+          và huy hiệu eKYC: APPROVED / eKYC: REJECTED.
+        - Dải ngăn cách (divider).
+        - Nửa phải: Bảng Dashboard phân tích AI chi tiết 5 phần (Face Detect, 3D Pose, Anti-Spoofing, Liveness, Verdict).
+        """
+        reasons = reasons or []
+        frame = session.frontal_frame if session.frontal_frame is not None else np.zeros((480, 640, 3), dtype=np.uint8)
+        clean_img = frame.copy()
+        h, w = clean_img.shape[:2]
+
+        # Vẽ Bounding Box & nhãn trên ảnh gốc
+        if session.primary_face_bbox:
+            bx1, by1, bx2, by2 = session.primary_face_bbox
+            cv2.rectangle(clean_img, (bx1, by1), (bx2, by2), (0, 255, 0), 2)
+
+        if session.best_spoof_static:
+            sd = session.best_spoof_static
+            sx1, sy1, sx2, sy2 = sd.get("bbox", session.primary_face_bbox or [0, 0, w, h])
+            if not sd.get("both_detected", True):
+                scol = (0, 165, 255)  # Cam: Thiếu đồng thuận 1 model
+                tag = f"DISCARD: 1 Model Only ({sd.get('confidence', 0.0)*100:.1f}%)"
+            elif approved:
+                scol = (0, 255, 0)    # Xanh: Real
+                tag = f"REAL {sd.get('confidence', 0.0)*100:.1f}% (Ensemble Matched)"
+            else:
+                scol = (0, 0, 255)    # Đỏ: Spoof
+                tag = f"SPOOF {sd.get('confidence', 0.0)*100:.1f}% (Ensemble Matched)"
+
+            cv2.rectangle(clean_img, (sx1, sy1), (sx2, sy2), scol, 2)
+            cv2.putText(clean_img, tag, (sx1, max(20, sy1 - 8)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, scol, 1, cv2.LINE_AA)
+            sub_tag = f"YOLO: {sd.get('yolo_res', 'N/A')} | RF: {sd.get('rfdetr_res', 'N/A')}"
+            cv2.putText(clean_img, sub_tag, (sx1, min(h - 8, sy2 + 16)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (220, 220, 220), 1, cv2.LINE_AA)
+
+        # Huy hiệu góc phải
+        verdict_badge = "eKYC: APPROVED" if approved else "eKYC: REJECTED"
+        badge_col = (0, 255, 0) if approved else (0, 0, 255)
+        cv2.rectangle(clean_img, (w - 240, 15), (w - 15, 55), (15, 15, 20), -1)
+        cv2.rectangle(clean_img, (w - 240, 15), (w - 15, 55), badge_col, 2)
+        cv2.putText(clean_img, verdict_badge, (w - 225, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.62, badge_col, 2)
+
+        # Tạo Dashboard Panel 5 mục
+        face_info = {"bbox": session.primary_face_bbox, "confidence": 0.95} if session.primary_face_bbox else None
+        dashboard_img = create_pipeline_result_dashboard(
+            img_idx=session.session_id,
+            face_info=face_info,
+            num_faces=session.num_faces,
+            pose_info=session.baseline_pose,
+            pose_valid=session.pose_valid_static,
+            anti_spoof_info=session.best_spoof_static,
+            spoof_iou=session.primary_spoof_iou,
+            blink_passed=session.eye_blink_passed,
+            blink_count=session.blink_counter,
+            head_movement_passed=session.head_movement_passed,
+            head_action_name=session.target_head_action,
+            final_pass=approved,
+            reasons=reasons,
+            face_crop=session.face_crop_static,
+            target_height=h
+        )
+
+        # Ghép ảnh Side-by-Side Dual Window
+        side_by_side = create_side_by_side_result(clean_img, dashboard_img)
+
+        # Lưu kết quả vào output/<session_id>/
+        output_dir = os.path.join(OUTPUT_DIR, str(session.session_id))
+        report_data = {
+            "session_id": session.session_id,
+            "device_id": session.device_id,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "approved": approved,
+            "verdict": "APPROVED" if approved else "REJECTED",
+            "is_real": session.is_real,
+            "confidence": round(session.confidence, 4),
+            "reasons": reasons,
+            "models_used": {
+                "model_1": "Anti_Spoof_YOLO_4.pt",
+                "model_2": "RF-DETR Small Transformer"
+            },
+            "face_detection": {
+                "num_faces": session.num_faces,
+                "bbox": session.primary_face_bbox
+            },
+            "pose_validation": session.baseline_pose,
+            "ensemble_anti_spoof": session.best_spoof_static,
+            "active_liveness": {
+                "blink_passed": session.eye_blink_passed,
+                "blink_count": session.blink_counter,
+                "head_movement_passed": session.head_movement_passed,
+                "head_action": session.target_head_action
+            }
+        }
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            cv2.imwrite(os.path.join(output_dir, "1_pipeline_side_by_side.jpg"), side_by_side)
+            cv2.imwrite(os.path.join(output_dir, "1_dashboard_panel.jpg"), dashboard_img)
+            cv2.imwrite(os.path.join(output_dir, "1_pipeline_result_clean.jpg"), clean_img)
+            if session.face_crop_static is not None and session.face_crop_static.size > 0:
+                cv2.imwrite(os.path.join(output_dir, "2_face_crop_224.jpg"), session.face_crop_static)
+
+            with open(os.path.join(output_dir, "4_report.json"), "w", encoding="utf-8") as f:
+                json.dump(report_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[ERROR] Không thể ghi file kết quả Dual Window: {e}")
+
+        dual_window_b64 = image_to_base64(side_by_side, quality=85)
+        return side_by_side, dual_window_b64, report_data
 
     def start_challenge(
         self,
@@ -308,7 +442,7 @@ class ESP32ChallengeManager:
 
         # Tính toán Baseline EAR
         ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks)
-        baseline_ear = max(0.20, float(ear_avg))
+        baseline_ear = max(0.18, float(ear_avg)) if ear_avg > 0.10 else 0.25
 
         # Tính toán Baseline Pose (Góc nhìn thẳng ban đầu)
         pose_valid, text_status, pose_dict = pipeline.pose_validator.validate(
@@ -337,6 +471,24 @@ class ESP32ChallengeManager:
                 "captured_image_base64": captured_b64
             }
 
+        # Face Crop 224x224 & Alignment
+        face_crop_static = None
+        aligned_img_static = None
+        if hasattr(pipeline, "aligner") and pipeline.aligner is not None:
+            try:
+                face_crop_static = pipeline.aligner.crop_face(
+                    raw_frame, bbox=primary_face["bbox"], padding=25, output_size=(224, 224), mode="bbox"
+                )
+                if landmarks:
+                    aligned_img_static = pipeline.aligner.align_face(raw_frame, landmarks)
+            except Exception as e:
+                print(f"[WARN] Aligner error: {e}")
+        if face_crop_static is None:
+            bx = primary_face["bbox"]
+            x1, y1, x2, y2 = max(0, bx[0]), max(0, bx[1]), min(w, bx[2]), min(h, bx[3])
+            if y2 > y1 and x2 > x1:
+                face_crop_static = cv2.resize(raw_frame[y1:y2, x1:x2], (224, 224))
+
         # 3. DUYỆT ENSEMBLE ANTI-SPOOFING NGAY TẠI BƯỚC 1 (FAIL-FAST)
         t_spoof_start = time.time()
         all_dets, y_dets, rf_dets = pipeline.ensemble_anti_spoof.predict_ensemble(
@@ -348,43 +500,77 @@ class ESP32ChallengeManager:
         )
         t_spoof = (time.time() - t_spoof_start) * 1000
 
-        best_det = all_dets[0] if all_dets else None
-        is_real = bool(best_det["is_real"]) if best_det else False
-        confidence = float(best_det["confidence"]) if best_det else 0.0
-        verdict = "REAL" if is_real else "SPOOF"
+        # Khớp primary_face với all_dets dùng IoU
+        best_spoof_static = None
+        primary_spoof_iou = 0.0
+        if primary_face and all_dets:
+            matching_spoofs = [sd for sd in all_dets if calculate_iou(primary_face["bbox"], sd["bbox"]) > 0.15]
+            if matching_spoofs:
+                best_spoof_static = max(matching_spoofs, key=lambda x: x["confidence"])
+                primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof_static["bbox"])
+            else:
+                best_spoof_static = max(all_dets, key=lambda x: x["confidence"])
+                primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof_static["bbox"])
+        elif all_dets:
+            best_spoof_static = all_dets[0]
 
-        # Nếu Anti-Spoofing kết luận là GIẢ MẠO (SPOOF) -> FAIL-FAST ngay!
-        if not is_real or best_det is None:
+        is_real = bool(best_spoof_static["is_real"]) if best_spoof_static else False
+        confidence = float(best_spoof_static["confidence"]) if best_spoof_static else 0.0
+        both_detected = bool(best_spoof_static.get("both_detected", False)) if best_spoof_static else False
+
+        # Kiểm tra điều kiện thất bại / thiếu đồng thuận theo test_pipeline_ensemble_full.py
+        reasons = []
+        if best_spoof_static is None:
+            reasons.append("Khong phat hien duoc dac trung chong gia mao (Anti-Spoof None)")
+        elif not both_detected:
+            reasons.append(f"Chi co 1 model nhan dien ({best_spoof_static.get('source')}) -> Luoc bo anh (Thieu su dong thuan ca 2 model)")
+        elif not is_real:
+            reasons.append(f"Phat hien gia mao (SPOOF) voi do tin cay {confidence*100:.1f}%")
+
+        # FAIL-FAST: Nếu là SPOOF hoặc THIẾU ĐỒNG THUẬN -> Tạo báo cáo Dual Window & từ chối ngay lập tức
+        if not is_real or not both_detected or best_spoof_static is None:
             t_ms = (time.time() - t0) * 1000
-            print(f"[FAIL-FAST BƯỚC 1] Phát hiện giả mạo (SPOOF)! Confidence: {confidence*100:.1f}% -> TỪ CHỐI NGAY.")
-            annotated = raw_frame.copy()
-            if primary_face:
-                bx = primary_face["bbox"]
-                cv2.rectangle(annotated, (bx[0], bx[1]), (bx[2], bx[3]), (0, 0, 255), 2)
-                cv2.putText(annotated, f"SPOOF ({confidence*100:.1f}%)", (bx[0], max(18, bx[1] - 8)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1, cv2.LINE_AA)
-            captured_b64 = image_to_base64(annotated, quality=75)
+            print(f"[FAIL-FAST BƯỚC 1] Từ chối xác thực: {reasons} | Conf: {confidence*100:.1f}%")
+
+            temp_session = ChallengeSession(
+                session_id=f"esp32_fail_{int(time.time())}",
+                device_id=device_id
+            )
+            temp_session.primary_face_bbox = primary_face["bbox"]
+            temp_session.num_faces = len(faces)
+            temp_session.frontal_frame = raw_frame.copy()
+            temp_session.baseline_pose = pose_dict or {"yaw": base_yaw, "pitch": base_pitch, "roll": base_roll}
+            temp_session.pose_valid_static = pose_valid
+            temp_session.best_spoof_static = best_spoof_static
+            temp_session.primary_spoof_iou = primary_spoof_iou
+            temp_session.face_crop_static = face_crop_static
+            temp_session.aligned_img_static = aligned_img_static
+            temp_session.face_detect_passed = True
+            temp_session.is_real = False
+            temp_session.confidence = confidence
+
+            _, dual_b64, report_data = self._generate_dual_window_report(
+                temp_session, approved=False, reasons=reasons
+            )
+            verdict = "DISCARD_LACK_CONSENSUS" if (not both_detected and best_spoof_static) else "SPOOF"
+
+            crop_b64 = image_to_base64(face_crop_static) if face_crop_static is not None else None
+            captured_b64 = image_to_base64(raw_frame, quality=75)
             return {
                 "success": False,
                 "step": "anti_spoof",
                 "passed": False,
                 "approved": False,
-                "verdict": "SPOOF",
+                "verdict": verdict,
                 "is_real": False,
                 "confidence": round(confidence, 4),
-                "message": f"CẢNH BÁO: Phát hiện khuôn mặt giả mạo (SPOOF)! Độ tin cậy: {confidence*100:.1f}%. Từ chối xác thực.",
-                "reasons": ["SPOOF_DETECTED"],
+                "message": f"CẢNH BÁO: {reasons[0]}. Từ chối xác thực.",
+                "reasons": reasons,
                 "captured_image_base64": captured_b64,
+                "dual_window_image_base64": dual_b64,
+                "crop_face_base64": crop_b64,
                 "processing_time_ms": round(t_ms, 1)
             }
-
-        # Cắt khuôn mặt (Crop 224x224)
-        crop_b64 = None
-        bx = primary_face["bbox"]
-        x1, y1, x2, y2 = max(0, bx[0]), max(0, bx[1]), min(w, bx[2]), min(h, bx[3])
-        if y2 > y1 and x2 > x1:
-            crop_img = raw_frame[y1:y2, x1:x2]
-            crop_b64 = image_to_base64(crop_img)
 
         # 4. TẠO PHIÊN MỚI & SINH NGẪU NHIÊN THỬ THÁCH QUAY ĐẦU
         session_id = f"esp32_{int(time.time())}_{uuid.uuid4().hex[:6]}"
@@ -392,10 +578,17 @@ class ESP32ChallengeManager:
         session.baseline_ear = baseline_ear
         session.baseline_pose = {"yaw": base_yaw, "pitch": base_pitch, "roll": base_roll}
         session.primary_face_bbox = primary_face["bbox"]
+        session.num_faces = len(faces)
+        session.pose_valid_static = pose_valid
         session.frontal_frame = raw_frame.copy()
+        session.face_crop_static = face_crop_static
+        session.aligned_img_static = aligned_img_static
+        session.best_spoof_static = best_spoof_static
+        session.primary_spoof_iou = primary_spoof_iou
         session.face_detect_passed = True
         session.is_real = True
         session.confidence = confidence
+        crop_b64 = image_to_base64(face_crop_static) if face_crop_static is not None else None
         session.crop_face_base64 = crop_b64
         session.completed_steps.append("face_detect")
         session.completed_steps.append("anti_spoof")
@@ -497,10 +690,10 @@ class ESP32ChallengeManager:
             session.current_ear = float(ear_avg)
 
             # State machine: MẮT MỞ → MẮT NHẮM → MẮT MỞ LẠI = 1 blink
-            # Nới lỏng độ nhạy: Chỉ cần nhắm mắt nhẹ (EAR giảm > 15% hoặc < 0.20)
-            is_closed = (ear_avg < 0.20) or (ear_avg <= base_ear * 0.85)
-            # Mở lại: phục hồi về >= 0.21 hoặc >= 90% baseline ban đầu
-            is_opened = (ear_avg >= 0.21) or (ear_avg >= base_ear * 0.90)
+            # Độ nhạy thích ứng: nhắm mắt (EAR giảm > 20% hoặc < 0.18)
+            is_closed = (ear_avg < 0.18) or (ear_avg <= base_ear * 0.80)
+            # Mở lại: phục hồi về >= 0.20 hoặc >= 88% baseline ban đầu
+            is_opened = (ear_avg >= 0.20) or (ear_avg >= base_ear * 0.88)
 
             if is_closed:
                 # Mắt đang nhắm
@@ -583,10 +776,10 @@ class ESP32ChallengeManager:
 
             if action == "TURN_LEFT":
                 # Quay TRÁI của người dùng: delta_yaw ÂM
-                head_matched = (delta_yaw <= -4.0) or (curr_yaw <= -6.0)
+                head_matched = (delta_yaw <= -3.5) or (curr_yaw <= -5.0)
             elif action == "TURN_RIGHT":
                 # Quay PHẢI của người dùng: delta_yaw DƯƠNG
-                head_matched = (delta_yaw >= 4.0) or (curr_yaw >= 6.0)
+                head_matched = (delta_yaw >= 3.5) or (curr_yaw >= 5.0)
 
             if head_matched:
                 # Nếu quay góc rõ rệt (|delta_yaw| >= 5.0 hoặc |curr_yaw| >= 7.5): cho pass ngay sau 1 frame rõ
@@ -610,15 +803,39 @@ class ESP32ChallengeManager:
                 progress = 1.0
                 print(f"[HEAD PUSH] Đã hoàn thành quay đầu [{action}]!")
 
-                # Tổng hợp quyết định cuối cùng (Anti-Spoof đã pass ở Bước 1)
-                approved = bool(
-                    session.face_detect_passed and
-                    session.is_real and
-                    session.eye_blink_passed and
-                    session.head_movement_passed
+                # Đánh giá điều kiện approved chuẩn test_pipeline_ensemble_full.py
+                reasons = []
+                if session.primary_face_bbox is None:
+                    reasons.append("Khong phat hien khuon mat trong khung oval")
+                elif session.num_faces > 1:
+                    reasons.append(f"Phat hien nhieu khuon mat ({session.num_faces} mat)")
+                if not session.pose_valid_static:
+                    reasons.append("Goc mat nghieng/khong thang ve phia camera")
+                if session.best_spoof_static is None:
+                    reasons.append("Khong phat hien duoc dac trung chong gia mao (Anti-Spoof None)")
+                elif not session.best_spoof_static.get("both_detected", False):
+                    reasons.append(f"Chi co 1 model nhan dien ({session.best_spoof_static.get('source')}) -> Luoc bo anh (Thieu su dong thuan)")
+                elif not session.best_spoof_static.get("is_real", False):
+                    reasons.append(f"Phat hien gia mao (SPOOF) voi do tin cay {session.best_spoof_static.get('confidence', 0.0)*100:.1f}%")
+                if not session.eye_blink_passed:
+                    reasons.append("Chua vuot qua thu thach chop mat (Blink Liveness)")
+                if not session.head_movement_passed:
+                    reasons.append("Chua vuot qua thu thach quay dau (Head Movement)")
+
+                approved = (len(reasons) == 0)
+                session.reasons = reasons
+
+                # Tạo ảnh Dual Window (Side-by-Side) và báo cáo 4_report.json
+                side_by_side, dual_window_b64, report_data = self._generate_dual_window_report(
+                    session=session,
+                    approved=approved,
+                    reasons=reasons
                 )
+
                 final_verdict = "REAL" if approved else "REJECTED"
                 crop_b64 = session.crop_face_base64
+                if crop_b64 is None and session.face_crop_static is not None:
+                    crop_b64 = image_to_base64(session.face_crop_static)
 
                 # Vẽ annotated frame
                 annotated_b64 = None
@@ -645,6 +862,7 @@ class ESP32ChallengeManager:
                     "verdict": final_verdict,
                     "is_real": session.is_real,
                     "confidence": round(session.confidence, 4),
+                    "reasons": reasons,
                     "message": "XÁC THỰC TOÀN DIỆN THÀNH CÔNG (Mở cửa!)" if approved else f"TỪ CHỐI XÁC THỰC ({final_verdict})",
                     "progress": 1.0,
                     "steps_summary": {
@@ -659,6 +877,7 @@ class ESP32ChallengeManager:
                     },
                     "crop_face_base64": crop_b64,
                     "captured_image_base64": annotated_b64,
+                    "dual_window_image_base64": dual_window_b64,
                     "processing_time_ms": round(t_total_ms, 1)
                 }
 

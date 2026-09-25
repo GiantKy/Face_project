@@ -462,17 +462,9 @@ class EKYCPipelineServer:
         self._ensure_models_loaded()
         frame = load_image(frame_input)
         h, w = frame.shape[:2]
-        oval_center, oval_axes = get_default_oval_params(w, h)
 
-        # 1. Phát hiện landmarks trực tiếp trên frame nguyên bản (giống hệt cách src/landmark_detection hoạt động)
-        # Giúp bảo toàn độ nét của mí mắt và tròng mắt, tránh bị nhòe bởi GaussianBlur ngoài oval
+        # 1. Phát hiện landmarks trực tiếp trên frame nguyên bản để bảo toàn độ nét của mắt
         landmarks = self.landmark_detector.detect(frame)
-        if landmarks and len(landmarks) >= 468:
-            xs = [p[0] for p in landmarks]
-            ys = [p[1] for p in landmarks]
-            face_center = ((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0)
-            if not is_point_in_oval(face_center, oval_center, oval_axes, tolerance=1.15):
-                landmarks = None
 
         has_face = bool(landmarks is not None and len(landmarks) >= 468)
         ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks) if landmarks else (0.0, 0.0, 0.0)
@@ -482,26 +474,29 @@ class EKYCPipelineServer:
         updated_baseline = baseline_ear
 
         # Cập nhật baseline EAR khi mắt mở
-        if ear_avg >= 0.22:
+        if ear_avg >= 0.18:
             if updated_baseline <= 0.05:
                 updated_baseline = ear_avg
             else:
                 updated_baseline = updated_baseline * 0.85 + ear_avg * 0.15
+        elif updated_baseline <= 0.05 and ear_avg > 0.12:
+            updated_baseline = ear_avg
 
-        # Ngưỡng nhắm: linh hoạt theo baseline mở mắt hoặc ngưỡng EAR_EYE_CLOSED_THRESHOLD (0.20)
-        closed_thresh = EAR_EYE_CLOSED_THRESHOLD
-        if updated_baseline > 0.22:
-            closed_thresh = max(0.18, min(0.21, updated_baseline * 0.78))
+        # Ngưỡng nhắm mắt & mở mắt thích ứng theo baseline người dùng
+        if updated_baseline > 0.16:
+            closed_thresh = max(0.15, min(0.20, updated_baseline * 0.78))
+            open_thresh = max(closed_thresh + 0.02, min(0.22, updated_baseline * 0.88))
+        else:
+            closed_thresh = 0.18
+            open_thresh = 0.21
 
-        open_thresh = max(closed_thresh + 0.02, EAR_EYE_OPEN_THRESHOLD)
-
-        if ear_avg > 0.05 and ear_avg < closed_thresh:
+        # State Machine: MẮT MỞ -> MẮT NHẮM (ear <= closed_thresh) -> MẮT MỞ LẠI (ear >= open_thresh)
+        if ear_avg > 0.04 and ear_avg <= closed_thresh:
             if not new_state:
                 new_state = True
-        elif ear_avg >= open_thresh or (ear_avg >= 0.22 and new_state):
-            if new_state:
-                new_counter += 1
-                new_state = False
+        elif ear_avg >= open_thresh and new_state:
+            new_counter += 1
+            new_state = False
 
         passed = (new_counter >= MIN_BLINKS_REQUIRED)
         progress = 1.0 if passed else (0.5 if new_state else 0.0)
@@ -518,6 +513,7 @@ class EKYCPipelineServer:
             "ear_avg": round(ear_avg, 4),
             "baseline_ear": round(updated_baseline, 4),
             "closed_thresh": round(closed_thresh, 4),
+            "open_thresh": round(open_thresh, 4),
             "blink_counter": new_counter,
             "blink_state": bool(new_state),
             "passed": bool(passed),
@@ -541,19 +537,12 @@ class EKYCPipelineServer:
         self._ensure_models_loaded()
         frame = load_image(frame_input)
         h, w = frame.shape[:2]
-        oval_center, oval_axes = get_default_oval_params(w, h)
 
-        # Lấy frame trong khung oval như test_pipeline_ensemble_full.py
-        frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
-        landmarks = self.landmark_detector.detect(frame_for_detect)
-        if landmarks and len(landmarks) >= 468:
-            xs = [p[0] for p in landmarks]
-            ys = [p[1] for p in landmarks]
-            if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
-                landmarks = None
+        # Dò landmarks trực tiếp trên frame nguyên bản để giữ độ nét khuôn mặt khi quay góc nghiêng
+        landmarks = self.landmark_detector.detect(frame)
 
         pose_dict = None
-        if landmarks:
+        if landmarks and len(landmarks) >= 468:
             _, _, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point, img_w=w, img_h=h)
 
         status = self.head_movement_detector.update(pose_dict)

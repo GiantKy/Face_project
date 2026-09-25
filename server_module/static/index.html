@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,7 +8,9 @@
   <!-- Google Fonts: Outfit, Plus Jakarta Sans, JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
   <style>
     :root {
       --bg-main: #06080d;
@@ -138,8 +141,17 @@
     }
 
     @keyframes pulseDot {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.5; transform: scale(0.85); }
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.5;
+        transform: scale(0.85);
+      }
     }
 
     /* Main Container */
@@ -385,7 +397,7 @@
     .capture-box {
       position: relative;
       width: 100%;
-      height: 500px;
+      height: 440px;
       background: #090d16;
       border-radius: 16px;
       overflow: hidden;
@@ -401,7 +413,8 @@
       height: 100%;
       object-fit: cover;
       display: none;
-      transform: scaleX(-1); /* Mirror */
+      transform: scaleX(-1);
+      /* Mirror */
     }
 
     #previewImg {
@@ -425,6 +438,83 @@
       z-index: 5;
     }
 
+    /* Clickable Placeholder when Webcam is Off */
+    .webcam-off-card {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      background: radial-gradient(circle at center, rgba(15, 23, 42, 0.92) 0%, rgba(6, 10, 18, 0.98) 100%);
+      z-index: 15;
+      padding: 2rem;
+      text-align: center;
+      transition: all 0.25s ease;
+      user-select: none;
+    }
+
+    .webcam-off-card:hover {
+      background: radial-gradient(circle at center, rgba(24, 37, 66, 0.96) 0%, rgba(6, 10, 18, 0.98) 100%);
+    }
+
+    .webcam-off-card:hover .webcam-off-icon {
+      transform: scale(1.08);
+      border-color: var(--cyan);
+      box-shadow: 0 0 25px var(--cyan-glow);
+    }
+
+    .webcam-off-icon {
+      width: 68px;
+      height: 68px;
+      border-radius: 18px;
+      background: rgba(6, 182, 212, 0.12);
+      border: 1.5px solid rgba(6, 182, 212, 0.35);
+      color: var(--cyan);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1rem;
+      transition: all 0.25s ease;
+      box-shadow: 0 0 18px rgba(6, 182, 212, 0.15);
+    }
+
+    .webcam-off-title {
+      font-family: var(--font-heading);
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.35rem;
+    }
+
+    .webcam-off-desc {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      max-width: 320px;
+    }
+
+    .webcam-off-card .btn {
+      flex: none !important;
+      display: inline-flex !important;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-top: 14px;
+      padding: 0.65rem 1.6rem;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(135deg, #06b6d4, #2563eb);
+      border-radius: 999px;
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.4);
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      width: auto !important;
+      max-width: 220px;
+    }
+
     /* Scanner HUD Overlay */
     .scanner-overlay {
       position: absolute;
@@ -446,8 +536,8 @@
     }
 
     .face-guide-oval {
-      width: 280px;
-      height: 380px;
+      width: 250px;
+      height: 340px;
       border-radius: 50% / 46%;
       position: relative;
       transition: all 0.35s ease;
@@ -463,8 +553,13 @@
     }
 
     @keyframes pulseAligned {
-      0% { transform: scale(1); }
-      100% { transform: scale(1.02); }
+      0% {
+        transform: scale(1);
+      }
+
+      100% {
+        transform: scale(1.02);
+      }
     }
 
     /* State: Warning */
@@ -504,9 +599,19 @@
     }
 
     @keyframes scanAnim {
-      0% { top: 6%; opacity: 0.4; }
-      50% { opacity: 1; }
-      100% { top: 94%; opacity: 0.4; }
+      0% {
+        top: 6%;
+        opacity: 0.4;
+      }
+
+      50% {
+        opacity: 1;
+      }
+
+      100% {
+        top: 94%;
+        opacity: 0.4;
+      }
     }
 
     /* Real-time Guidance Pill */
@@ -540,6 +645,7 @@
       border-color: var(--emerald);
       color: #a7f3d0;
     }
+
     .oval-feedback-pill.state-aligned .pill-dot {
       background: var(--emerald);
       box-shadow: 0 0 10px var(--emerald);
@@ -549,6 +655,7 @@
       border-color: var(--amber);
       color: #fde68a;
     }
+
     .oval-feedback-pill.state-warning .pill-dot {
       background: var(--amber);
       box-shadow: 0 0 10px var(--amber);
@@ -572,9 +679,20 @@
     }
 
     @keyframes countPop {
-      0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
-      50% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
-      100% { transform: translate(-50%, -50%) scale(1); opacity: 0.85; }
+      0% {
+        transform: translate(-50%, -50%) scale(0.6);
+        opacity: 0;
+      }
+
+      50% {
+        transform: translate(-50%, -50%) scale(1.15);
+        opacity: 1;
+      }
+
+      100% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.85;
+      }
     }
 
     /* =========================================================================
@@ -599,8 +717,15 @@
     }
 
     @keyframes slideDown {
-      from { transform: translateY(-20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
+      from {
+        transform: translateY(-20px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
     }
 
     .challenge-header-row {
@@ -645,8 +770,13 @@
     }
 
     @keyframes pulseUrgent {
-      0% { transform: scale(1); }
-      100% { transform: scale(1.06); }
+      0% {
+        transform: scale(1);
+      }
+
+      100% {
+        transform: scale(1.06);
+      }
     }
 
     .challenge-action-center {
@@ -670,8 +800,13 @@
     }
 
     @keyframes bounceIcon {
-      0% { transform: translateX(0); }
-      100% { transform: translateX(4px); }
+      0% {
+        transform: translateX(0);
+      }
+
+      100% {
+        transform: translateX(4px);
+      }
     }
 
     .challenge-main-prompt {
@@ -749,6 +884,7 @@
       z-index: 50;
       transition: opacity 0.05s ease-out;
     }
+
     .flash-overlay.flash-active {
       opacity: 0.85;
       transition: none;
@@ -823,12 +959,12 @@
       transition: 0.3s;
     }
 
-    .toggle-switch input:checked + .toggle-slider {
+    .toggle-switch input:checked+.toggle-slider {
       background-color: var(--cyan);
       box-shadow: 0 0 10px var(--cyan-glow);
     }
 
-    .toggle-switch input:checked + .toggle-slider:before {
+    .toggle-switch input:checked+.toggle-slider:before {
       transform: translateX(18px);
     }
 
@@ -940,9 +1076,17 @@
       letter-spacing: -0.01em;
     }
 
-    .verdict-badge.approved { color: var(--emerald); }
-    .verdict-badge.rejected { color: var(--rose); }
-    .verdict-badge.idle { color: var(--text-dim); }
+    .verdict-badge.approved {
+      color: var(--emerald);
+    }
+
+    .verdict-badge.rejected {
+      color: var(--rose);
+    }
+
+    .verdict-badge.idle {
+      color: var(--text-dim);
+    }
 
     .verdict-subtext {
       font-size: 0.82rem;
@@ -1013,6 +1157,235 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
+    }
+
+    /* Camera Source Indicator Badge in Capture Box */
+    .cam-source-badge {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      background: rgba(10, 16, 28, 0.88);
+      border: 1px solid var(--border-color);
+      backdrop-filter: blur(10px);
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      z-index: 28;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+      transition: all 0.3s ease;
+    }
+
+    .cam-source-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 8px var(--cyan);
+      transition: all 0.3s ease;
+    }
+
+    .cam-source-dot.live {
+      background: var(--emerald);
+      box-shadow: 0 0 10px var(--emerald);
+    }
+
+    .cam-source-dot.offline {
+      background: var(--rose);
+      box-shadow: 0 0 10px var(--rose);
+    }
+
+    .cam-source-detail {
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+
+    /* ESP32-CAM Stream Image Element */
+    #esp32StreamImg {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+      transform: scaleX(1);
+    }
+
+    /* Dual Window Side-by-Side Dashboard Card */
+    .dual-window-card {
+      background: rgba(0, 0, 0, 0.42);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 0.95rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: all 0.3s ease;
+    }
+
+    .dual-window-card:hover {
+      border-color: rgba(6, 182, 212, 0.45);
+      box-shadow: 0 0 20px rgba(6, 182, 212, 0.15);
+    }
+
+    .dual-window-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .dual-window-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
+    .dual-window-title svg {
+      fill: var(--cyan);
+    }
+
+    .dual-window-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .btn-dual-action {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 0.28rem 0.7rem;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.2s ease;
+    }
+
+    .btn-dual-action:hover {
+      background: rgba(6, 182, 212, 0.25);
+      border-color: var(--cyan);
+      color: #fff;
+    }
+
+    .dual-window-frame {
+      width: 100%;
+      min-height: 175px;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      position: relative;
+      cursor: pointer;
+    }
+
+    .dual-window-frame img {
+      width: 100%;
+      height: auto;
+      max-height: 380px;
+      object-fit: contain;
+      display: block;
+    }
+
+    .dual-window-placeholder {
+      text-align: center;
+      padding: 1.5rem 1rem;
+      color: var(--text-muted);
+    }
+
+    .dual-placeholder-icon {
+      font-size: 2.2rem;
+      margin-bottom: 0.5rem;
+      opacity: 0.8;
+    }
+
+    /* Modal Zoom Dual Window */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      backdrop-filter: blur(12px);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    .modal-content {
+      background: #090e17;
+      border: 1.5px solid var(--cyan);
+      box-shadow: 0 0 50px var(--cyan-glow);
+      border-radius: 16px;
+      max-width: 95vw;
+      max-height: 94vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.85rem 1.25rem;
+      border-bottom: 1px solid var(--border-color);
+      background: rgba(15, 23, 42, 0.7);
+    }
+
+    .modal-title {
+      font-family: var(--font-heading);
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: #fff;
+    }
+
+    .modal-close-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.3rem;
+      cursor: pointer;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      line-height: 1;
+    }
+
+    .modal-close-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .modal-body {
+      padding: 1rem;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+
+    .modal-body img {
+      max-width: 100%;
+      max-height: 82vh;
+      object-fit: contain;
+      border-radius: 8px;
     }
 
     /* Metrics Grid */
@@ -1153,10 +1526,13 @@
     }
 
     @keyframes spin {
-      to { transform: rotate(360deg); }
+      to {
+        transform: rotate(360deg);
+      }
     }
   </style>
 </head>
+
 <body>
 
   <!-- Header -->
@@ -1165,12 +1541,14 @@
       <div class="brand">
         <div class="brand-icon">
           <svg viewBox="0 0 24 24">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-1.82.62-3.49 1.64-4.83 1.43 1.67 3.53 2.75 5.86 2.81-.32.61-.5 1.3-.5 2.02 0 2.48 2.02 4.5 4.5 4.5.72 0 1.41-.18 2.02-.5.06 2.33 1.14 4.43 2.81 5.86-1.34 1.02-3.01 1.64-4.83 1.64zm6.36-3.17c-1.28-1.51-2.06-3.45-2.14-5.58.54-.73.88-1.62.88-2.6 0-2.48-2.02-4.5-4.5-4.5-.98 0-1.87.34-2.6.88-2.13-.08-4.07-.86-5.58-2.14 1.49-1.36 3.44-2.19 5.58-2.19 4.41 0 8 3.59 8 8 0 2.14-.83 4.09-2.14 5.58z"/>
+            <path
+              d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-1.82.62-3.49 1.64-4.83 1.43 1.67 3.53 2.75 5.86 2.81-.32.61-.5 1.3-.5 2.02 0 2.48 2.02 4.5 4.5 4.5.72 0 1.41-.18 2.02-.5.06 2.33 1.14 4.43 2.81 5.86-1.34 1.02-3.01 1.64-4.83 1.64zm6.36-3.17c-1.28-1.51-2.06-3.45-2.14-5.58.54-.73.88-1.62.88-2.6 0-2.48-2.02-4.5-4.5-4.5-.98 0-1.87.34-2.6.88-2.13-.08-4.07-.86-5.58-2.14 1.49-1.36 3.44-2.19 5.58-2.19 4.41 0 8 3.59 8 8 0 2.14-.83 4.09-2.14 5.58z" />
           </svg>
         </div>
         <div>
           <div class="brand-title">eKYC AI Biometric & Active Liveness Portal</div>
-          <div class="brand-subtitle">Interactive Liveness: Blink & Head Turn &bull; Ensemble: YOLO_4 + RF-DETR Small</div>
+          <div class="brand-subtitle">Interactive Liveness: Blink & Head Turn &bull; Ensemble: YOLO_4 + RF-DETR Small
+          </div>
         </div>
       </div>
       <div class="nav-badges">
@@ -1189,7 +1567,8 @@
     <div class="hero-strip">
       <div>
         <h1>Xác Thực Sinh Trắc Học & Thử Thách Liveness Trực Tiếp</h1>
-        <p>Hệ thống hỗ trợ kiểm tra thực thể sống 2 bước (Chớp mắt + Quay đầu) và thẩm định khuôn mặt Ensemble với hiệu ứng làm mờ Bokeh ngoại vi.</p>
+        <p>Hệ thống hỗ trợ kiểm tra thực thể sống 2 bước (Chớp mắt + Quay đầu) và thẩm định khuôn mặt Ensemble với hiệu
+          ứng làm mờ Bokeh ngoại vi.</p>
       </div>
       <div class="shortcuts-pill">
         <span>Phím tắt:</span>
@@ -1240,27 +1619,98 @@
           </div>
 
           <div class="tabs">
-            <button class="tab-btn active" id="tabWebcamBtn" onclick="switchInputMode('webcam')">Webcam Trực Tiếp</button>
-            <button class="tab-btn" id="tabUploadBtn" onclick="switchInputMode('upload')">Tải File Lên</button>
+            <button class="tab-btn active" id="tabWebcamBtn" onclick="onWebcamTabClick()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"
+                style="vertical-align:-2px; margin-right:4px;">
+                <path
+                  d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z" />
+              </svg>
+              <span>Webcam</span>
+            </button>
+            <button class="tab-btn" id="tabEsp32Btn" onclick="switchInputMode('esp32')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"
+                style="vertical-align:-2px; margin-right:4px;">
+                <path
+                  d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
+              </svg>
+              <span>ESP32-CAM Stream</span>
+            </button>
+            <button class="tab-btn" id="tabUploadBtn" onclick="switchInputMode('upload')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"
+                style="vertical-align:-2px; margin-right:4px;">
+                <path
+                  d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" />
+              </svg>
+              <span>Tải File</span>
+            </button>
           </div>
         </div>
 
         <!-- Mode Segmented Control: Challenge Mode vs Quick 1-Shot -->
         <div class="mode-segmented" id="workflowSegmented">
           <button class="seg-btn active" id="segChallengeBtn" onclick="setWorkflowMode('challenge')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z" />
+            </svg>
             <span>Chuỗi Thử Thách Liveness (Chớp mắt + Quay đầu)</span>
           </button>
           <button class="seg-btn" id="segQuickBtn" onclick="setWorkflowMode('quick')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M7 2v11h3v9l7-12h-4l4-8z" />
+            </svg>
             <span>Thẩm Định Nhanh 1-Shot</span>
           </button>
         </div>
 
         <!-- Capture Box with Bokeh Blur Overlay & Oval Guide -->
         <div class="capture-box" id="captureBox">
-          <!-- Live Video -->
+          <!-- Active Camera Source & ESP32 Status Badge -->
+          <div class="cam-source-badge" id="camSourceBadge">
+            <span class="cam-source-dot offline" id="camSourceDot"></span>
+            <span id="camSourceTitle">Webcam</span>
+            <span class="cam-source-detail" id="camSourceDetail">(Chưa bật)</span>
+          </div>
+
+          <!-- Live Video (Webcam) -->
           <video id="webcamVideo" autoplay playsinline muted></video>
+
+          <!-- Interactive Clickable Placeholder when Webcam is Off -->
+          <div class="webcam-off-card" id="webcamOffPlaceholder" onclick="toggleWebcam()">
+            <div class="webcam-off-icon">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
+              </svg>
+            </div>
+            <div class="webcam-off-title">Webcam Chưa Được Bật</div>
+            <div class="webcam-off-desc">Nhấn vào khung này hoặc nút bên dưới để mở Webcam</div>
+            <div class="btn btn-primary"
+              style="margin-top: 14px; pointer-events: none; padding: 0.55rem 1.3rem; font-size: 0.88rem; box-shadow: 0 0 20px rgba(6,182,212,0.4);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
+              </svg>
+              <span>Bật Webcam</span>
+            </div>
+          </div>
+
+          <!-- Placeholder hiển thị khi ESP32 chưa đẩy frame -->
+          <div class="webcam-off-card" id="esp32OffPlaceholder" style="display: none;" onclick="toggleWebcam()">
+            <div class="webcam-off-icon" style="color: var(--cyan); background: rgba(6, 182, 212, 0.12); border-color: rgba(6, 182, 212, 0.3);">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+              </svg>
+            </div>
+            <div class="webcam-off-title" id="esp32PlaceholderTitle">Đang Chờ Luồng ESP32-CAM...</div>
+            <div class="webcam-off-desc" id="esp32PlaceholderDesc">Đảm bảo ESP32 đã bật nguồn và đang đẩy frame (POST :3000/api/stream/frame)</div>
+            <div class="btn btn-secondary" style="margin-top: 14px; pointer-events: none; padding: 0.55rem 1.3rem; font-size: 0.88rem;">
+              <span>Làm Mới Luồng ESP32</span>
+            </div>
+          </div>
+
+          <!-- Live ESP32-CAM MJPEG Stream -->
+          <img id="esp32StreamImg" alt="ESP32 Stream" crossorigin="anonymous">
 
           <!-- Static Image Preview -->
           <img id="previewImg" alt="Xem trước ảnh">
@@ -1302,7 +1752,8 @@
               <div class="challenge-direction-icon" id="challengeActionIcon">👁️</div>
               <div>
                 <div class="challenge-main-prompt" id="challengeMainPrompt">VUI LÒNG CHỚP MẮT TỰ NHIÊN</div>
-                <div class="challenge-sub-hint" id="challengeSubHint">Hệ thống đang đo lường chỉ số mở mắt EAR thời gian thực</div>
+                <div class="challenge-sub-hint" id="challengeSubHint">Hệ thống đang đo lường chỉ số mở mắt EAR thời gian
+                  thực</div>
               </div>
             </div>
 
@@ -1323,12 +1774,16 @@
           <!-- Drag & Drop Placeholder (Khi ở tab Tải File) -->
           <div class="drag-drop-text" id="uploadPlaceholder" style="display: none;">
             <svg viewBox="0 0 24 24">
-              <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+              <path
+                d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z" />
             </svg>
             <p><strong>Kéo và thả file ảnh vào đây</strong></p>
             <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;">Hỗ trợ JPG, PNG, WEBP</p>
-            <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleFileSelected(event)">
-            <button class="btn btn-secondary" style="margin: 0.85rem auto 0; font-size: 0.8rem; padding: 0.45rem 1.1rem;" onclick="document.getElementById('fileInput').click()">Chọn file từ máy</button>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;"
+              onchange="handleFileSelected(event)">
+            <button class="btn btn-secondary"
+              style="margin: 0.85rem auto 0; font-size: 0.8rem; padding: 0.45rem 1.1rem;"
+              onclick="document.getElementById('fileInput').click()">Chọn file từ máy</button>
           </div>
         </div>
 
@@ -1354,18 +1809,25 @@
         <!-- Action Buttons -->
         <div class="action-row">
           <button class="btn btn-secondary" id="camToggleBtn" onclick="toggleWebcam()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
-            <span id="camToggleBtnText">Bật Camera</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
+            </svg>
+            <span id="camToggleBtnText">Bật Webcam</span>
           </button>
 
           <!-- Dynamic Action Button: Start Challenge vs Quick Verify -->
           <button class="btn btn-challenge" id="mainActionBtn" onclick="handleMainActionClick()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z" />
+            </svg>
             <span id="mainActionBtnText">Bắt Đầu Thử Thách Liveness</span>
           </button>
 
           <!-- Cancel Challenge Button (Shown only when in active challenge) -->
-          <button class="btn btn-danger-outline" id="cancelChallengeBtn" style="display: none;" onclick="cancelActiveChallenge()">
+          <button class="btn btn-danger-outline" id="cancelChallengeBtn" style="display: none;"
+            onclick="cancelActiveChallenge()">
             <span>✕ Hủy</span>
           </button>
         </div>
@@ -1384,7 +1846,8 @@
         <div class="verdict-banner idle" id="verdictBanner">
           <div>
             <div class="verdict-badge idle" id="verdictBadge">CHỜ DỮ LIỆU</div>
-            <div class="verdict-subtext" id="verdictSubText">Vui lòng bật Camera và đưa khuôn mặt vào giữa khung oval</div>
+            <div class="verdict-subtext" id="verdictSubText">Vui lòng bật Camera và đưa khuôn mặt vào giữa khung oval
+            </div>
           </div>
           <div id="verdictIcon" style="font-size: 2.3rem;">⚡</div>
         </div>
@@ -1409,6 +1872,38 @@
             <div class="visual-frame">
               <img id="resCropImg" src="" alt="Face Crop" style="display: none;">
               <span id="cropPlaceholder" style="font-size: 0.75rem; color: var(--text-dim);">Chưa có ảnh</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dual Window Side-by-Side Dashboard Card (Chuẩn test_pipeline_ensemble_full.py) -->
+        <div class="dual-window-card" id="dualWindowCard">
+          <div class="dual-window-header">
+            <div class="dual-window-title">
+              <svg width="18" height="18" viewBox="0 0 24 24">
+                <path
+                  d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z" />
+              </svg>
+              <span>Kết Quả Dual-Window (Side-by-Side)</span>
+            </div>
+            <div class="dual-window-actions">
+              <button class="btn-dual-action" id="btnZoomDual" onclick="openFullscreenDualWindow()"
+                style="display:none;">
+                🔍 Xem To
+              </button>
+              <a class="btn-dual-action" id="btnDownloadDual" download="ekyc_dual_result.jpg" style="display:none;">
+                💾 Tải Ảnh
+              </a>
+            </div>
+          </div>
+          <div class="dual-window-frame" id="dualWindowFrame" onclick="openFullscreenDualWindow()"
+            title="Bấm để phóng to">
+            <img id="resDualWindowImg" src="" alt="Dual Window Result" style="display: none;">
+            <div class="dual-window-placeholder" id="dualPlaceholder">
+              <div class="dual-placeholder-icon">🪟</div>
+              <p><strong>Bảng Điều Khiển Dual Window Đồng Bộ</strong></p>
+              <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;">Hiển thị ảnh gốc và bảng chẩn đoán
+                5 phần chuẩn test_pipeline_ensemble_full.py</p>
             </div>
           </div>
         </div>
@@ -1497,10 +1992,25 @@
     };
 
     let currentState = APP_STATE.IDLE;
-    let inputMode = 'webcam'; // 'webcam' | 'upload'
+    let inputMode = 'webcam'; // 'webcam' | 'esp32' | 'upload'
     let workflowMode = 'challenge'; // 'challenge' | 'quick'
     let webcamStream = null;
     let selectedFileBlob = null;
+
+    // ESP32-CAM Stream Relay state (:3000)
+    let isEsp32Connected = false;
+    let esp32PollTimer = null;
+    let lastKnownEsp32Ip = '';
+
+    function setEsp32StreamSource(espImg, espIp) {
+      if (!espImg) return;
+      // Kết nối trực tiếp qua Node.js Relay (:3000/stream)
+      // Cùng Same-Origin giúp Canvas capture 0ms mà không bao giờ bị lỗi CORS / Tainted Canvas
+      const streamUrl = `${API_BASE_URL}/stream?t=${Date.now()}`;
+      if (espImg.src !== streamUrl) {
+        espImg.src = streamUrl;
+      }
+    }
 
     // Active Liveness Session variables
     let baseFrameBlob = null; // Captured when face is well-aligned for final Ensemble verify
@@ -1523,7 +2033,7 @@
     let autoTriggerBlocked = false;
     let countdownTimer = null;
 
-    // Healthcheck on load
+    // Healthcheck & Initial checks on load
     window.addEventListener('DOMContentLoaded', async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/api/v1/health`);
@@ -1534,6 +2044,9 @@
       } catch (err) {
         console.warn('Health check failed:', err);
       }
+
+      // Check ESP32 background status
+      checkEsp32Status();
 
       // Keyboard Shortcuts
       window.addEventListener('keydown', (e) => {
@@ -1549,40 +2062,191 @@
         } else if (e.key.toLowerCase() === 'a') {
           const chk = document.getElementById('chkAutoCapture');
           chk.checked = !chk.checked;
+        } else if (e.key.toLowerCase() === 'c') {
+          // Shortcut 'c' to cycle camera: webcam <-> esp32
+          if (inputMode === 'webcam') switchInputMode('esp32');
+          else if (inputMode === 'esp32') switchInputMode('webcam');
         }
       });
     });
 
     // =========================================================================
-    // NAVIGATION & WORKFLOW SWITCHERS
+    // ESP32-CAM STATUS & DEVICE INFO POLLER
     // =========================================================================
+    async function checkEsp32Status(showAlertIfOffline = false) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/device/info`);
+        if (res.ok) {
+          const info = await res.json();
+          isEsp32Connected = Boolean(info.is_live || info.has_frame);
+          const title = document.getElementById('camSourceTitle');
+          const detail = document.getElementById('camSourceDetail');
+          const dot = document.getElementById('camSourceDot');
+          const espImg = document.getElementById('esp32StreamImg');
+          const espPlaceholder = document.getElementById('esp32OffPlaceholder');
+
+          if (info.esp32_ip) lastKnownEsp32Ip = info.esp32_ip;
+          if (inputMode === 'esp32') {
+            const isChallengeActive = (currentState !== APP_STATE.IDLE && currentState !== APP_STATE.PREVIEW_ALIGN);
+
+            if (isEsp32Connected || isChallengeActive) {
+              if (dot) dot.className = 'cam-source-dot live';
+              if (title) title.textContent = 'ESP32-CAM Stream';
+              if (detail) detail.textContent = `(IP: ${info.esp32_ip || '192.168.137.x'})`;
+              if (espPlaceholder) espPlaceholder.style.display = 'none';
+              if (espImg) {
+                espImg.style.display = 'block';
+                if (!espImg.src || espImg.src.includes('about:blank') || espImg.src === '') {
+                  setEsp32StreamSource(espImg, info.esp32_ip);
+                }
+              }
+            } else {
+              if (dot) dot.className = 'cam-source-dot offline';
+              if (title) title.textContent = 'ESP32-CAM Stream';
+              if (detail) detail.textContent = '(Chờ frame...)';
+              if (espPlaceholder) espPlaceholder.style.display = 'flex';
+              if (espImg) espImg.style.display = 'none';
+              if (showAlertIfOffline) {
+                alert('ESP32-CAM hiện chưa truyền frame nào đến Node.js (:3000). Vui lòng đảm bảo camera ESP32 đã bật nguồn và kết nối WiFi!');
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Bỏ qua lỗi kết nối tạm thời
+      }
+    }
+
+    // =========================================================================
+    // NAVIGATION & WORKFLOW SWITCHERS (Webcam vs ESP32-CAM vs Tải File)
+    // =========================================================================
+    async function onWebcamTabClick() {
+      if (inputMode !== 'webcam') {
+        switchInputMode('webcam');
+      }
+      if (!webcamStream) {
+        await toggleWebcam();
+      }
+    }
+
     function switchInputMode(mode) {
       inputMode = mode;
       document.getElementById('tabWebcamBtn').classList.toggle('active', mode === 'webcam');
+      document.getElementById('tabEsp32Btn').classList.toggle('active', mode === 'esp32');
       document.getElementById('tabUploadBtn').classList.toggle('active', mode === 'upload');
-      document.getElementById('workflowSegmented').style.display = (mode === 'webcam') ? 'flex' : 'none';
+
+      document.getElementById('workflowSegmented').style.display = (mode === 'upload') ? 'none' : 'flex';
+      const camToggleBtn = document.getElementById('camToggleBtn');
+      const camToggleText = document.getElementById('camToggleBtnText');
+      const sourceBadge = document.getElementById('camSourceBadge');
+      const sourceTitle = document.getElementById('camSourceTitle');
+      const sourceDetail = document.getElementById('camSourceDetail');
+      const sourceDot = document.getElementById('camSourceDot');
+      const espImg = document.getElementById('esp32StreamImg');
+      const espPlaceholder = document.getElementById('esp32OffPlaceholder');
+      const video = document.getElementById('webcamVideo');
+      const offCard = document.getElementById('webcamOffPlaceholder');
+
+      if (esp32PollTimer) {
+        clearInterval(esp32PollTimer);
+        esp32PollTimer = null;
+      }
 
       if (mode === 'webcam') {
+        // Tắt triệt để luồng ESP32
+        espImg.style.display = 'none';
+        espImg.src = '';
+        if (espPlaceholder) espPlaceholder.style.display = 'none';
+        baseFrameBlob = null;
         document.getElementById('previewImg').style.display = 'none';
         document.getElementById('uploadPlaceholder').style.display = 'none';
+
+        sourceBadge.style.display = 'flex';
+        sourceTitle.textContent = 'Webcam';
+        sourceDetail.textContent = webcamStream ? '(Đang chạy)' : '(Chưa bật)';
+        sourceDot.className = webcamStream ? 'cam-source-dot live' : 'cam-source-dot offline';
+
+        camToggleBtn.style.display = 'inline-flex';
+        camToggleText.textContent = webcamStream ? 'Tắt Webcam' : 'Bật Webcam';
+
         if (webcamStream) {
-          document.getElementById('webcamVideo').style.display = 'block';
+          if (offCard) offCard.style.display = 'none';
+          video.style.display = 'block';
           document.getElementById('scannerOverlay').style.display = 'flex';
-          document.getElementById('bokehBlurOverlay').style.display = 'block';
+          document.getElementById('bokehBlurOverlay').style.display = document.getElementById('chkOvalBokeh').checked ? 'block' : 'none';
+          currentState = APP_STATE.PREVIEW_ALIGN;
+          resetAllSteps();
+          startPoseCheckLoop();
+        } else {
+          if (offCard) offCard.style.display = 'flex';
+          video.style.display = 'none';
+          document.getElementById('scannerOverlay').style.display = 'none';
+          document.getElementById('bokehBlurOverlay').style.display = 'none';
+          currentState = APP_STATE.IDLE;
         }
         updateMainActionButtonText();
+      } else if (mode === 'esp32') {
+        if (offCard) offCard.style.display = 'none';
+        // Tắt triệt để webcam để nhả camera phần cứng và tách hẳn luồng
+        if (webcamStream) {
+          webcamStream.getTracks().forEach(t => t.stop());
+          webcamStream = null;
+        }
+        video.srcObject = null;
+        video.style.display = 'none';
+        baseFrameBlob = null; // Xóa frame webcam cũ tránh nhầm lẫn sang thẩm định
+        document.getElementById('previewImg').style.display = 'none';
+        document.getElementById('uploadPlaceholder').style.display = 'none';
+
+        // Bật luồng MJPEG của ESP32 (ưu tiên trực tiếp cổng 81, fallback Node.js :3000)
+        setEsp32StreamSource(espImg, lastKnownEsp32Ip);
+        espImg.style.display = isEsp32Connected ? 'block' : 'none';
+        if (espPlaceholder) espPlaceholder.style.display = isEsp32Connected ? 'none' : 'flex';
+
+        sourceBadge.style.display = 'flex';
+        sourceTitle.textContent = 'ESP32-CAM Stream';
+        sourceDetail.textContent = isEsp32Connected ? '(Đang kết nối)' : '(Chờ frame...)';
+        sourceDot.className = isEsp32Connected ? 'cam-source-dot live' : 'cam-source-dot offline';
+
+        camToggleBtn.style.display = 'inline-flex';
+        camToggleText.textContent = 'Làm Mới Luồng ESP32';
+
+        document.getElementById('scannerOverlay').style.display = 'flex';
+        document.getElementById('bokehBlurOverlay').style.display = document.getElementById('chkOvalBokeh').checked ? 'block' : 'none';
+
+        currentState = APP_STATE.PREVIEW_ALIGN;
+        resetAllSteps();
+
+        // Kiểm tra ngay và định kỳ trạng thái ESP32
+        checkEsp32Status();
+        esp32PollTimer = setInterval(checkEsp32Status, 3000);
+
+        startPoseCheckLoop();
+        updateMainActionButtonText();
       } else {
+        // Chế độ Tải File Ảnh
+        if (offCard) offCard.style.display = 'none';
+        if (espPlaceholder) espPlaceholder.style.display = 'none';
         stopWebcam();
-        document.getElementById('webcamVideo').style.display = 'none';
+        baseFrameBlob = null;
+        espImg.style.display = 'none';
+        espImg.src = '';
+        video.srcObject = null;
+        video.style.display = 'none';
         document.getElementById('scannerOverlay').style.display = 'none';
         document.getElementById('bokehBlurOverlay').style.display = 'none';
+        sourceBadge.style.display = 'none';
+        camToggleBtn.style.display = 'none';
         hideChallengeHUD();
+
         if (!selectedFileBlob) {
           document.getElementById('uploadPlaceholder').style.display = 'block';
+          document.getElementById('previewImg').style.display = 'none';
         } else {
+          document.getElementById('uploadPlaceholder').style.display = 'none';
           document.getElementById('previewImg').style.display = 'block';
         }
-        document.getElementById('mainActionBtnText').textContent = 'Thẩm Định File Ảnh';
+        updateMainActionButtonText();
       }
     }
 
@@ -1603,10 +2267,10 @@
         btnText.textContent = 'Thẩm Định File Ảnh';
         btn.className = 'btn btn-primary';
       } else if (workflowMode === 'challenge') {
-        btnText.textContent = 'Bắt Đầu Thử Thách Liveness';
+        btnText.textContent = inputMode === 'esp32' ? 'Bắt Đầu Thử Thách Liveness (ESP32)' : 'Bắt Đầu Thử Thách Liveness';
         btn.className = 'btn btn-challenge';
       } else {
-        btnText.textContent = 'Chụp Nhanh & Thẩm Định';
+        btnText.textContent = inputMode === 'esp32' ? 'Chụp ESP32 & Thẩm Định' : 'Chụp Nhanh & Thẩm Định';
         btn.className = 'btn btn-primary';
       }
     }
@@ -1628,37 +2292,103 @@
     }
 
     // =========================================================================
-    // WEBCAM LIFECYCLE
+    // CAMERA LIFECYCLE (Webcam & ESP32 Refresh)
     // =========================================================================
     async function toggleWebcam() {
+      if (inputMode === 'esp32') {
+        const isChallengeActive = (currentState !== APP_STATE.IDLE && currentState !== APP_STATE.PREVIEW_ALIGN);
+        if (isChallengeActive) return; // Không ngắt khi đang chạy thử thách liveness
+
+        const espImg = document.getElementById('esp32StreamImg');
+        setEsp32StreamSource(espImg, lastKnownEsp32Ip);
+        await checkEsp32Status(true);
+        currentState = APP_STATE.PREVIEW_ALIGN;
+        startPoseCheckLoop();
+        return;
+      }
+
+      // Đảm bảo tab webcam được kích hoạt
+      if (inputMode !== 'webcam') {
+        switchInputMode('webcam');
+      }
+
       const btnText = document.getElementById('camToggleBtnText');
       if (webcamStream) {
         stopWebcam();
-        btnText.textContent = 'Bật Camera';
       } else {
+        // Kiểm tra bảo mật và API MediaDevices
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          if (!isLocal) {
+            alert('⚠️ Trình duyệt chặn mở Webcam qua IP mạng LAN HTTP (' + window.location.hostname + ').\n\n👉 Vui lòng mở lại trang web qua: http://localhost:3000 hoặc dùng HTTPS để cấp quyền camera!');
+          } else {
+            alert('⚠️ Trình duyệt không hỗ trợ MediaDevices hoặc quyền truy cập Camera bị chặn trong cài đặt.');
+          }
+          return;
+        }
+
         try {
-          webcamStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              facingMode: 'user'
-            }
-          });
+          if (btnText) btnText.textContent = 'Đang mở...';
+
+          let stream = null;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                facingMode: 'user'
+              },
+              audio: false
+            });
+          } catch (constraintErr) {
+            console.warn('getUserMedia ideal resolution failed, retrying with fallback...', constraintErr);
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false
+            });
+          }
+
+          webcamStream = stream;
           const video = document.getElementById('webcamVideo');
           video.srcObject = webcamStream;
           video.style.display = 'block';
 
-          // Show Bokeh Blur Overlay & Oval Guide
+          try {
+            await video.play();
+          } catch (playErr) {
+            console.warn('video.play() auto-play error:', playErr);
+          }
+
+          // Ẩn placeholder khi webcam đã bật
+          const offCard = document.getElementById('webcamOffPlaceholder');
+          if (offCard) offCard.style.display = 'none';
+
+          // Hiển thị Overlay Scanner & Bokeh Blur
           document.getElementById('scannerOverlay').style.display = 'flex';
           const bokehEnabled = document.getElementById('chkOvalBokeh').checked;
           document.getElementById('bokehBlurOverlay').style.display = bokehEnabled ? 'block' : 'none';
 
-          btnText.textContent = 'Tắt Camera';
+          const sourceDetail = document.getElementById('camSourceDetail');
+          const sourceDot = document.getElementById('camSourceDot');
+          if (sourceDetail) sourceDetail.textContent = '(Đang chạy)';
+          if (sourceDot) sourceDot.className = 'cam-source-dot live';
+
+          if (btnText) btnText.textContent = 'Tắt Webcam';
           currentState = APP_STATE.PREVIEW_ALIGN;
           resetAllSteps();
           startPoseCheckLoop();
         } catch (err) {
-          alert('Không thể truy cập camera: ' + err.message);
+          console.error('Lỗi khi mở Webcam:', err);
+          if (btnText) btnText.textContent = 'Bật Webcam';
+          let msg = err.message || '';
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            msg = 'Bạn đã từ chối cấp quyền Camera. Vui lòng bấm vào biểu tượng ổ khóa/camera trên thanh địa chỉ URL để Cho Phép (Allow).';
+          } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+            msg = 'Không tìm thấy thiết bị Webcam trên máy tính.';
+          } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+            msg = 'Webcam đang bị ứng dụng khác chiếm giữ (Zoom, Teams, Zalo, OBS). Hãy tắt ứng dụng đó rồi bấm Bật Webcam lại.';
+          }
+          alert('Không thể mở Webcam: ' + msg);
         }
       }
     }
@@ -1671,17 +2401,43 @@
       stopPoseCheckLoop();
       stopChallengeLoop();
       currentState = APP_STATE.IDLE;
-      document.getElementById('webcamVideo').style.display = 'none';
+
+      const video = document.getElementById('webcamVideo');
+      if (video) {
+        video.srcObject = null;
+        video.style.display = 'none';
+      }
       document.getElementById('scannerOverlay').style.display = 'none';
       document.getElementById('bokehBlurOverlay').style.display = 'none';
       hideChallengeHUD();
-      document.getElementById('camToggleBtnText').textContent = 'Bật Camera';
+
+      if (inputMode === 'webcam') {
+        const offCard = document.getElementById('webcamOffPlaceholder');
+        if (offCard) offCard.style.display = 'flex';
+      }
+
+      const btnText = document.getElementById('camToggleBtnText');
+      if (btnText) btnText.textContent = 'Bật Webcam';
+
+      const sourceDetail = document.getElementById('camSourceDetail');
+      const sourceDot = document.getElementById('camSourceDot');
+      if (sourceDetail) sourceDetail.textContent = '(Chưa bật)';
+      if (sourceDot) sourceDot.className = 'cam-source-dot offline';
     }
 
     function toggleBokehBlur(enabled) {
-      if (webcamStream) {
+      if (webcamStream || inputMode === 'esp32') {
         document.getElementById('bokehBlurOverlay').style.display = enabled ? 'block' : 'none';
       }
+    }
+
+    // Đồng bộ trực tiếp frame ESP32 mới nhất lên màn hình
+    function syncEsp32FrameToView(blob) {
+      // Khi espImg đang kết nối luồng MJPEG trực tiếp (:81 hoặc :3000/stream),
+      // TUYỆT ĐỐI KHÔNG ghi đè espImg.src bằng Blob URL!
+      // Trình duyệt đang tự động render luồng MJPEG 25-30 FPS liên tục với độ trễ 0ms.
+      // Việc gán espImg.src bằng Blob làm hủy kết nối stream, gây đơ và delay chuyển động!
+      return;
     }
 
     // =========================================================================
@@ -1693,14 +2449,18 @@
       autoTriggerBlocked = false;
 
       poseCheckInterval = setInterval(async () => {
-        if (!webcamStream || currentState !== APP_STATE.PREVIEW_ALIGN || autoTriggerBlocked) return;
+        const isCameraReady = (inputMode === 'webcam' && webcamStream && document.getElementById('webcamVideo').readyState >= 2) ||
+          (inputMode === 'esp32');
+        if (!isCameraReady || currentState !== APP_STATE.PREVIEW_ALIGN || autoTriggerBlocked) return;
 
         const video = document.getElementById('webcamVideo');
-        if (video.readyState < 2) return;
 
         try {
           const blob = await captureThumbnailBlob(video, 480, 360);
           if (!blob) return;
+
+          // Cập nhật frame real-time lên màn hình nếu đang dùng ESP32
+          syncEsp32FrameToView(blob);
 
           const formData = new FormData();
           formData.append('file', blob, 'preview.jpg');
@@ -1717,7 +2477,7 @@
         } catch (e) {
           // Ignore transient preview network errors
         }
-      }, 260); // 4 FPS for preview loop
+      }, 350);
     }
 
     function stopPoseCheckLoop() {
@@ -1830,9 +2590,14 @@
         return;
       }
 
-      if (!webcamStream) {
+      if (inputMode === 'webcam' && !webcamStream) {
         await toggleWebcam();
         return;
+      }
+
+      if (inputMode === 'esp32' && !isEsp32Connected) {
+        await checkEsp32Status(true);
+        if (!isEsp32Connected) return;
       }
 
       if (workflowMode === 'challenge') {
@@ -1843,8 +2608,9 @@
     }
 
     function quickSnapshotBypass() {
-      if (!webcamStream) {
-        alert('Vui lòng bật Camera trước!');
+      const isReady = (inputMode === 'webcam' && webcamStream) || (inputMode === 'esp32');
+      if (!isReady) {
+        alert('Vui lòng bật Camera hoặc kết nối ESP32-CAM trước!');
         return;
       }
       cancelActiveChallenge();
@@ -1852,7 +2618,8 @@
     }
 
     async function startLivenessChallenge() {
-      if (!webcamStream) {
+      const isReady = (inputMode === 'webcam' && webcamStream) || (inputMode === 'esp32');
+      if (!isReady) {
         alert('Vui lòng bật camera để bắt đầu thử thách!');
         return;
       }
@@ -1904,8 +2671,9 @@
       challengeLoopInterval = setInterval(async () => {
         if (currentState !== APP_STATE.CHALLENGE_BLINK || isBlinkProcessing) return;
 
-        const video = document.getElementById('webcamVideo');
-        if (video.readyState < 2) return;
+        const isReady = (inputMode === 'webcam' && webcamStream && document.getElementById('webcamVideo').readyState >= 2) ||
+          (inputMode === 'esp32');
+        if (!isReady) return;
 
         framesCount++;
         if (framesCount > maxFramesTimeout) {
@@ -1917,8 +2685,14 @@
 
         isBlinkProcessing = true;
         try {
+          const video = document.getElementById('webcamVideo');
           // Gửi độ phân giải 640x480 để MediaPipe nhận diện mí mắt và tròng mắt chuẩn xác
           const frameBlob = await captureThumbnailBlob(video, 640, 480);
+          if (!frameBlob) return;
+
+          // Cập nhật ngay frame mới nhất lên màn hình để bám sát chuyển động chớp mắt
+          syncEsp32FrameToView(frameBlob);
+
           const formData = new FormData();
           formData.append('file', frameBlob, 'frame.jpg');
           formData.append('blink_counter', blinkCounter);
@@ -1936,14 +2710,15 @@
             blinkState = Boolean(data.blink_state);
             blinkBaselineEAR = data.baseline_ear || blinkBaselineEAR;
             const earVal = (data.ear_avg !== undefined) ? data.ear_avg.toFixed(2) : '0.00';
-            const closedTarget = (data.closed_thresh !== undefined) ? data.closed_thresh.toFixed(2) : '0.20';
+            const closedTarget = (data.closed_thresh !== undefined) ? data.closed_thresh.toFixed(2) : '0.19';
+            const openTarget = (data.open_thresh !== undefined) ? data.open_thresh.toFixed(2) : '0.21';
             const pct = Math.round((data.progress || 0) * 100);
 
             updateChallengeHUD({
               stageText: 'BƯỚC 2/3: THỬ THÁCH CHỚP MẮT',
               icon: blinkState ? '😉' : '👁️',
               prompt: data.passed ? 'ĐÃ XÁC NHẬN CHỚP MẮT THÀNH CÔNG!' : (blinkState ? 'ĐANG NHẮM MẮT... MỞ MẮT ĐỂ HOÀN TẤT' : 'VUI LÒNG CHỚP MẮT TỰ NHIÊN'),
-              hint: `Chỉ số EAR: ${earVal} | Mục tiêu: Nhắm (<${closedTarget}) -> Mở (>=0.22)`,
+              hint: `Chỉ số EAR: ${earVal} | Mục tiêu: Nhắm (<${closedTarget}) -> Mở (>=${openTarget})`,
               timerText: `${blinkCounter}/1 Lần`,
               isTimerUrgent: false,
               telemetry: `EAR: ${earVal} | Mốc: ${blinkBaselineEAR > 0 ? blinkBaselineEAR.toFixed(2) : '--'} | Trạng thái: ${data.label || ''}`,
@@ -2016,12 +2791,19 @@
       challengeLoopInterval = setInterval(async () => {
         if (currentState !== APP_STATE.CHALLENGE_HEAD || isHeadProcessing) return;
 
-        const video = document.getElementById('webcamVideo');
-        if (video.readyState < 2) return;
+        const isReady = (inputMode === 'webcam' && webcamStream && document.getElementById('webcamVideo').readyState >= 2) ||
+          (inputMode === 'esp32');
+        if (!isReady) return;
 
         isHeadProcessing = true;
         try {
+          const video = document.getElementById('webcamVideo');
           const frameBlob = await captureThumbnailBlob(video, 480, 360);
+          if (!frameBlob) return;
+
+          // Cập nhật ngay frame mới nhất lên màn hình để bám sát chuyển động quay đầu (0ms delay)
+          syncEsp32FrameToView(frameBlob);
+
           const formData = new FormData();
           formData.append('file', frameBlob, 'frame.jpg');
 
@@ -2166,6 +2948,10 @@
       document.getElementById('cancelChallengeBtn').style.display = 'none';
 
       // Submit baseFrameBlob with actual liveness results
+      if (!baseFrameBlob) {
+        baseFrameBlob = await captureFullFrameBlob();
+      }
+
       await sendVerificationPayload({
         fileToSend: baseFrameBlob,
         blink_passed: blinkPassed,
@@ -2188,6 +2974,16 @@
           alert('Vui lòng bật Camera trước!');
           currentState = APP_STATE.IDLE;
           return;
+        }
+        triggerScreenFlash();
+        fileToSend = await captureFullFrameBlob();
+      } else if (inputMode === 'esp32') {
+        if (!isEsp32Connected) {
+          await checkEsp32Status(true);
+          if (!isEsp32Connected) {
+            currentState = APP_STATE.IDLE;
+            return;
+          }
         }
         triggerScreenFlash();
         fileToSend = await captureFullFrameBlob();
@@ -2253,7 +3049,7 @@
 
         // Reset to preview state after 2 seconds
         setTimeout(() => {
-          if (webcamStream) {
+          if (webcamStream || inputMode === 'esp32') {
             currentState = APP_STATE.PREVIEW_ALIGN;
             autoTriggerBlocked = false;
             consecutiveGoodFrames = 0;
@@ -2313,6 +3109,23 @@
         document.getElementById('cropPlaceholder').style.display = 'none';
       }
 
+      // Dual Window Result (Side-by-Side chuẩn test_pipeline_ensemble_full.py)
+      const dualImg = document.getElementById('resDualWindowImg');
+      const dualPlaceholder = document.getElementById('dualPlaceholder');
+      const btnZoom = document.getElementById('btnZoomDual');
+      const btnDownload = document.getElementById('btnDownloadDual');
+
+      if (data.dual_window_image_base64) {
+        dualImg.src = data.dual_window_image_base64;
+        dualImg.style.display = 'block';
+        dualPlaceholder.style.display = 'none';
+        if (btnZoom) btnZoom.style.display = 'inline-flex';
+        if (btnDownload) {
+          btnDownload.style.display = 'inline-flex';
+          btnDownload.href = data.dual_window_image_base64;
+        }
+      }
+
       // Metrics
       const ens = data.ensemble_anti_spoof;
       const spoofPill = document.getElementById('metricSpoofConf');
@@ -2357,11 +3170,58 @@
       box.style.display = (box.style.display === 'block') ? 'none' : 'block';
     }
 
+    function openFullscreenDualWindow() {
+      const dualImg = document.getElementById('resDualWindowImg');
+      if (!dualImg.src || dualImg.style.display === 'none') return;
+      document.getElementById('modalDualImg').src = dualImg.src;
+      document.getElementById('dualModal').style.display = 'flex';
+    }
+
+    function closeFullscreenDualWindow() {
+      document.getElementById('dualModal').style.display = 'none';
+    }
+
     // =========================================================================
-    // UTILITIES: CAPTURE BLOBS & FLASH
+    // UTILITIES: CAPTURE BLOBS & FLASH (Webcam & ESP32-CAM)
     // =========================================================================
-    function captureThumbnailBlob(video, targetW, targetH) {
+    async function getEsp32LatestFrameBlob() {
+      const res = await fetch(`${API_BASE_URL}/api/stream/latest?t=${Date.now()}`);
+      if (!res.ok) throw new Error('Chưa nhận được frame từ ESP32-CAM qua cổng Node.js (:3000)');
+      return await res.blob();
+    }
+
+    async function captureThumbnailBlob(video, targetW, targetH) {
+      if (inputMode === 'esp32') {
+        const espImg = document.getElementById('esp32StreamImg');
+        if (espImg && espImg.complete && espImg.naturalWidth > 0) {
+          try {
+            const blob = await new Promise((resolve) => {
+              const canvas = document.getElementById('hiddenCanvas');
+              canvas.width = targetW;
+              canvas.height = targetH;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(espImg, 0, 0, targetW, targetH);
+              canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.85);
+            });
+            if (blob && blob.size > 500) {
+              return blob;
+            }
+          } catch (e) {
+            // Tự động fallback sang tải từ Node.js buffer nếu canvas có hạn chế CORS
+          }
+        }
+        try {
+          return await getEsp32LatestFrameBlob();
+        } catch (e) {
+          return null;
+        }
+      }
       return new Promise((resolve) => {
+        const vid = video || document.getElementById('webcamVideo');
+        if (!vid || (vid.readyState !== undefined && vid.readyState < 2)) {
+          resolve(null);
+          return;
+        }
         const canvas = document.getElementById('hiddenCanvas');
         canvas.width = targetW;
         canvas.height = targetH;
@@ -2369,13 +3229,32 @@
         ctx.save();
         ctx.translate(targetW, 0);
         ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, targetW, targetH);
+        ctx.drawImage(vid, 0, 0, targetW, targetH);
         ctx.restore();
         canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.85);
       });
     }
 
-    function captureFullFrameBlob() {
+    async function captureFullFrameBlob() {
+      if (inputMode === 'esp32') {
+        const espImg = document.getElementById('esp32StreamImg');
+        if (espImg && espImg.complete && espImg.naturalWidth > 0) {
+          try {
+            const blob = await new Promise((resolve) => {
+              const canvas = document.getElementById('hiddenCanvas');
+              const vw = espImg.naturalWidth || 640;
+              const vh = espImg.naturalHeight || 480;
+              canvas.width = vw;
+              canvas.height = vh;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(espImg, 0, 0, vw, vh);
+              canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.95);
+            });
+            if (blob && blob.size > 1000) return blob;
+          } catch (e) {}
+        }
+        return await getEsp32LatestFrameBlob();
+      }
       return new Promise((resolve) => {
         const video = document.getElementById('webcamVideo');
         const canvas = document.getElementById('hiddenCanvas');
@@ -2435,5 +3314,19 @@
       reader.readAsDataURL(file);
     }
   </script>
+
+  <!-- Modal Phóng To Bảng Kết Quả Dual Window (Side-by-Side) -->
+  <div class="modal-backdrop" id="dualModal" onclick="closeFullscreenDualWindow()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <span class="modal-title">🖼️ Bảng Kết Quả Dual-Window (Side-by-Side)</span>
+        <button class="modal-close-btn" onclick="closeFullscreenDualWindow()">✕</button>
+      </div>
+      <div class="modal-body">
+        <img id="modalDualImg" src="" alt="Dual Window Zoom">
+      </div>
+    </div>
+  </div>
 </body>
+
 </html>
