@@ -2576,11 +2576,6 @@
         text.textContent = 'MẶT ĐÃ CHUẨN TRONG OVAL! GIỮ NGUYÊN...';
         consecutiveGoodFrames++;
 
-        // Lưu trước frame chất lượng cao khi mặt đang nhìn thẳng và chuẩn trong oval
-        if (currentState === APP_STATE.PREVIEW_ALIGN) {
-          captureFullFrameBlob().then(b => { baseFrameBlob = b; });
-        }
-
         if (autoCaptureEnabled && consecutiveGoodFrames >= 3 && !autoTriggerBlocked) {
           triggerAutoWorkflow();
         }
@@ -2693,11 +2688,24 @@
       document.getElementById('cancelChallengeBtn').style.display = 'inline-flex';
       document.getElementById('mainActionBtn').disabled = true;
 
-      // Bước 1: Chụp ngay frame chuẩn (Base High-Res Frame) khi mặt đang thẳng trong Oval
+      // Hủy sạch phiên cũ (nếu có) trên server để bảo đảm phiên mới hoàn toàn độc lập
+      if (livenessSessionId) {
+        try {
+          const resetForm = new FormData();
+          resetForm.append('session_id', livenessSessionId);
+          fetch(`${API_BASE_URL}/api/v1/liveness/reset-session`, { method: 'POST', body: resetForm }).catch(() => {});
+        } catch (_) {}
+      }
+      livenessSessionId = null;
+      baseFrameBlob = null;
+      blinkSuccessBlob = null;
+      headSuccessBlob = null;
+
+      // Bước 1: Chụp ngay ảnh khuôn mặt chuẩn khi mặt đang thẳng trong Oval
       triggerScreenFlash();
       baseFrameBlob = await captureFullFrameBlob();
 
-      // Khởi tạo phiên Liveness trên Server để chống tráo đổi người (Face-swap anti-spoofing)
+      // Khởi tạo phiên Liveness trên Server từ ảnh chụp Bước 1 (Gắn định danh sinh trắc học DUY NHẤT cho phiên này)
       try {
         const initForm = new FormData();
         initForm.append('file', baseFrameBlob, 'base_frame.jpg');
@@ -3056,6 +3064,15 @@
       const mainBtn = document.getElementById('mainActionBtn');
       if (mainBtn) mainBtn.disabled = false;
 
+      // Hủy phiên trên server nếu đang có session active để không đối chiếu chéo
+      if (livenessSessionId) {
+        try {
+          const resetForm = new FormData();
+          resetForm.append('session_id', livenessSessionId);
+          fetch(`${API_BASE_URL}/api/v1/liveness/reset-session`, { method: 'POST', body: resetForm }).catch(() => {});
+        } catch (_) {}
+      }
+
       // Xóa toàn bộ dữ liệu & phiên thử thách
       livenessSessionId = null;
       baseFrameBlob = null;
@@ -3258,6 +3275,12 @@
       } finally {
         mainBtn.disabled = false;
         updateMainActionButtonText();
+
+        // Xóa sạch session và frame sau khi thẩm định xong để kết thúc phiên
+        livenessSessionId = null;
+        baseFrameBlob = null;
+        blinkSuccessBlob = null;
+        headSuccessBlob = null;
 
         // Reset to preview state after 2 seconds
         setTimeout(() => {

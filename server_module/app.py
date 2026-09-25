@@ -654,6 +654,32 @@ async def init_liveness_session_endpoint(
 
 
 @app.post(
+    "/api/v1/liveness/reset-session",
+    summary="Hủy phiên thử thách Liveness và giải phóng định danh trong bộ nhớ"
+)
+async def reset_liveness_session_endpoint(
+    request: Request,
+    session_id: Optional[str] = Form(None, description="Mã phiên Liveness cần hủy")
+):
+    """Hủy phiên Liveness và xóa descriptor để bắt đầu phiên mới hoàn toàn độc lập."""
+    pipeline: EKYCPipelineServer = request.app.state.pipeline
+    sess_id = session_id
+    if not sess_id:
+        try:
+            body = await request.json()
+            sess_id = body.get("session_id")
+        except Exception:
+            pass
+
+    if sess_id:
+        pipeline.reset_liveness_session(sess_id)
+        if esp32_challenge_manager:
+            esp32_challenge_manager.reset_session(sess_id)
+
+    return {"success": True, "message": "Đã hủy phiên Liveness và xóa bỏ toàn bộ định danh cũ."}
+
+
+@app.post(
     "/api/v1/liveness/blink-frame",
     summary="Đánh giá chỉ số EAR và trạng thái chớp mắt trên từng frame"
 )

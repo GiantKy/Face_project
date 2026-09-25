@@ -252,7 +252,7 @@ class EKYCPipelineServer:
                 "message": "Không thể trích xuất đặc trưng sinh trắc học từ khuôn mặt."
             }
 
-        sid = session_id or f"sess_{int(time.time()*1000)}"
+        sid = session_id or f"sess_{int(time.time()*1000)}_{uuid.uuid4().hex[:6]}"
         self.liveness_sessions[sid] = {
             "session_id": sid,
             "created_at": time.time(),
@@ -272,6 +272,13 @@ class EKYCPipelineServer:
             "num_faces": 1,
             "message": "Đã khởi tạo phiên xác thực thành công. Bắt đầu thử thách sinh trắc học liên tục."
         }
+
+    def reset_liveness_session(self, session_id: str) -> bool:
+        """Hủy phiên thử thách và xóa descriptor để không tái sử dụng sang phiên mới."""
+        if session_id and session_id in self.liveness_sessions:
+            del self.liveness_sessions[session_id]
+            return True
+        return False
 
     # =========================================================================
     # 1. KIỂM TRA TƯ THẾ & CĂN CHỈNH KHUÔN MẶT (PRE-CAPTURE CHECK)
@@ -589,17 +596,11 @@ class EKYCPipelineServer:
         has_face = bool(landmarks is not None and len(landmarks) >= 468 and num_faces > 0)
         ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks) if landmarks else (0.0, 0.0, 0.0)
 
-        # 2. Kiểm tra nhận dạng khuôn mặt (Face Identity Consistency Check)
+        # 2. Kiểm tra nhận dạng khuôn mặt (Face Identity Consistency Check) - CHỈ trong cùng 1 phiên
         base_desc = None
         if session_id and session_id in self.liveness_sessions:
             base_desc = self.liveness_sessions[session_id].get("base_desc")
             self.liveness_sessions[session_id]["last_activity"] = time.time()
-        elif base_frame_input is not None:
-            try:
-                base_f = load_image(base_frame_input)
-                base_desc = self.identity_verifier.extract_descriptor(base_f)
-            except Exception:
-                base_desc = None
 
         same_person = True
         identity_details = None
@@ -729,17 +730,11 @@ class EKYCPipelineServer:
         # Dò landmarks trực tiếp trên frame nguyên bản để giữ độ nét khuôn mặt khi quay góc nghiêng
         landmarks = self.landmark_detector.detect(frame)
 
-        # 1. Kiểm tra nhận dạng khuôn mặt (Face Identity Consistency Check)
+        # 1. Kiểm tra nhận dạng khuôn mặt (Face Identity Consistency Check) - CHỈ trong cùng 1 phiên
         base_desc = None
         if session_id and session_id in self.liveness_sessions:
             base_desc = self.liveness_sessions[session_id].get("base_desc")
             self.liveness_sessions[session_id]["last_activity"] = time.time()
-        elif base_frame_input is not None:
-            try:
-                base_f = load_image(base_frame_input)
-                base_desc = self.identity_verifier.extract_descriptor(base_f)
-            except Exception:
-                base_desc = None
 
         same_person = True
         identity_details = None
@@ -960,12 +955,12 @@ class EKYCPipelineServer:
         c_same_person = True
         identity_details = {}
 
-        # Trường hợp A: Sử dụng Session ID đã ghi nhận từ Bước 1
+        # CHỈ kiểm tra tính liên tục danh tính khuôn mặt trong cùng 1 phiên thử thách (Single-session isolated check)
         if session_id and session_id in self.liveness_sessions:
             sess = self.liveness_sessions[session_id]
             base_desc = sess.get("base_desc")
             if base_desc is not None:
-                # 1. Kiểm tra ảnh chụp chớp mắt nếu có
+                # 1. Kiểm tra ảnh chụp chớp mắt nếu có trong cùng phiên
                 bf = sess.get("blink_frame") or (load_image(blink_frame_input) if blink_frame_input is not None else None)
                 if bf is not None:
                     cand_b = self.identity_verifier.extract_descriptor(bf)
@@ -975,7 +970,7 @@ class EKYCPipelineServer:
                         if not is_same_b:
                             c_same_person = False
 
-                # 2. Kiểm tra ảnh chụp quay đầu nếu có
+                # 2. Kiểm tra ảnh chụp quay đầu nếu có trong cùng phiên
                 hf = sess.get("head_frame") or (load_image(head_frame_input) if head_frame_input is not None else None)
                 if hf is not None:
                     cand_h = self.identity_verifier.extract_descriptor(hf)
@@ -984,25 +979,12 @@ class EKYCPipelineServer:
                         identity_details["head_match"] = dt_h
                         if not is_same_h:
                             c_same_person = False
-        # Trường hợp B: Gửi kèm blink_frame hoặc head_frame trực tiếp trong request
-        elif blink_frame_input is not None or head_frame_input is not None:
-            base_desc = self.identity_verifier.extract_descriptor(frame)
-            if base_desc is not None:
-                if blink_frame_input is not None:
-                    cand_b = self.identity_verifier.extract_descriptor(load_image(blink_frame_input))
-                    if cand_b:
-                        is_same_b, _, dt_b = self.identity_verifier.verify_identity(base_desc, cand_b)
-                        identity_details["blink_match"] = dt_b
-                        if not is_same_b:
-                            c_same_person = False
 
-                if head_frame_input is not None:
-                    cand_h = self.identity_verifier.extract_descriptor(load_image(head_frame_input))
-                    if cand_h:
-                        is_same_h, _, dt_h = self.identity_verifier.verify_identity(base_desc, cand_h)
-                        identity_details["head_match"] = dt_h
-                        if not is_same_h:
-                            c_same_person = False
+            # Kết thúc phiên: Xóa hoàn toàn phiên khỏi bộ nhớ để không bao giờ đối chiếu chéo sang phiên mới
+            del self.liveness_sessions[session_id]
+        else:
+            # Không có phiên hoạt động hoặc ngoài phiên: Không kiểm tra định danh
+            c_same_person = True
 
         # 6. Đánh giá Final Decision — 8 tiêu chí chuẩn ngân hàng
         face_position_ok = face_in_oval if apply_oval_mask else True
