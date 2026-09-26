@@ -193,7 +193,7 @@ class FaceOcclusionDetector:
             # Điều kiện 1: Hốc mắt tối bất thường so với da trán (tỷ lệ < 0.58)
             # Điều kiện 2: Cả 2 mắt đều tối sẫm (L < 40.0)
             if (eye_ratio < self.sunglasses_ratio and mean_eye_l < 65.0) or (eye_l_values[0] < 38.0 and eye_l_values[1] < 38.0):
-                return True, "SUNGLASSES_DETECTED", "CẢNH BÁO: Phát hiện đeo kính râm/kính đen! Theo Chính sách A, vui lòng THÁO KÍNH ra trước khi xác thực."
+                return True, "SUNGLASSES_DETECTED", "CẢNH BÁO: Phát hiện đeo kính râm/kính đen!"
 
         # ---------------------------------------------------------------------
         # TẦNG 3: KIỂM TRA LÓA SÁNG TRÒNG KÍNH (EYEGLASS GLARE DETECTION)
@@ -204,7 +204,7 @@ class FaceOcclusionDetector:
                 glare_pixels = np.sum(egray >= 238)
                 glare_ratio = glare_pixels / float(egray.size)
                 if glare_ratio >= 0.10:  # Tròng kính bị lóa chói hơn 10% diện tích mắt
-                    return True, "GLASSES_GLARE_DETECTED", "CẢNH BÁO: Tròng kính bị chói lóa ánh sáng! Vui lòng THÁO MẮT KÍNH ra trước khi xác thực."
+                    return True, "GLASSES_GLARE_DETECTED", "CẢNH BÁO: Tròng kính bị chói lóa ánh sáng!"
 
         # ---------------------------------------------------------------------
         # TẦNG 4: KIỂM TRA GỌNG KÍNH CẬN TRONG SUỐT (CLEAR EYEGLASS FRAMES - CHÍNH SÁCH A)
@@ -230,7 +230,7 @@ class FaceOcclusionDetector:
                 # Da sống mũi trần tự nhiên có độ biến thiên cạnh thấp (edge_energy < 12.0)
                 # Khi có gọng kính (nhựa, kim loại, titan), edge_energy > 16.0 hoặc edge_density > 14%
                 if bridge_edge_energy >= self.bridge_edge_thresh or bridge_edge_density >= 14.5:
-                    return True, "CLEAR_GLASSES_DETECTED", "CẢNH BÁO: Phát hiện đang đeo mắt kính! Theo Chính sách A, vui lòng THÁO MẮT KÍNH ra trước khi xác thực."
+                    return True, "CLEAR_GLASSES_DETECTED", "CẢNH BÁO: Phát hiện đang đeo mắt kính!"
 
             # 2. Quét viền gọng thái dương 2 bên đuôi mắt (Temple Frame Outer Edge)
             temple_edge_detected = 0
@@ -246,7 +246,7 @@ class FaceOcclusionDetector:
                         temple_edge_detected += 1
 
             if temple_edge_detected >= 2:
-                return True, "CLEAR_GLASSES_DETECTED", "CẢNH BÁO: Phát hiện gọng kính bên thái dương! Vui lòng THÁO MẮT KÍNH ra trước khi xác thực."
+                return True, "CLEAR_GLASSES_DETECTED", "CẢNH BÁO: Phát hiện gọng kính bên thái dương!"
 
         # ---------------------------------------------------------------------
         # TẦNG 5: KIỂM TRA KHẨU TRANG (FACE MASK DEFENSE - ĐA DẠNG MÀU SẮC)

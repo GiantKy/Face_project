@@ -497,9 +497,9 @@ class ESP32ChallengeManager:
                     "verdict": "FACE_OCCLUDED",
                     "is_real": False,
                     "occlusion_code": occ_code,
-                    "message": occ_msg or "CẢNH BÁO: Phát hiện che mặt hoặc đeo kính! Vui lòng tháo kính và khẩu trang.",
+                    "message": occ_msg or "CẢNH BÁO: Phát hiện che mặt hoặc đeo kính!",
                     "reasons": [occ_code or "FACE_OCCLUSION_DETECTED"],
-                    "hint": "Theo Chính sách A, vui lòng tháo toàn bộ mắt kính và khẩu trang ra khỏi khuôn mặt.",
+                    "hint": "Vui lòng tháo mắt kính hoặc khẩu trang ra khỏi khuôn mặt.",
                     "captured_image_base64": captured_b64
                 }
 
