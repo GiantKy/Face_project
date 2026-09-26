@@ -234,7 +234,24 @@ class EKYCPipelineServer:
         self.cleanup_expired_sessions()
 
         frame = load_image(base_frame_input)
-        num_faces, is_single = self.identity_verifier.count_faces(frame, self.detector)
+
+        # Tự động tăng sáng và làm nét nếu ảnh từ ESP32 bị tối hoặc ngược sáng
+        try:
+            from .esp32_challenge import preprocess_esp32_image
+            frame_proc = preprocess_esp32_image(frame)
+        except Exception:
+            try:
+                from esp32_challenge import preprocess_esp32_image
+                frame_proc = preprocess_esp32_image(frame)
+            except Exception:
+                frame_proc = frame
+
+        num_faces, is_single = self.identity_verifier.count_faces(frame_proc, self.detector)
+        if num_faces == 0:
+            # Thử lại với conf=0.35 để bắt được mặt chuyển động nhẹ lúc bấm chụp
+            raw_faces = self.detector.detect(frame_proc, conf=0.35)
+            num_faces = len(raw_faces)
+
         if num_faces == 0:
             return {
                 "success": False,
@@ -250,9 +267,12 @@ class EKYCPipelineServer:
             }
 
         # Kiểm tra che mặt nghiêm ngặt ngay tại ảnh chụp Bước 1 (Anti-Occlusion Defense)
-        landmarks = self.landmark_detector.detect(frame)
+        landmarks = self.landmark_detector.detect(frame_proc)
+        if not landmarks:
+            landmarks = self.landmark_detector.detect(frame)
+
         is_occ, occ_code, occ_msg = self.occlusion_detector.check_occlusion(
-            frame=frame,
+            frame=frame_proc,
             landmarks=landmarks,
             num_faces=num_faces
         )
@@ -264,7 +284,10 @@ class EKYCPipelineServer:
                 "message": occ_msg or "CẢNH BÁO: Phát hiện khuôn mặt bị che khuất! Vui lòng không che mặt khi thực hiện eKYC."
             }
 
-        desc = self.identity_verifier.extract_descriptor(frame)
+        desc = self.identity_verifier.extract_descriptor(frame_proc)
+        if desc is None:
+            desc = self.identity_verifier.extract_descriptor(frame)
+
         if desc is None:
             return {
                 "success": False,

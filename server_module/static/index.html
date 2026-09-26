@@ -2794,31 +2794,8 @@
 
       // Bước 1: Chụp ngay ảnh khuôn mặt chuẩn khi mặt đang thẳng trong Oval
       triggerScreenFlash();
-      baseFrameBlob = await captureFullFrameBlob();
 
-      // Khởi tạo phiên Liveness trên Server từ ảnh chụp Bước 1 (Gắn định danh sinh trắc học DUY NHẤT cho phiên này)
-      try {
-        const initForm = new FormData();
-        initForm.append('file', baseFrameBlob, 'base_frame.jpg');
-        const initRes = await fetch(`${API_BASE_URL}/api/v1/liveness/init-session`, {
-          method: 'POST',
-          body: initForm
-        });
-        if (!initRes.ok) {
-          const errData = await initRes.json();
-          alert(errData.detail || 'Không thể khởi tạo phiên Liveness (Yêu cầu chỉ 1 người duy nhất và nhìn thẳng vào camera).');
-          cancelActiveChallenge();
-          return;
-        }
-        const initData = await initRes.json();
-        livenessSessionId = initData.session_id;
-        blinkSuccessBlob = null;
-        headSuccessBlob = null;
-      } catch (err) {
-        console.warn('Liveness init-session error:', err);
-        livenessSessionId = null;
-      }
-
+      // CHUYỂN BƯỚC 2 NGAY TỨC THÌ (0ms Delay) - Trải nghiệm mượt mà, không giật khựng
       setStepStatus(1, 'completed');
       setStepStatus(2, 'active');
 
@@ -2836,7 +2813,7 @@
         hint: 'Nhìn vào camera và chớp mắt 1 lần tự nhiên',
         timerText: 'Chờ Chớp Mắt',
         isTimerUrgent: false,
-        telemetry: 'EAR: Đang đo lường...',
+        telemetry: 'Đang khởi tạo định danh & đo lường EAR...',
         percent: '0%',
         fillWidth: '0%'
       });
@@ -2845,6 +2822,31 @@
       oval.className = 'face-guide-oval state-challenge';
 
       startBlinkChallengeLoop();
+
+      // Khởi tạo phiên sinh trắc học Bước 1 trong nền song song (Non-blocking Asynchronous)
+      captureFullFrameBlob().then(async (blob) => {
+        if (!blob) return;
+        baseFrameBlob = blob;
+        try {
+          const initForm = new FormData();
+          initForm.append('file', blob, 'base_frame.jpg');
+          const initRes = await fetch(`${API_BASE_URL}/api/v1/liveness/init-session`, {
+            method: 'POST',
+            body: initForm
+          });
+          if (initRes.ok) {
+            const initData = await initRes.json();
+            livenessSessionId = initData.session_id;
+            blinkSuccessBlob = null;
+            headSuccessBlob = null;
+          } else {
+            const errData = await initRes.json().catch(() => ({}));
+            console.warn('Liveness init-session non-fatal warning:', errData.detail);
+          }
+        } catch (err) {
+          console.warn('Liveness init-session network error:', err);
+        }
+      });
     }
 
     function startBlinkChallengeLoop() {
