@@ -947,6 +947,16 @@ class ESP32ChallengeManager:
                 if not session.head_movement_passed:
                     reasons.append("Chua vuot qua thu thach quay dau (Head Movement)")
 
+                # Thẩm định che mặt & kính trên frame kết thúc (Anti-Occlusion Final Guard)
+                if hasattr(pipeline, "occlusion_detector") and pipeline.occlusion_detector is not None:
+                    is_occ_final, occ_code_final, occ_msg_final = pipeline.occlusion_detector.check_occlusion(
+                        frame=raw_frame,
+                        landmarks=landmarks,
+                        num_faces=num_faces
+                    )
+                    if is_occ_final:
+                        reasons.append(occ_msg_final or f"Phat hien deo kinh hoac che mat tai frame ket thuc ({occ_code_final})")
+
                 approved = (len(reasons) == 0)
                 session.reasons = reasons
 

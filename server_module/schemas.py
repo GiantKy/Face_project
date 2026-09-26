@@ -142,6 +142,8 @@ class PoseValidateResponse(BaseModel):
     is_valid: bool
     face_in_oval: bool = False
     is_aligned_good: bool = False
+    is_occluded: bool = False
+    occlusion_reason: Optional[str] = ""
     face_size_h: int
     is_too_far: bool
     is_too_close: bool = False

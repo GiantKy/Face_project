@@ -522,6 +522,8 @@ async def validate_face_pose(
         is_valid=res["is_valid"],
         face_in_oval=res.get("face_in_oval", False),
         is_aligned_good=res.get("is_aligned_good", False),
+        is_occluded=res.get("is_occluded", False),
+        occlusion_reason=res.get("occlusion_reason", ""),
         face_size_h=res["face_size_h"],
         is_too_far=res["is_too_far"],
         is_too_close=res.get("is_too_close", False),

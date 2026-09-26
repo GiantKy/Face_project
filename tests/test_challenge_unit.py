@@ -22,17 +22,25 @@ def test_unit_flow():
     print(" [UNIT TEST] ESP32 MULTI-STAGE CHALLENGE LOGIC")
     print("=" * 70)
 
-    img_path = os.path.join(PROJECT_ROOT, "data_raw", "0.jpg")
-    assert os.path.exists(img_path), f"File không tồn tại: {img_path}"
-
     print("[*] Nạp pipeline AI server...")
     pipeline = EKYCPipelineServer(lazy_load=False)
 
+    # 0. Test kiểm tra kính: 0.jpg (đeo kính) PHẢI BỊ CHẶN ngay lập tức
+    print("\n--- TEST KIỂM TRA MẮT KÍNH (data_raw/0.jpg) ---")
+    img_glasses = cv2.imread(os.path.join(PROJECT_ROOT, "data_raw", "0.jpg"))
+    res_glasses = esp32_challenge_manager.start_challenge(img_glasses, pipeline, device_id="ESP32_GLASSES_TEST")
+    print(f"[*] Kết quả ảnh đeo kính: verdict={res_glasses.get('verdict')}, code={res_glasses.get('occlusion_code')}")
+    assert res_glasses["verdict"] == "FACE_OCCLUDED", "Ảnh 0.jpg đeo kính phải bị từ chối FACE_OCCLUDED!"
+    assert res_glasses["occlusion_code"] == "CLEAR_GLASSES_DETECTED", "Phải phát hiện đúng CLEAR_GLASSES_DETECTED!"
+    print("[✓] ĐÃ CHẶN THÀNH CÔNG ẢNH ĐEO KÍNH (0.jpg)!")
+
+    # 1. Test Bước 1: Start Challenge với ảnh mặt trần (7.jpg)
+    img_path = os.path.join(PROJECT_ROOT, "data_raw", "7.jpg")
+    assert os.path.exists(img_path), f"File không tồn tại: {img_path}"
     img_bgr = cv2.imread(img_path)
     h, w = img_bgr.shape[:2]
-    print(f"[*] Đã nạp ảnh gốc: {img_path} ({w}x{h})")
+    print(f"\n[*] Đã nạp ảnh chuẩn không đeo kính: {img_path} ({w}x{h})")
 
-    # 1. Test Bước 1: Start Challenge
     print("\n--- BƯỚC 1: START CHALLENGE (Face Detect & Baseline) ---")
     res1 = esp32_challenge_manager.start_challenge(img_bgr, pipeline, device_id="ESP32_UNIT_01")
     print(json.dumps(res1, ensure_ascii=False, indent=2))
@@ -75,13 +83,13 @@ def test_unit_flow():
         print(json.dumps(res3, ensure_ascii=False, indent=2))
         print(f"[*] Kết quả bước 3: success={res3.get('success')}, approved={res3.get('approved')}")
 
-    # 4. Test Stream Frame Processing
-    print("\n--- BƯỚC 4: STREAM FRAME PROCESSING ---")
+    # 4. Test Step Processing
+    print("\n--- BƯỚC 4: STEP PROCESSING ---")
     res1_stream = esp32_challenge_manager.start_challenge(img_bgr, pipeline, device_id="ESP32_STREAM_01")
     s_id = res1_stream["session_id"]
-    stream_res = esp32_challenge_manager.process_stream_frame(s_id, img_bgr, pipeline)
-    print(f"[*] Kết quả Stream Frame: phase={stream_res.get('stream_phase')}, progress={stream_res.get('progress')}")
-    assert stream_res["success"] is True, "process_stream_frame phải thành công"
+    step_res = esp32_challenge_manager.process_step(s_id, img_bgr, pipeline)
+    print(f"[*] Kết quả Step: step={step_res.get('step')}, progress={step_res.get('progress')}")
+    assert step_res["success"] is True, "process_step phải thành công"
 
     print("\n" + "=" * 70)
     print(" [✓] UNIT TEST HOÀN TẤT THÀNH CÔNG!")

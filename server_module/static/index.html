@@ -2043,6 +2043,7 @@
     let blinkPassed = false;
     let blinkBaselineEAR = 0.0;
     let isBlinkProcessing = false;
+    let latestPoseData = null; // Trạng thái kiểm tra tư thế & vật che mặt trước khi chụp
     let isHeadProcessing = false;
 
     let headChallengeAction = 'turn_left';
@@ -2628,6 +2629,7 @@
     }
 
     function updateOvalGuideUI(data) {
+      latestPoseData = data;
       const oval = document.getElementById('faceGuideOval');
       const pill = document.getElementById('ovalFeedbackPill');
       const text = document.getElementById('ovalFeedbackText');
@@ -2655,7 +2657,7 @@
       if (data.is_occluded) {
         oval.classList.add('state-warning');
         pill.classList.add('state-warning');
-        text.textContent = (data.message || 'CẢNH BÁO: KHÔNG ĐƯỢC CHE MẶT! BỎ TAY/VẬT CẢN RA').toUpperCase();
+        text.textContent = (data.message || 'CẢNH BÁO: PHÁT HIỆN ĐEO KÍNH HOẶC CHE MẶT!').toUpperCase();
         consecutiveGoodFrames = 0;
         cancelCountdown();
         return;
@@ -2772,6 +2774,12 @@
         return;
       }
 
+      // KIỂM TRA MẮT KÍNH & VẬT CHE MẶT TRƯỚC KHI CHỤP (Pre-Capture Check)
+      if (latestPoseData && latestPoseData.is_occluded) {
+        alert(latestPoseData.message || 'CẢNH BÁO: Phát hiện đang đeo kính hoặc che mặt! Vui lòng tháo kính/khẩu trang ra trước khi chụp ảnh.');
+        return;
+      }
+
       stopPoseCheckLoop();
       cancelCountdown();
 
@@ -2824,6 +2832,7 @@
       startBlinkChallengeLoop();
 
       // Khởi tạo phiên sinh trắc học Bước 1 trong nền song song (Non-blocking Asynchronous)
+      // KIỂM TRA MẮT KÍNH & VẬT CHE MẶT NGAY SAU KHI CHỤP (Post-Capture Check)
       captureFullFrameBlob().then(async (blob) => {
         if (!blob) return;
         baseFrameBlob = blob;
@@ -2841,7 +2850,17 @@
             headSuccessBlob = null;
           } else {
             const errData = await initRes.json().catch(() => ({}));
-            console.warn('Liveness init-session non-fatal warning:', errData.detail);
+            const errMsg = errData.detail || 'Không thể khởi tạo phiên xác thực!';
+            console.error('Liveness init-session error:', errMsg);
+            // Dừng ngay lập tức nếu phát hiện đeo kính hoặc che mặt tại ảnh chụp Bước 1
+            cancelActiveChallenge();
+            renderResults({
+              approved: false,
+              confidence: 0.0,
+              reasons: [errMsg]
+            });
+            alert('CẢNH BÁO: ' + errMsg + '\nVui lòng tháo kính/khẩu trang ra và thử lại!');
+            return;
           }
         } catch (err) {
           console.warn('Liveness init-session network error:', err);
@@ -3309,6 +3328,13 @@
     }
 
     async function executeQuickVerification() {
+      // KIỂM TRA MẮT KÍNH & VẬT CHE MẶT TRƯỚC KHI CHỤP (Pre-Capture Check)
+      if (latestPoseData && latestPoseData.is_occluded) {
+        alert(latestPoseData.message || 'CẢNH BÁO: Phát hiện đang đeo kính hoặc che mặt! Vui lòng tháo kính/khẩu trang ra trước khi chụp ảnh.');
+        currentState = APP_STATE.IDLE;
+        return;
+      }
+
       setStepStatus(1, 'completed');
       setStepStatus(2, 'completed');
       setStepStatus(3, 'completed');

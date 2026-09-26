@@ -424,6 +424,13 @@ class EKYCPipelineServer:
             pose_dict=pose_dict
         )
         if is_occluded:
+            if occ_reason in ("CLEAR_GLASSES_DETECTED", "SUNGLASSES_DETECTED", "GLASSES_GLARE_DETECTED"):
+                occ_guide = "VUI LÒNG THÁO KÍNH RA TRƯỚC KHI CHỤP"
+            elif "MASK" in (occ_reason or ""):
+                occ_guide = "VUI LÒNG THÁO KHẨU TRANG RA TRƯỚC KHI CHỤP"
+            else:
+                occ_guide = "VUI LÒNG BỎ TAY HOẶC VẬT CẢN RA KHỎI KHUÔN MẶT"
+
             return {
                 "has_face": True,
                 "num_faces": num_faces,
@@ -447,8 +454,8 @@ class EKYCPipelineServer:
                     "roll": round(float(pose_data.get("roll", 0.0)), 2),
                     "status_text": "OCCLUDED"
                 },
-                "message": occ_msg or "CẢNH BÁO: PHÁT HIỆN CHE MẶT!",
-                "guide": "VUI LÒNG BỎ TAY HOẶC VẬT CẢN RA KHỎI KHUÔN MẶT"
+                "message": occ_msg or "CẢNH BÁO: PHÁT HIỆN CHE MẶT HOẶC ĐEO KÍNH!",
+                "guide": occ_guide
             }
 
         is_valid_overall = (
@@ -477,6 +484,8 @@ class EKYCPipelineServer:
             "is_valid": bool(is_valid_overall),
             "face_in_oval": bool(face_in_oval),
             "is_aligned_good": bool(is_valid_overall),
+            "is_occluded": False,
+            "occlusion_reason": "",
             "face_size_h": int(face_size_h),
             "is_too_far": bool(is_too_far),
             "is_too_close": bool(is_too_close),
@@ -689,8 +698,8 @@ class EKYCPipelineServer:
                 landmarks=landmarks,
                 num_faces=num_faces
             )
-            # Chỉ cảnh báo nếu thực sự có khẩu trang / vật che miệng hoặc che mặt
-            if is_occ_raw and raw_code != "SUNGLASSES_DETECTED":
+            # Chỉ cảnh báo nếu có khẩu trang, kính trắng, hoặc kính râm khi mắt mở (tránh báo động giả khi mắt nhắm)
+            if is_occ_raw and (raw_code != "SUNGLASSES_DETECTED" or ear_avg >= 0.20):
                 is_occluded = True
                 occ_reason = raw_code
                 occ_msg = raw_msg

@@ -628,6 +628,18 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             mean_lum = light_info.get("mean_luminance", 100.0)
             is_light_ok = (mean_lum >= 55.0)
 
+            # KIỂM TRA MẮT KÍNH & VẬT CHE MẶT TRƯỚC KHI CHỤP (Pre-Capture Check)
+            is_occluded_live = False
+            occ_code_live = ""
+            occ_msg_live = ""
+            if landmarks_live and len(landmarks_live) >= 468:
+                is_occluded_live, occ_code_live, occ_msg_live = occlusion_detector.check_occlusion(
+                    frame=frame,
+                    landmarks=landmarks_live,
+                    num_faces=1,
+                    pose_dict=pose_dict_live
+                )
+
             is_aligned_good = (
                 (landmarks_live is not None) and
                 face_in_oval and
@@ -635,7 +647,8 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                 not is_too_far and
                 not is_too_close and
                 not is_off_center and
-                is_light_ok
+                is_light_ok and
+                not is_occluded_live
             )
 
             if is_aligned_good:
@@ -647,6 +660,11 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                 else:
                     align_msg = "KHUON MAT CHUAN! NHAN [SPACE] HOAC [c] DE CHUP"
                 align_col = (0, 255, 127)
+            elif is_occluded_live:
+                guide_color = (0, 0, 255)
+                align_msg = f"CANH BAO: {occ_msg_live.upper()}! THAO RA DE CHUP"
+                align_col = (0, 0, 255)
+                consecutive_center_frames = 0
             elif is_too_far:
                 guide_color = (0, 165, 255)
                 align_msg = "VUI LONG TIEN LAI GAN CAMERA HON (Khuon mat qua nho)..."
@@ -670,7 +688,9 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
 
             if capture_blocked_frames > 0:
                 capture_blocked_frames -= 1
-                if not is_light_ok:
+                if is_occluded_live:
+                    align_msg = f"KHOA CHUP: {occ_msg_live.upper()}! VUI LONG THAO RA."
+                elif not is_light_ok:
                     align_msg = f"ANH SANG YEU (L:{mean_lum:.0f}/55) - KHOA CHUP! VUI LONG BAT DEN."
                 else:
                     align_msg = "CHUA DUA MAT VAO OVAL - KHONG THE NHAN CHUP!"
@@ -697,6 +717,9 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             if is_aligned_good:
                 shortcut_hint = "[SPACE]/[c]: CHUP & FULL E-KYC | [s]: CHUP NHANH & LUU | [a]: Auto | [q]: Thoat"
                 shortcut_col = (0, 255, 127)
+            elif is_occluded_live:
+                shortcut_hint = f"[KHOA CHUP: {occ_msg_live}] Vui long thao kinh/khau trang..."
+                shortcut_col = (0, 100, 255)
             elif not is_light_ok:
                 shortcut_hint = f"[KHOA CHUP: THIEU SANG L:{mean_lum:.0f}/55] Vui long bat den..."
                 shortcut_col = (0, 140, 255)
@@ -891,7 +914,22 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
 
             ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks_live) if landmarks_live else (0.0, 0.0, 0.0)
 
-            if ear_avg > 0.05 and ear_avg < 0.18:
+            # Kiểm tra che mặt & mắt kính trong lúc chớp mắt (Sau khi chụp)
+            is_occ_blink = False
+            occ_msg_blink = ""
+            if landmarks_live and len(landmarks_live) >= 468:
+                is_occ_b, code_b, msg_b = occlusion_detector.check_occlusion(frame, landmarks_live, num_faces=1)
+                if is_occ_b and (code_b != "SUNGLASSES_DETECTED" or ear_avg >= 0.20):
+                    is_occ_blink = True
+                    occ_msg_blink = msg_b
+                    is_occluded_static = True
+                    occ_code_static = code_b
+                    occ_msg_static = msg_b
+
+            if is_occ_blink:
+                # Phát hiện đeo kính/che mặt trong lúc chớp mắt: Tạm dừng tích lũy blink
+                pass
+            elif ear_avg > 0.05 and ear_avg < 0.18:
                 if not blink_state:
                     blink_state = True
             elif ear_avg >= 0.22:
@@ -900,7 +938,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                     blink_state = False
                     print(f"  [BLINK] Phát hiện chớp mắt thành công! Tổng số: {blink_counter}/1")
 
-            if blink_counter >= 1:
+            if blink_counter >= 1 and not is_occ_blink:
                 blink_passed = True
                 print(f"[LIVENESS 1: BLINK] DA XAC NHAN CHOP MAT ({blink_counter} lan) -> PASS!")
                 stage = PipelineStage.LIVE_HEAD_MOVEMENT
@@ -908,7 +946,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                 head_action_prompt = head_movement_detector.get_prompt()
                 print(f"[LIVENESS 2: HEAD MOVEMENT] Thu thach: {current_head_action.value} -> {head_action_prompt}")
 
-            blink_col = (0, 255, 127) if (blink_state or blink_counter >= 1) else (0, 230, 255)
+            blink_col = (0, 0, 255) if is_occ_blink else ((0, 255, 127) if (blink_state or blink_counter >= 1) else (0, 230, 255))
             display = draw_oval_face_guide(display, center=oval_center, axes=oval_axes,
                                            is_aligned=True, is_detected=(landmarks_live is not None), color=blink_col)
             
@@ -918,8 +956,12 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             draw_ui_card(display, 15, 8, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
             cv2.putText(display, f"E-KYC BUOC 1/2: THU THACH CHOP MAT (ID: {current_img_idx})", (28, 28),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
-            cv2.putText(display, f"VUI LONG CHOP MAT TU NHIEN | EAR: {ear_avg:.2f} | Blinks: {blink_counter}/1", (28, 46),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 255, 255), 1, cv2.LINE_AA)
+            if is_occ_blink:
+                cv2.putText(display, f"CANH BAO: {occ_msg_blink.upper()}! THAO RA DE TIEP TUC", (28, 46),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 0, 255), 1, cv2.LINE_AA)
+            else:
+                cv2.putText(display, f"VUI LONG CHOP MAT TU NHIEN | EAR: {ear_avg:.2f} | Blinks: {blink_counter}/1", (28, 46),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 255, 255), 1, cv2.LINE_AA)
 
             bot_y = h - 56
             draw_ui_card(display, 15, bot_y, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
@@ -948,12 +990,28 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             if landmarks_live:
                 _, _, pose_dict_live = pose_validator.validate(landmarks_live, get_landmark_point)
 
-            hm_status = head_movement_detector.update(pose_dict_live)
+            # Kiểm tra che mặt & mắt kính trong lúc quay đầu (Sau khi chụp)
+            is_occ_hm = False
+            occ_msg_hm = ""
+            if landmarks_live and len(landmarks_live) >= 468:
+                is_occ_h, code_h, msg_h = occlusion_detector.check_occlusion(frame, landmarks_live, num_faces=1, pose_dict=pose_dict_live)
+                if is_occ_h:
+                    is_occ_hm = True
+                    occ_msg_hm = msg_h
+                    is_occluded_static = True
+                    occ_code_static = code_h
+                    occ_msg_static = msg_h
+
+            if is_occ_hm:
+                hm_status = {"passed": False, "state": "WARNING", "prompt": f"CANH BAO: {occ_msg_hm.upper()}", "time_left": 10.0, "progress": 0.0}
+            else:
+                hm_status = head_movement_detector.update(pose_dict_live)
+
             prompt_str = hm_status.get("prompt", "")
             time_left = hm_status.get("time_left", 0.0)
             progress_val = hm_status.get("progress", 0.0)
 
-            if hm_status["passed"]:
+            if hm_status["passed"] and not is_occ_hm:
                 head_movement_passed = True
                 print(f"[LIVENESS 2: HEAD MOVEMENT] DA HOAN THANH CU DONG DAU [{current_head_action.value}] -> PASS!")
                 stage = PipelineStage.FINAL_DECISION
@@ -962,7 +1020,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                 print(f"[LIVENESS 2: HEAD MOVEMENT] HET THOI GIAN THUC HIEN -> FAIL!")
                 stage = PipelineStage.FINAL_DECISION
 
-            hm_col = (0, 255, 127) if hm_status["passed"] else (0, 230, 255)
+            hm_col = (0, 0, 255) if is_occ_hm else ((0, 255, 127) if hm_status["passed"] else (0, 230, 255))
             display = draw_oval_face_guide(display, center=oval_center, axes=oval_axes,
                                            is_aligned=True, is_detected=(landmarks_live is not None), color=hm_col)
 
@@ -973,8 +1031,12 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             # Đưa hành động thử thách (QUAY MAT SANG PHAI/TRAI...) lên dòng tiêu đề chính to rõ, dễ nhận diện
             cv2.putText(display, f"E-KYC BUOC 2/2: {prompt_str.upper()}", (28, 28),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 230, 255), 2, cv2.LINE_AA)
-            cv2.putText(display, f"Giu tu the den khi du 100% | Thoi gian: {time_left:.1f}s | ID: {current_img_idx}", (28, 46),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, hm_col, 1, cv2.LINE_AA)
+            if is_occ_hm:
+                cv2.putText(display, f"CANH BAO: {occ_msg_hm.upper()}! THAO RA DE TIEP TUC", (28, 46),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 0, 255), 1, cv2.LINE_AA)
+            else:
+                cv2.putText(display, f"Giu tu the den khi du 100% | Thoi gian: {time_left:.1f}s | ID: {current_img_idx}", (28, 46),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.38, hm_col, 1, cv2.LINE_AA)
 
             bot_y = h - 56
             draw_ui_card(display, 15, bot_y, w - 30, 48, bg_color=(15, 15, 25), alpha=0.88)
@@ -1197,7 +1259,9 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             if stage == PipelineStage.PREVIEW_ALIGN:
                 if not is_aligned_good:
                     capture_blocked_frames = 40
-                    if not is_light_ok:
+                    if is_occluded_live:
+                        print(f"\n[CHẶN CHỤP] {occ_msg_live} ({occ_code_live})! Vui lòng tháo kính/khẩu trang ra trước khi chụp.")
+                    elif not is_light_ok:
                         print(f"\n[CHẶN CHỤP] Ánh sáng quá yếu (Luminance={mean_lum:.1f} < 55.0)! Vui lòng bật đèn.")
                     else:
                         print("\n[CHẶN CHỤP] Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng.")
@@ -1216,7 +1280,9 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
         elif (key == 32 or key == ord('c') or key_trigger == ord(' ')) and stage == PipelineStage.PREVIEW_ALIGN:
             if not is_aligned_good:
                 capture_blocked_frames = 40
-                if not is_light_ok:
+                if is_occluded_live:
+                    print(f"\n[CHẶN CHỤP] {occ_msg_live} ({occ_code_live})! Vui lòng tháo kính/khẩu trang ra trước khi chụp.")
+                elif not is_light_ok:
                     print(f"\n[CHẶN CHỤP] Ánh sáng quá yếu (Luminance={mean_lum:.1f} < 55.0)! Vui lòng bật đèn.")
                 else:
                     print("\n[CHẶN CHỤP] Vui lòng đưa khuôn mặt vào giữa khung oval và nhìn thẳng.")
