@@ -1073,20 +1073,32 @@ class EKYCPipelineServer:
             base_desc = sess.get("base_desc")
             if base_desc is not None:
                 # 1. Kiểm tra ảnh chụp chớp mắt nếu có trong cùng phiên
-                bf = sess.get("blink_frame") or (load_image(blink_frame_input) if blink_frame_input is not None else None)
+                bf = sess.get("blink_frame")
+                if bf is None and blink_frame_input is not None:
+                    try:
+                        bf = load_image(blink_frame_input)
+                    except Exception:
+                        bf = None
+
                 if bf is not None:
                     cand_b = self.identity_verifier.extract_descriptor(bf)
-                    if cand_b:
+                    if cand_b is not None:
                         is_same_b, _, dt_b = self.identity_verifier.verify_identity(base_desc, cand_b)
                         identity_details["blink_match"] = dt_b
                         if not is_same_b:
                             c_same_person = False
 
                 # 2. Kiểm tra ảnh chụp quay đầu nếu có trong cùng phiên
-                hf = sess.get("head_frame") or (load_image(head_frame_input) if head_frame_input is not None else None)
+                hf = sess.get("head_frame")
+                if hf is None and head_frame_input is not None:
+                    try:
+                        hf = load_image(head_frame_input)
+                    except Exception:
+                        hf = None
+
                 if hf is not None:
                     cand_h = self.identity_verifier.extract_descriptor(hf)
-                    if cand_h:
+                    if cand_h is not None:
                         is_same_h, _, dt_h = self.identity_verifier.verify_identity(base_desc, cand_h)
                         identity_details["head_match"] = dt_h
                         if not is_same_h:
