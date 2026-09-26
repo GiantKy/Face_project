@@ -68,6 +68,7 @@ public:
             registerUri(m_cameraHttpd, "/open",            HTTP_GET, openDoorHandler);
             registerUri(m_cameraHttpd, "/set-ai-ip",       HTTP_GET, setAiIpHandler);
             registerUri(m_cameraHttpd, "/set-led",         HTTP_GET, setLedHandler);
+            registerUri(m_cameraHttpd, "/set-camera",      HTTP_GET, setCameraHandler);
             registerUri(m_cameraHttpd, "/status",          HTTP_GET, statusHandler);
             Serial.println("[EKYCService] Web Server Cổng 80 da san sang.");
         } else {
@@ -148,6 +149,9 @@ private:
     }
     static esp_err_t setLedHandler(httpd_req_t *req) {
         return ((EKYCService *)req->user_ctx)->handleSetLed(req);
+    }
+    static esp_err_t setCameraHandler(httpd_req_t *req) {
+        return ((EKYCService *)req->user_ctx)->handleSetCamera(req);
     }
     static esp_err_t statusHandler(httpd_req_t *req) {
         return ((EKYCService *)req->user_ctx)->handleStatus(req);
@@ -531,6 +535,37 @@ private:
             httpd_resp_set_status(req, "400 Bad Request");
             return httpd_resp_send(req, "Missing status arg", HTTPD_RESP_USE_STRLEN);
         }
+    }
+
+    esp_err_t handleSetCamera(httpd_req_t *req) {
+        String valStr = "";
+        if (getQueryParam(req, "brightness", valStr)) {
+            m_camera.setBrightness(valStr.toInt());
+            Serial.printf("[EKYCService] Set Brightness -> %d\n", valStr.toInt());
+        }
+        if (getQueryParam(req, "ae_level", valStr)) {
+            m_camera.setAeLevel(valStr.toInt());
+            Serial.printf("[EKYCService] Set AE Level -> %d\n", valStr.toInt());
+        }
+        if (getQueryParam(req, "contrast", valStr)) {
+            m_camera.setContrast(valStr.toInt());
+            Serial.printf("[EKYCService] Set Contrast -> %d\n", valStr.toInt());
+        }
+        if (getQueryParam(req, "gainceiling", valStr)) {
+            m_camera.setGainCeiling(valStr.toInt());
+            Serial.printf("[EKYCService] Set GainCeiling -> %d\n", valStr.toInt());
+        }
+
+        sensor_t *s = esp_camera_sensor_get();
+        char resp[256];
+        if (s != nullptr) {
+            snprintf(resp, sizeof(resp),
+                "{\"status\":\"OK\",\"brightness\":%d,\"ae_level\":%d,\"contrast\":%d}",
+                s->status.brightness, s->status.ae_level, s->status.contrast);
+        } else {
+            snprintf(resp, sizeof(resp), "{\"status\":\"OK\"}");
+        }
+        return sendJSON(req, 200, resp);
     }
 
     esp_err_t handleStatus(httpd_req_t *req) {

@@ -88,18 +88,19 @@ void setup() {
     s->set_saturation(s, -2);  // lower the saturation
   }
   // Cấu hình độ phân giải VGA 640x480 chuẩn và Quality 20 cho nhận diện khuôn mặt sắc nét
-  if (config.pixel_format == PIXFORMAT_JPEG) {
     s->set_framesize(s, FRAMESIZE_VGA);
     s->set_quality(s, 20);
     s->set_denoise(s, 0);     // Tắt khử nhiễu để tránh làm mờ bệt da mặt
     s->set_sharpness(s, 2);   // Tăng độ nét chi tiết khuôn mặt
-    s->set_contrast(s, 1);    // Tăng tương phản tách nền
-    s->set_brightness(s, 0);  // Giữ mức sáng chuẩn
+    s->set_contrast(s, 0);    // Contrast = 0 (Mở rộng dải động WDR, chống dìm đen bóng râm mặt khi ngược sáng)
+    s->set_brightness(s, 1);  // Brightness = 1 (Nâng sàn sáng nhẹ)
     s->set_exposure_ctrl(s, 1); // AEC1 ổn định
     s->set_aec2(s, 0);        // Tắt AEC2 để tránh trôi phơi sáng gây mờ
-    s->set_ae_level(s, -2);   // Khóa mục tiêu phơi sáng -2 để tránh tăng sáng vô hạn gây nhoè
-    s->set_gainceiling(s, GAINCEILING_8X); // Tăng Gainceiling 8X để ưu tiên độ nét chuyển động
+    s->set_ae_level(s, 1);    // AE Level = +1 (Bù sáng ngược sáng BLC - Backlight Compensation)
+    s->set_gainceiling(s, GAINCEILING_16X); // Nâng Gainceiling 16X để tự động bù sáng tối ưu trong phòng
     s->set_lenc(s, 0);        // Tắt lens correction tránh quầng tím ở tâm
+    s->set_raw_gma(s, 1);     // Bật Gamma phần cứng
+    s->set_dcw(s, 1);         // Advanced AWB DCW = ON
   }
 
 #if defined(CAMERA_MODEL_M5STACK_WIDE) || defined(CAMERA_MODEL_M5STACK_ESP32CAM)

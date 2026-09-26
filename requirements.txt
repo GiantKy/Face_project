@@ -2,9 +2,10 @@
 # Face-Project: eKYC Face ID, Anti-Spoofing & Liveness Detection Pipeline
 # ==============================================================================
 
-# Core Computer Vision & Image Processing
+# Core Computer Vision, Scientific Computing & Image Processing
 opencv-python>=4.8.0.76
 numpy>=1.24.3
+scipy>=1.10.0
 Pillow>=9.5.0
 
 # Face Landmark & Pose Estimation (Hỗ trợ MediaPipe Tasks API >= 0.10.14)
@@ -39,5 +40,5 @@ pydantic>=2.0.0
 
 # Web & Microservice API (FastAPI AI Server)
 fastapi>=0.100.0
-uvicorn>=0.23.0
+uvicorn[standard]>=0.23.0
 python-multipart>=0.0.6

@@ -254,6 +254,67 @@ const server = http.createServer((req, res) => {
   }
 
   // --------------------------------------------------------------------------
+  // 6.2. ROUTE CAMERA CONTROL: GET /api/camera/control (Bù sáng ngược sáng, phơi sáng)
+  // --------------------------------------------------------------------------
+  if (req.method === 'GET' && pathname === '/api/camera/control') {
+    const params = parsedUrl.searchParams;
+    const ae_level = params.get('ae_level');
+    const brightness = params.get('brightness');
+    const contrast = params.get('contrast');
+    const gainceiling = params.get('gainceiling');
+
+    if (!esp32DeviceIp) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'OK',
+        mode: 'LOCAL_ONLY',
+        message: 'ESP32 chua cap nhat IP truc tiep, bo loc CSS/AI da duoc ap dung.'
+      }));
+      return;
+    }
+
+    const queryStr = params.toString();
+    const targetUrl = `http://${esp32DeviceIp}/set-camera?${queryStr}`;
+    console.log(`${Colors.cyan}[CAMERA CONTROL] Dang gui lenh toi ESP32 (${esp32DeviceIp}): ${queryStr}${Colors.reset}`);
+
+    const espReq = http.get(targetUrl, { timeout: 3000 }, (espRes) => {
+      let data = '';
+      espRes.on('data', chunk => data += chunk);
+      espRes.on('end', () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          status: 'SUCCESS',
+          esp32_ip: esp32DeviceIp,
+          response: data || 'OK'
+        }));
+      });
+    });
+
+    espReq.on('error', (err) => {
+      console.warn(`${Colors.yellow}[CAMERA CONTROL] Không thể gọi /set-camera (${err.message}). Thử fallback sang /control...${Colors.reset}`);
+      // Fallback cho bản firmware CameraWebServer gốc
+      const commands = [];
+      if (ae_level !== null) commands.push({ var: 'ae_level', val: ae_level });
+      if (brightness !== null) commands.push({ var: 'brightness', val: brightness });
+      if (contrast !== null) commands.push({ var: 'contrast', val: contrast });
+
+      commands.forEach(cmd => {
+        try {
+          http.get(`http://${esp32DeviceIp}/control?var=${cmd.var}&val=${cmd.val}`, () => {}).on('error', () => {});
+        } catch (e) {}
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'FALLBACK_SENT',
+        esp32_ip: esp32DeviceIp,
+        note: err.message
+      }));
+    });
+    return;
+  }
+
+  // --------------------------------------------------------------------------
   // 6.5. PROXY ROUTE: /api/v1/* -> Chuyển tiếp tới FastAPI AI Server (:8000)
   // --------------------------------------------------------------------------
   if (pathname.startsWith('/api/v1/')) {

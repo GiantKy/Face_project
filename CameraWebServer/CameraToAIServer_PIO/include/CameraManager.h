@@ -64,17 +64,17 @@ public:
         if (s != nullptr) {
             s->set_framesize(s, FRAMESIZE_VGA);     // Độ phân giải VGA 640x480
             s->set_quality(s, 20);                  // Quality 20: Sắc nét, nén tối ưu băng thông WiFi
-            s->set_brightness(s, 0);                // Brightness = 0 (chuẩn, không làm cháy sáng mặt)
-            s->set_contrast(s, 1);                  // Contrast = +1 (vừa phải, tách biệt biên mặt rõ ràng)
+            s->set_brightness(s, 1);                // Brightness = +1 (Nâng sáng sàn để mặt không bị sập tối khi ngược sáng)
+            s->set_contrast(s, 0);                  // Contrast = 0 (Giảm tương phản để mở rộng dải động WDR, chống dìm đen bóng râm mặt)
             s->set_saturation(s, 0);                // Saturation = 0 (tự nhiên)
             s->set_sharpness(s, 2);                 // Sharpness = +2 (sắc nét chi tiết mắt & da)
             s->set_denoise(s, 0);                   // De-Noise = 0 (TẮT khử nhiễu để tránh làm mờ/bệt chi tiết da)
             
             // Các chế độ phơi sáng, cân bằng trắng và khử quang sai:
-            s->set_gainceiling(s, GAINCEILING_8X);  // Nâng Gainceiling lên 8X để ưu tiên bù sáng bằng Gain thay vì kéo dài màn trập gây mờ
+            s->set_gainceiling(s, GAINCEILING_16X); // Nâng Gainceiling lên 16X để tự động bù sáng tối ưu trong phòng
             s->set_exposure_ctrl(s, 1);             // AEC1 Hardware Auto Exposure = ON (chạy phần cứng ổn định)
-            s->set_aec2(s, 0);                      // TẮT AEC2 DSP: KHẮC PHỤC TRIỆT ĐỂ LỖI RUNAWAY KÉO DÀI MÀN TRẬP GÂY MỜ ẢNH VÀ TỤT FPS!
-            s->set_ae_level(s, -2);                 // KHÓA MỤC TIÊU PHƠI SÁNG -2: Ngăn chặn cảm biến tiếp tục tăng sáng vô hạn gây cháy và nhoè mờ!
+            s->set_aec2(s, 0);                      // TẮT AEC2 DSP: Tránh lỗi kéo dài màn trập gây mờ ảnh và tụt FPS
+            s->set_ae_level(s, 1);                  // AE Level = +1: BÙ SÁNG NGƯỢC SÁNG (Backlight Compensation)! Ngăn mặt bị tối đen khi sau lưng có cửa sổ/đèn
             s->set_gain_ctrl(s, 1);                 // AGC Enable = ON
             s->set_bpc(s, 1);                       // BPC = ON
             s->set_wpc(s, 1);                       // WPC = ON
@@ -116,6 +116,51 @@ public:
                 }
             }
             s->set_quality(s, quality);
+        }
+    }
+
+    /**
+     * @brief Điều chỉnh độ sáng (-2 đến 2)
+     */
+    void setBrightness(int val) {
+        sensor_t *s = esp_camera_sensor_get();
+        if (s != nullptr) s->set_brightness(s, constrain(val, -2, 2));
+    }
+
+    /**
+     * @brief Điều chỉnh mục tiêu phơi sáng tự động AEC (-2 đến 2)
+     */
+    void setAeLevel(int val) {
+        sensor_t *s = esp_camera_sensor_get();
+        if (s != nullptr) s->set_ae_level(s, constrain(val, -2, 2));
+    }
+
+    /**
+     * @brief Điều chỉnh tương phản (-2 đến 2)
+     */
+    void setContrast(int val) {
+        sensor_t *s = esp_camera_sensor_get();
+        if (s != nullptr) s->set_contrast(s, constrain(val, -2, 2));
+    }
+
+    /**
+     * @brief Điều chỉnh Gain Ceiling (0: 2X, 1: 4X, 2: 8X, 3: 16X, 4: 32X)
+     */
+    void setGainCeiling(int level) {
+        sensor_t *s = esp_camera_sensor_get();
+        if (s != nullptr) {
+            gainceiling_t gc = GAINCEILING_16X;
+            switch(level) {
+                case 0: gc = GAINCEILING_2X; break;
+                case 1: gc = GAINCEILING_4X; break;
+                case 2: gc = GAINCEILING_8X; break;
+                case 3: gc = GAINCEILING_16X; break;
+                case 4: gc = GAINCEILING_32X; break;
+                case 5: gc = GAINCEILING_64X; break;
+                case 6: gc = GAINCEILING_128X; break;
+                default: gc = GAINCEILING_16X; break;
+            }
+            s->set_gainceiling(s, gc);
         }
     }
 

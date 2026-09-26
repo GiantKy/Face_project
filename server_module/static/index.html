@@ -1810,6 +1810,19 @@
           </label>
         </div>
 
+        <!-- Thanh công cụ bù sáng / chống ngược sáng (Backlight Compensation) -->
+        <div class="cam-exposure-bar" id="camExposureBar" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; padding: 8px 12px; background: rgba(15, 21, 35, 0.65); border: 1px solid var(--border-color); border-radius: 10px; font-size: 0.8rem;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="color: var(--amber); font-weight: 600;">☀️ Bù Sáng / Chống Ngược Sáng:</span>
+            <span id="exposureModeLabel" style="color: var(--cyan); font-weight: 600;">⚡ Chống Ngược Sáng (+1 EV)</span>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button type="button" class="btn btn-secondary" id="btnExpBacklight" style="padding: 4px 10px; font-size: 0.76rem; border-color: var(--cyan); color: #a5f3fc;" onclick="setCameraExposurePreset('backlight')" title="Tăng sáng mặt khi sau lưng bị ngược sáng hoặc cửa sổ">⚡ Chống Ngược Sáng</button>
+            <button type="button" class="btn btn-secondary" id="btnExpStandard" style="padding: 4px 10px; font-size: 0.76rem;" onclick="setCameraExposurePreset('standard')" title="Cân bằng phơi sáng tiêu chuẩn">⚖️ Chuẩn</button>
+            <button type="button" class="btn btn-secondary" id="btnExpAntiGlare" style="padding: 4px 10px; font-size: 0.76rem;" onclick="setCameraExposurePreset('anti_glare')" title="Giảm sáng khi bị chói">🌤️ Giảm Chói</button>
+          </div>
+        </div>
+
         <!-- Action Buttons -->
         <div class="action-row">
           <button class="btn btn-secondary" id="camToggleBtn" onclick="handleCameraToggleButton()">
@@ -2058,6 +2071,9 @@
 
       // Check ESP32 background status
       checkEsp32Status();
+
+      // Mặc định kích hoạt bộ lọc bù sáng chống ngược sáng
+      setCameraExposurePreset('backlight');
 
       // Keyboard Shortcuts
       window.addEventListener('keydown', (e) => {
@@ -2481,6 +2497,72 @@
     function toggleBokehBlur(enabled) {
       if (webcamStream || inputMode === 'esp32') {
         document.getElementById('bokehBlurOverlay').style.display = enabled ? 'block' : 'none';
+      }
+    }
+
+    // =========================================================================
+    // EXPOSURE & BACKLIGHT COMPENSATION CONTROLLER
+    // =========================================================================
+    let currentExposurePreset = 'backlight';
+
+    async function setCameraExposurePreset(preset) {
+      currentExposurePreset = preset;
+      const label = document.getElementById('exposureModeLabel');
+      const espImg = document.getElementById('esp32StreamImg');
+      const webcamVid = document.getElementById('webcamVideo');
+
+      const bBacklight = document.getElementById('btnExpBacklight');
+      const bStandard = document.getElementById('btnExpStandard');
+      const bAntiGlare = document.getElementById('btnExpAntiGlare');
+
+      if (bBacklight) {
+        bBacklight.style.borderColor = (preset === 'backlight') ? 'var(--cyan)' : 'var(--border-color)';
+        bBacklight.style.color = (preset === 'backlight') ? '#a5f3fc' : 'var(--text-muted)';
+      }
+      if (bStandard) {
+        bStandard.style.borderColor = (preset === 'standard') ? 'var(--cyan)' : 'var(--border-color)';
+        bStandard.style.color = (preset === 'standard') ? '#a5f3fc' : 'var(--text-muted)';
+      }
+      if (bAntiGlare) {
+        bAntiGlare.style.borderColor = (preset === 'anti_glare') ? 'var(--cyan)' : 'var(--border-color)';
+        bAntiGlare.style.color = (preset === 'anti_glare') ? '#a5f3fc' : 'var(--text-muted)';
+      }
+
+      let aeLevel = 1, brightness = 1, contrast = 0, gainceiling = 4;
+      let cssFilter = 'none';
+
+      if (preset === 'backlight') {
+        aeLevel = 1;
+        brightness = 1;
+        contrast = 0;
+        gainceiling = 4; // GAINCEILING_16X
+        cssFilter = 'brightness(1.22) contrast(1.05) saturate(1.05)';
+        if (label) label.textContent = '⚡ Chống Ngược Sáng (+1 EV)';
+      } else if (preset === 'standard') {
+        aeLevel = 0;
+        brightness = 0;
+        contrast = 0;
+        gainceiling = 2; // GAINCEILING_8X
+        cssFilter = 'none';
+        if (label) label.textContent = '⚖️ Chuẩn (0 EV)';
+      } else if (preset === 'anti_glare') {
+        aeLevel = -1;
+        brightness = -1;
+        contrast = 0;
+        gainceiling = 1; // GAINCEILING_4X
+        cssFilter = 'brightness(0.9) contrast(1.0)';
+        if (label) label.textContent = '🌤️ Giảm Chói (-1 EV)';
+      }
+
+      // Áp dụng ngay bộ lọc CSS tức thì trên luồng hiển thị
+      if (espImg) espImg.style.filter = cssFilter;
+      if (webcamVid) webcamVid.style.filter = cssFilter;
+
+      // Gửi lệnh phần cứng xuống ESP32 qua Node.js Relay Hub
+      try {
+        await fetch(`${API_BASE_URL}/api/camera/control?ae_level=${aeLevel}&brightness=${brightness}&contrast=${contrast}&gainceiling=${gainceiling}`);
+      } catch (err) {
+        console.warn('Lỗi gửi lệnh chỉnh sáng camera:', err);
       }
     }
 

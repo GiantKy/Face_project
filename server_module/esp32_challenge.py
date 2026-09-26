@@ -51,31 +51,51 @@ except ImportError:
 def preprocess_esp32_image(frame: np.ndarray, apply_clahe: bool = True, sharpen: bool = True) -> np.ndarray:
     """
     Tiền xử lý ảnh tĩnh từ cảm biến OV2640 (ESP32-CAM):
-    1. Cân bằng sáng cục bộ thích nghi CLAHE trên kênh Luminance (không gian màu LAB).
-       Tự động kích sáng Gamma Correction nếu ảnh quá tối (mean_L < 85).
-    2. Làm sắc nét viền nhẹ nhàng (Unsharp Masking).
+    1. Phát hiện tình huống ngược sáng (Backlight / High Dynamic Range):
+       - Đo độ sáng vùng trung tâm (vùng oval khuôn mặt) so với toàn khung hình.
+       - Khi vùng mặt bị tối (center_L < 78) hoặc ngược sáng (mean_L - center_L > 18),
+         tự động áp dụng Gamma LUT nâng sáng bóng râm (Shadow Lifting) và CLAHE thích nghi.
+    2. Cân bằng sáng cục bộ CLAHE trên kênh Luminance (không gian màu LAB).
+    3. Làm sắc nét viền khuôn mặt nhẹ nhàng (Unsharp Masking).
     """
     if frame is None or frame.size == 0:
         return frame
 
     enhanced = frame.copy()
 
-    # 1. CLAHE trên kênh L & Tự động cứu sáng Gamma nếu thiếu sáng
+    # 1. CLAHE trên kênh L & Tự động cứu sáng Gamma nếu ngược sáng hoặc thiếu sáng
     if apply_clahe:
         try:
             lab = cv2.cvtColor(enhanced, cv2.COLOR_BGR2LAB)
             l, a, b = cv2.split(lab)
-            mean_l = float(np.mean(l))
+            h, w = l.shape[:2]
 
-            # Nếu ảnh bị tối (mean_L < 85), tự động kích hoạt Gamma LUT cứu sáng vùng mặt
-            if mean_l < 85.0:
-                gamma = max(0.55, mean_l / 110.0)
+            # Vùng ROI trung tâm nơi mặt người dùng xuất hiện trong khung Oval
+            cy1, cy2 = int(h * 0.15), int(h * 0.85)
+            cx1, cx2 = int(w * 0.20), int(w * 0.80)
+            center_roi = l[cy1:cy2, cx1:cx2]
+
+            mean_l = float(np.mean(l))
+            center_l = float(np.mean(center_roi)) if center_roi.size > 0 else mean_l
+
+            # Nhận diện ngược sáng: Nền sáng nhưng mặt tối, hoặc vùng mặt quá tối
+            is_backlit = (center_l < 78.0) or ((mean_l - center_l) > 18.0 and center_l < 95.0)
+
+            if is_backlit:
+                # Nâng sáng vùng tối có chọn lọc (Shadow lifting gamma curve)
+                gamma = max(0.50, min(0.75, center_l / 115.0))
                 inv_gamma = 1.0 / gamma
                 table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
                 l = cv2.LUT(l, table)
-                clip = 3.0
+                clip = 3.2
+            elif mean_l < 85.0:
+                gamma = max(0.60, mean_l / 110.0)
+                inv_gamma = 1.0 / gamma
+                table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+                l = cv2.LUT(l, table)
+                clip = 2.8
             else:
-                clip = 2.2
+                clip = 2.0
 
             clahe = cv2.createCLAHE(clipLimit=clip, tileGridSize=(8, 8))
             cl = clahe.apply(l)
