@@ -48,8 +48,8 @@ class HeadMovementDetector:
         roll_threshold: float = 14.0,
         timeout: float = 7.0,
         min_consecutive_frames: int = 2,
-        delta_yaw_threshold: float = 8.0,
-        delta_pitch_threshold: float = 7.0
+        delta_yaw_threshold: float = 3.5,
+        delta_pitch_threshold: float = 4.0
     ):
         """
         Khởi tạo bộ phát hiện cử động đầu.
@@ -237,28 +237,28 @@ class HeadMovementDetector:
         base_p = self.baseline_pitch if self.baseline_pitch is not None else 0.0
 
         if self.current_action == HeadAction.TURN_LEFT:
-            # Quay sang trái: yaw giảm dần (âm hơn baseline) -> delta_yaw = baseline_yaw - yaw
-            delta_movement = base_y - yaw
-            target_threshold = self.delta_yaw_threshold
-            # Yêu cầu: Đã nhích sang trái ít nhất delta_yaw_threshold VÀ góc hiện tại lệch trái so với mốc
-            is_matched = bool(delta_movement >= self.delta_yaw_threshold and yaw < (base_y - 2.0))
-
-        elif self.current_action == HeadAction.TURN_RIGHT:
-            # Quay sang phải: yaw tăng dần (dương hơn baseline) -> delta_yaw = yaw - baseline_yaw
+            # Quay sang trái người dùng: delta_yaw tăng (dương hơn so với baseline)
             delta_movement = yaw - base_y
             target_threshold = self.delta_yaw_threshold
+            # Yêu cầu: Đã nhích sang trái ít nhất delta_yaw_threshold VÀ góc hiện tại lệch trái so với mốc
+            is_matched = bool(delta_movement >= self.delta_yaw_threshold and (yaw > (base_y + 1.2) or yaw >= 3.5))
+
+        elif self.current_action == HeadAction.TURN_RIGHT:
+            # Quay sang phải người dùng: delta_yaw giảm (âm hơn so với baseline)
+            delta_movement = base_y - yaw
+            target_threshold = self.delta_yaw_threshold
             # Yêu cầu: Đã nhích sang phải ít nhất delta_yaw_threshold VÀ góc hiện tại lệch phải so với mốc
-            is_matched = bool(delta_movement >= self.delta_yaw_threshold and yaw > (base_y + 2.0))
+            is_matched = bool(delta_movement >= self.delta_yaw_threshold and (yaw < (base_y - 1.2) or yaw <= -3.5))
 
         elif self.current_action == HeadAction.LOOK_UP:
             delta_movement = base_p - pitch
             target_threshold = self.delta_pitch_threshold
-            is_matched = bool(delta_movement >= self.delta_pitch_threshold and pitch < (base_p - 2.0))
+            is_matched = bool(delta_movement >= self.delta_pitch_threshold and pitch < (base_p - 1.5))
 
         elif self.current_action == HeadAction.LOOK_DOWN:
             delta_movement = pitch - base_p
             target_threshold = self.delta_pitch_threshold
-            is_matched = bool(delta_movement >= self.delta_pitch_threshold and pitch > (base_p + 2.0))
+            is_matched = bool(delta_movement >= self.delta_pitch_threshold and pitch > (base_p + 1.5))
 
         elif self.current_action == HeadAction.LOOK_STRAIGHT:
             delta_movement = max(0.0, 10.0 - max(abs(yaw - base_y), abs(pitch - base_p)))
@@ -267,22 +267,24 @@ class HeadMovementDetector:
 
         # 4. Tính toán tiến trình thời gian thực
         # Không di chuyển hoặc di chuyển ngược hướng -> progress = 0%
-        # Nhích nhẹ dần theo đúng hướng -> progress tăng mượt 0% - 75%
-        # Đạt ngưỡng nhích và giữ trong min_consecutive_frames -> progress tăng từ 75% lên 100%
+        # Nhích nhẹ dần theo đúng hướng -> progress tăng mượt
+        # Đạt ngưỡng nhích rõ ràng hoặc giữ trong 2 frames -> pass 100%
         clamped_movement = max(0.0, delta_movement)
-        movement_ratio = min(1.0, clamped_movement / max(1.0, target_threshold))
+        angle_ratio = min(1.0, clamped_movement / max(1.0, target_threshold))
 
         if is_matched:
             self.consecutive_frames += 1
             self.max_reached_angle = max(self.max_reached_angle, clamped_movement)
-            hold_ratio = min(1.0, self.consecutive_frames / float(self.min_consecutive_frames))
-            progress = min(1.0, 0.75 + 0.25 * hold_ratio)
-            if self.consecutive_frames >= self.min_consecutive_frames:
+
+            # Nếu quay góc dứt khoát (>= target_threshold * 1.25 ~ 4.4 độ): hoàn thành ngay sau 1 frame rõ!
+            if clamped_movement >= (target_threshold * 1.25) or self.consecutive_frames >= self.min_consecutive_frames:
                 self.state = ChallengeState.COMPLETED
                 progress = 1.0
+            else:
+                progress = min(0.95, max(0.80, angle_ratio))
         else:
             self.consecutive_frames = max(0, self.consecutive_frames - 1)
-            progress = min(0.75, movement_ratio * 0.75)
+            progress = min(0.75, angle_ratio * 0.75)
 
         self.last_progress = progress
         self.last_angle = clamped_movement

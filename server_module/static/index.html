@@ -2891,8 +2891,8 @@
         isBlinkProcessing = true;
         try {
           const video = document.getElementById('webcamVideo');
-          // Gửi độ phân giải 480x360: xử lý siêu tốc, giảm kích thước payload, đo lường EAR mượt mà
-          const frameBlob = await captureThumbnailBlob(video, 480, 360);
+          // Gửi độ phân giải 640x480: tối ưu landmark mắt, đo lường EAR chuẩn xác và nhạy bén
+          const frameBlob = await captureThumbnailBlob(video, 640, 480);
           if (!frameBlob) return;
 
           // Cập nhật ngay frame mới nhất lên màn hình để bám sát chuyển động chớp mắt
@@ -3032,7 +3032,7 @@
         hint: `Nhích nhẹ đầu theo hướng mũi tên đến khi đạt 100%`,
         timerText: `${headTimeoutSeconds.toFixed(1)}s`,
         isTimerUrgent: false,
-        telemetry: `Mục tiêu: Nhích nhẹ ~8°`,
+        telemetry: `Mục tiêu: Nhích nhẹ ~3.5°`,
         percent: '0%',
         fillWidth: '0%'
       });
@@ -3053,7 +3053,7 @@
         isHeadProcessing = true;
         try {
           const video = document.getElementById('webcamVideo');
-          const frameBlob = await captureThumbnailBlob(video, 480, 360);
+          const frameBlob = await captureThumbnailBlob(video, 640, 480);
           if (!frameBlob) return;
 
           // Cập nhật ngay frame mới nhất lên màn hình để bám sát chuyển động quay đầu (0ms delay)
@@ -3126,7 +3126,7 @@
             const movedAngle = (data.current_angle !== undefined) ? data.current_angle.toFixed(1) : '0.0';
             let telemetry = `Tiến trình: ${pct}%`;
             if (data.pose) {
-              telemetry = `Yaw: ${data.pose.yaw}° | Nhích: ${movedAngle}° / 8° | ${telemetry}`;
+              telemetry = `Yaw: ${data.pose.yaw}° | Nhích: ${movedAngle}° / 3.5° | ${telemetry}`;
             }
 
             const activeHint = data.is_matched

@@ -698,11 +698,16 @@ class EKYCPipelineServer:
                 landmarks=landmarks,
                 num_faces=num_faces
             )
-            # Chỉ cảnh báo nếu có khẩu trang, kính trắng, hoặc kính râm khi mắt mở (tránh báo động giả khi mắt nhắm)
-            if is_occ_raw and (raw_code != "SUNGLASSES_DETECTED" or ear_avg >= 0.20):
-                is_occluded = True
-                occ_reason = raw_code
-                occ_msg = raw_msg
+            # Chỉ cảnh báo nếu có khẩu trang hoặc che mặt, hoặc đeo kính râm khi mắt đang mở (tránh báo động giả khi mắt nhắm)
+            if is_occ_raw:
+                if raw_code in ("MASK_DETECTED", "FACE_COVERED_DETECTED"):
+                    is_occluded = True
+                    occ_reason = raw_code
+                    occ_msg = raw_msg
+                elif ear_avg >= 0.20:
+                    is_occluded = True
+                    occ_reason = raw_code
+                    occ_msg = raw_msg
 
         if is_occluded:
             frozen_ear = round(baseline_ear, 4) if baseline_ear > 0 else 0.22
@@ -741,19 +746,16 @@ class EKYCPipelineServer:
         elif updated_baseline <= 0.05 and ear_avg > 0.12:
             updated_baseline = ear_avg
 
-        eff_baseline = max(0.18, min(0.35, updated_baseline if updated_baseline > 0.05 else 0.22))
+        eff_baseline = max(0.19, min(0.35, updated_baseline if updated_baseline > 0.05 else 0.24))
 
         # 3. Tính toán ngưỡng nhắm & mở mắt linh hoạt (Adaptive Thresholds + Relative Drop)
-        closed_thresh = round(min(0.20, max(0.14, eff_baseline * 0.80)), 4)
-        open_thresh = round(min(0.25, max(closed_thresh + 0.02, eff_baseline * 0.88)), 4)
+        closed_thresh = round(max(0.18, min(0.20, eff_baseline * 0.82)), 4)
+        open_thresh = round(max(0.20, min(0.24, eff_baseline * 0.88)), 4)
 
-        # Độ sụt giảm EAR tương đối so với mốc mắt mở
-        ear_drop = eff_baseline - ear_avg
-
-        # Mắt được coi là nhắm: EAR <= closed_thresh HOẶC sụt giảm >= 0.032 so với baseline
-        is_closed = (ear_avg > 0.03 and ear_avg <= closed_thresh) or (ear_drop >= 0.032 and ear_avg <= 0.195)
-        # Mắt được coi là đã mở lại: EAR >= open_thresh HOẶC độ chênh lệch <= 0.018 và EAR >= 0.165
-        is_open = (ear_avg >= open_thresh) or (ear_drop <= 0.018 and ear_avg >= 0.165)
+        # Mắt được coi là nhắm: EAR <= closed_thresh HOẶC sụt giảm >= 18% so với baseline
+        is_closed = (0.03 < ear_avg <= closed_thresh) or (ear_avg <= eff_baseline * 0.82)
+        # Mắt được coi là đã mở lại: EAR >= open_thresh HOẶC độ hồi phục >= 88% baseline
+        is_open = (ear_avg >= open_thresh) or (ear_avg >= eff_baseline * 0.88 and ear_avg >= 0.18)
 
         # 4. State Machine: MẮT MỞ -> MẮT NHẮM (new_state = True) -> MẮT MỞ LẠI (new_counter += 1)
         if is_closed:
@@ -774,7 +776,7 @@ class EKYCPipelineServer:
                 cand_desc = self.identity_verifier.extract_descriptor(frame)
                 if cand_desc is not None:
                     same_person, match_score, identity_details = self.identity_verifier.verify_identity(
-                        base_desc, cand_desc, max_disparity_thresh=0.022, min_cosine_thresh=0.935
+                        base_desc, cand_desc, max_disparity_thresh=0.035, min_cosine_thresh=0.880
                     )
                     if not same_person:
                         return {
@@ -907,7 +909,7 @@ class EKYCPipelineServer:
             pose_dict=pose_dict
         )
         if is_occluded:
-            action_name = self.head_movement_detector.action.value if self.head_movement_detector.action else "TURN_HEAD"
+            action_name = self.head_movement_detector.current_action.value if self.head_movement_detector.current_action else "TURN_HEAD"
             return {
                 "state": "WARNING",
                 "action": action_name,
@@ -921,7 +923,7 @@ class EKYCPipelineServer:
                 "time_left": 10.0,
                 "progress": 0.0,        # KHÔNG ĐỔI TIẾN TRÌNH
                 "current_angle": 0.0,   # KHÔNG ĐỔI GÓC QUAY HEAD YAW
-                "target_threshold": 8.0,
+                "target_threshold": 3.5,
                 "is_matched": False,
                 "pose": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
             }

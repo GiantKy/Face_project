@@ -669,8 +669,8 @@ class ESP32ChallengeManager:
 
         # Sinh ngẫu nhiên hành động quay đầu: QUAY TRÁI hoặc QUAY PHẢI (theo góc nhìn người dùng)
         possible_actions = [
-            ("TURN_LEFT", "Hãy quay mặt nhẹ sang bên TRÁI của bạn (~5°-10°)", -5.0),
-            ("TURN_RIGHT", "Hãy quay mặt nhẹ sang bên PHẢI của bạn (~5°-10°)", 5.0),
+            ("TURN_LEFT", "Hãy quay mặt nhẹ sang bên TRÁI của bạn (~3.5°-5°)", 3.5),
+            ("TURN_RIGHT", "Hãy quay mặt nhẹ sang bên PHẢI của bạn (~3.5°-5°)", -3.5),
         ]
         chosen_action, prompt_text, target_thresh = random.choice(possible_actions)
         session.target_head_action = chosen_action
@@ -900,16 +900,16 @@ class ESP32ChallengeManager:
             action = session.target_head_action
 
             if action == "TURN_LEFT":
-                # Quay TRÁI của người dùng: delta_yaw ÂM
-                head_matched = (delta_yaw <= -3.5) or (curr_yaw <= -5.0)
+                # Quay TRÁI của người dùng: delta_yaw DƯƠNG (>= 3.5°)
+                head_matched = (delta_yaw >= 3.5) or (curr_yaw >= 4.5)
             elif action == "TURN_RIGHT":
-                # Quay PHẢI của người dùng: delta_yaw DƯƠNG
-                head_matched = (delta_yaw >= 3.5) or (curr_yaw >= 5.0)
+                # Quay PHẢI của người dùng: delta_yaw ÂM (<= -3.5°)
+                head_matched = (delta_yaw <= -3.5) or (curr_yaw <= -4.5)
 
             if head_matched:
-                # Nếu quay góc rõ rệt (|delta_yaw| >= 5.0 hoặc |curr_yaw| >= 7.5): cho pass ngay sau 1 frame rõ
-                if (action == "TURN_LEFT" and (delta_yaw <= -5.0 or curr_yaw <= -7.5)) or \
-                   (action == "TURN_RIGHT" and (delta_yaw >= 5.0 or curr_yaw >= 7.5)):
+                # Nếu quay góc rõ rệt (|delta_yaw| >= 4.5 hoặc |curr_yaw| >= 6.0): cho pass ngay sau 1 frame rõ
+                if (action == "TURN_LEFT" and (delta_yaw >= 4.5 or curr_yaw >= 6.0)) or \
+                   (action == "TURN_RIGHT" and (delta_yaw <= -4.5 or curr_yaw <= -6.0)):
                     session.consecutive_turn_frames += 2
                 else:
                     session.consecutive_turn_frames += 1
