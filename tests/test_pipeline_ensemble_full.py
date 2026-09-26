@@ -89,6 +89,7 @@ from server_module.utils import (
     create_pipeline_result_dashboard,
     create_side_by_side_result
 )
+from server_module.components.face_occlusion_detector import FaceOcclusionDetector
 
 DATA_RAW_DIR = os.path.join(BASE_DIR, "data_raw")
 OUTPUT_DIR = os.path.join(CURRENT_DIR, "output")
@@ -453,6 +454,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
     aligner = FaceAligner()
     ensemble_anti_spoof = EnsembleAntiSpoofDetector(yolo_file=yolo_file)
     head_movement_detector = HeadMovementDetector(yaw_threshold=16.0, pitch_threshold=12.0, timeout=7.0)
+    occlusion_detector = FaceOcclusionDetector()
     print("[OK] Đã sẵn sàng toàn bộ hệ thống Models!\n")
 
     cap = cv2.VideoCapture(cam_id)
@@ -482,6 +484,9 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
     face_crop_static = None
     aligned_img_static = None
     best_spoof_static = None
+    is_occluded_static = False
+    occ_code_static = "OK"
+    occ_msg_static = ""
     all_spoof_dets = []
     yolo_debug_dets = []
     rfdetr_debug_dets = []
@@ -505,6 +510,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
         nonlocal stage, current_img_idx, captured_frame, captured_img_path, captured_result_dir
         nonlocal primary_face, landmarks_static, pose_dict_static, pose_valid_static
         nonlocal face_crop_static, aligned_img_static, best_spoof_static
+        nonlocal is_occluded_static, occ_code_static, occ_msg_static
         nonlocal all_spoof_dets, yolo_debug_dets, rfdetr_debug_dets
         nonlocal blink_counter, blink_state, blink_passed, head_movement_passed, current_head_action, head_action_prompt
         nonlocal final_pass, reasons, final_display_img, final_record, consecutive_center_frames, quick_snapshot_mode
@@ -524,6 +530,9 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
         face_crop_static = None
         aligned_img_static = None
         best_spoof_static = None
+        is_occluded_static = False
+        occ_code_static = "OK"
+        occ_msg_static = ""
         all_spoof_dets.clear()
         yolo_debug_dets.clear()
         rfdetr_debug_dets.clear()
@@ -776,6 +785,18 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                     landmarks_static = None
             print(f"[3. Landmarks] Trích xuất được {len(landmarks_static) if landmarks_static else 0} điểm.")
 
+            # 4.5 Kiểm tra vật che mặt & Mắt kính (Chính sách A - Strict Policy)
+            if landmarks_static:
+                is_occluded_static, occ_code_static, occ_msg_static = occlusion_detector.check_occlusion(
+                    frame=captured_frame,
+                    landmarks=landmarks_static,
+                    num_faces=len(faces)
+                )
+                if is_occluded_static:
+                    print(f"[Occlusion Defense] VI PHẠM: {occ_msg_static} ({occ_code_static})")
+                else:
+                    print("[Occlusion Defense] Khuôn mặt thông thoáng, không đeo kính và không đeo khẩu trang -> PASS!")
+
             # 5. Pose 3D
             pose_valid_static = False
             pose_dict_static = None
@@ -995,6 +1016,9 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
 
                 if not head_movement_passed:
                     reasons.append("Chua vuot qua thu thach quay dau (Head Movement)")
+
+                if is_occluded_static:
+                    reasons.append(occ_msg_static or f"Khuon mat bi che khuat hoac deo kinh ({occ_code_static})")
 
                 final_pass = (len(reasons) == 0)
 

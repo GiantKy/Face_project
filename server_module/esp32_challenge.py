@@ -480,7 +480,7 @@ class ESP32ChallengeManager:
                 "captured_image_base64": captured_b64
             }
 
-        # Kiểm tra che mặt (Face Occlusion Check) trước khi cho phép vượt qua Bước 1
+        # Kiểm tra che mặt & mắt kính theo Chính sách A (Face Occlusion & Glasses Defense)
         if hasattr(pipeline, "occlusion_detector") and pipeline.occlusion_detector is not None:
             is_occ, occ_code, occ_msg = pipeline.occlusion_detector.check_occlusion(
                 frame=raw_frame,
@@ -496,9 +496,10 @@ class ESP32ChallengeManager:
                     "approved": False,
                     "verdict": "FACE_OCCLUDED",
                     "is_real": False,
-                    "message": occ_msg or "CẢNH BÁO: Phát hiện che mặt! Vui lòng không che mặt.",
-                    "reasons": ["FACE_OCCLUSION_DETECTED"],
-                    "hint": "Bỏ khẩu trang, tay hoặc vật cản ra khỏi khuôn mặt.",
+                    "occlusion_code": occ_code,
+                    "message": occ_msg or "CẢNH BÁO: Phát hiện che mặt hoặc đeo kính! Vui lòng tháo kính và khẩu trang.",
+                    "reasons": [occ_code or "FACE_OCCLUSION_DETECTED"],
+                    "hint": "Theo Chính sách A, vui lòng tháo toàn bộ mắt kính và khẩu trang ra khỏi khuôn mặt.",
                     "captured_image_base64": captured_b64
                 }
 
@@ -552,9 +553,19 @@ class ESP32ChallengeManager:
                 face_crop_static = cv2.resize(raw_frame[y1:y2, x1:x2], (224, 224))
 
         # 3. DUYỆT ENSEMBLE ANTI-SPOOFING NGAY TẠI BƯỚC 1 (FAIL-FAST)
+        # Sử dụng ảnh tự nhiên (raw_frame) để tránh hiệu ứng làm nét nhân tạo làm sai lệch đặc trưng vi vân
+        input_spoof = raw_frame
+        try:
+            from src.illumination import check_illumination_quality, enhance_low_light
+            captured_light = check_illumination_quality(raw_frame, bbox=primary_face["bbox"] if primary_face else None)
+            if captured_light.get("mean_luminance", 100.0) < 75.0:
+                input_spoof = enhance_low_light(raw_frame)
+        except Exception:
+            input_spoof = raw_frame
+
         t_spoof_start = time.time()
         all_dets, y_dets, rf_dets = pipeline.ensemble_anti_spoof.predict_ensemble(
-            proc_frame,
+            input_spoof,
             conf_threshold=0.28,
             iou_thresh=0.38,
             strict_spoof_veto=True,
@@ -788,8 +799,9 @@ class ESP32ChallengeManager:
                     "passed": False,
                     "is_occluded": True,
                     "error": "FACE_OCCLUDED",
-                    "message": occ_msg or "CẢNH BÁO: Phát hiện che mặt! Vui lòng không che mặt khi thực hiện thử thách.",
-                    "reasons": ["FACE_OCCLUSION_DETECTED"]
+                    "occlusion_code": occ_code,
+                    "message": occ_msg or "CẢNH BÁO: Phát hiện che mặt hoặc đeo kính! Vui lòng không che mặt khi thực hiện thử thách.",
+                    "reasons": [occ_code or "FACE_OCCLUSION_DETECTED"]
                 }
 
         # ---------------------------------------------------------------------

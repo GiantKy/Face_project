@@ -69,6 +69,18 @@ HEAD_DELTA_PITCH_THRESHOLD = 7.0   # Ngưỡng nhích nhẹ gật đầu tối t
 CHALLENGE_TIMEOUT_SECONDS = 7.0
 
 # =====================================================================
+# CHÍNH SÁCH KIỂM TRA VẬT CHE MẶT (OCCLUSION DEFENSE - POLICY A)
+# =====================================================================
+# Chính sách A (Strict Policy): Bắt buộc tháo TOÀN BỘ mọi loại kính (kính cận, kính râm) và khẩu trang.
+STRICT_GLASSES_POLICY = True        # True: Cấm toàn bộ kính (kính cận trong suốt, kính thuốc, kính râm)
+CHECK_CLEAR_GLASSES = True          # Bật thuật toán dò gọng kính cận trong suốt (Nose bridge edge & rims)
+CHECK_GLASSES_GLARE = True          # Bật thuật toán dò lóa sáng tròng kính
+SUNGLASSES_RATIO_THRESH = 0.58      # Tỷ lệ độ sáng hốc mắt / trán (< 0.58 coi là kính râm/kính màu)
+GLASSES_BRIDGE_EDGE_THRESH = 16.0   # Ngưỡng năng lượng cạnh Sobel tại cầu sống mũi phát hiện gọng kính
+MASK_DELTA_E_THRESH = 28.0          # Ngưỡng sai lệch màu LAB trán vs cằm phát hiện khẩu trang
+MASK_LIP_CONTRAST_THRESH = 12.0     # Ngưỡng tương phản màu môi trên vs nhân trung phát hiện khẩu trang nude
+
+# =====================================================================
 # NODE.JS BACKEND INTEGRATION & WEBHOOK
 # =====================================================================
 NODEJS_WEBHOOK_URL = os.environ.get("NODEJS_WEBHOOK_URL", "http://127.0.0.1:3000/api/ekyc/result")

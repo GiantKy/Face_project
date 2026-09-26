@@ -2872,8 +2872,8 @@
         isBlinkProcessing = true;
         try {
           const video = document.getElementById('webcamVideo');
-          // Gửi độ phân giải 640x480 để MediaPipe nhận diện mí mắt và tròng mắt chuẩn xác
-          const frameBlob = await captureThumbnailBlob(video, 640, 480);
+          // Gửi độ phân giải 480x360: xử lý siêu tốc, giảm kích thước payload, đo lường EAR mượt mà
+          const frameBlob = await captureThumbnailBlob(video, 480, 360);
           if (!frameBlob) return;
 
           // Cập nhật ngay frame mới nhất lên màn hình để bám sát chuyển động chớp mắt
@@ -2934,6 +2934,11 @@
                 telemetry: 'Trạng thái: ĐÃ KHÓA CHỈ SỐ EAR (DO CHE MẶT)'
               });
               return;
+            } else {
+              const oval = document.getElementById('faceGuideOval');
+              if (oval && oval.classList.contains('state-warning')) {
+                oval.className = 'face-guide-oval state-challenge';
+              }
             }
 
             blinkCounter = data.blink_counter;
@@ -2960,10 +2965,10 @@
               blinkPassed = true;
               blinkSuccessBlob = frameBlob;
               stopChallengeLoop();
-              // Chờ 600ms hiển thị badge thành công rồi chuyển sang Bước 2: Quay Đầu
+              // Chờ 500ms hiển thị badge thành công rồi chuyển sang Bước 2: Quay Đầu
               setTimeout(() => {
                 proceedToHeadMovementChallenge();
-              }, 600);
+              }, 500);
             }
           }
         } catch (e) {
@@ -2971,7 +2976,7 @@
         } finally {
           isBlinkProcessing = false;
         }
-      }, 90); // ~11 FPS sequential
+      }, 75); // ~13 FPS sequential real-time responsiveness
     }
 
     async function proceedToHeadMovementChallenge() {

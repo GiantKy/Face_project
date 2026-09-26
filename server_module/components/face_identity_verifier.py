@@ -143,7 +143,8 @@ class FaceIdentityVerifier:
                 face_landmarks_3d = precomputed_landmarks
 
         if face_landmarks_3d is None:
-            self._init_landmarker()
+            if self._landmarker is None:
+                self._init_landmarker()
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             res = self._landmarker.detect(mp_img)
