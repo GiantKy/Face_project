@@ -4,10 +4,17 @@ Tài liệu này tổng hợp toàn bộ các mô hình Trí tuệ Nhân tạo (
 
 ## 📦 Link Tải Toàn Bộ Model (Google Drive)
 
-* 🌐 **Link tải Toàn Bộ Mô Hình (`models/`):**  
-  👉 [**Google Drive - Toàn Bộ Models Project**](https://drive.google.com/drive/folders/1zEIGdw3krTHwO8w5BmkCxSP0v6Wdw0LU?usp=drive_link)
+Toàn bộ mô hình đã được tải lên và lưu trữ tại Google Drive. Vui lòng lưu ý tên thư mục trên Drive khi tải về:
+
+* 🌐 **Link tải Toàn Bộ Mô Hình Dự Án (`models/`):**  
+  - Tên thư mục trên Google Drive: **`models (2)`**  
+  - 👉 [**Google Drive - Toàn Bộ Models Project [models (2)]**](https://drive.google.com/drive/folders/1zEIGdw3krTHwO8w5BmkCxSP0v6Wdw0LU?usp=drive_link)  
+  - 📝 *Cách bố trí:* Sau khi tải thư mục **`models (2)`** về máy, đổi tên thư mục thành **`models`** và đặt tại thư mục gốc dự án: `Face-Project/models/`.
+
 * 🚀 **Link tải Mô Hình Server Module (`server_module/models/`):**  
-  👉 [**Google Drive - Server Module Models**](https://drive.google.com/drive/folders/1w-Xcl0irJzlXPCzJuVRYWPepxnH-3oiX?usp=drive_link)
+  - Tên thư mục trên Google Drive: **`models (3)`**  
+  - 👉 [**Google Drive - Server Module Models [models (3)]**](https://drive.google.com/drive/folders/1w-Xcl0irJzlXPCzJuVRYWPepxnH-3oiX?usp=drive_link)  
+  - 📝 *Cách bố trí:* Sau khi tải thư mục **`models (3)`** về máy, đổi tên thư mục thành **`models`** và đặt tại thư mục server: `Face-Project/server_module/models/`.
 
 ---
 

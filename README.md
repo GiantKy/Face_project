@@ -15,12 +15,17 @@ Hệ thống xác thực danh tính sinh trắc học khuôn mặt chuẩn ngân
 
 ## 📦 Link Tải Mô Hình AI (Google Drive)
 
-Toàn bộ trọng số mô hình AI đã huấn luyện được phân loại chuẩn hóa và lưu trữ tại Google Drive:
+Toàn bộ trọng số mô hình AI đã huấn luyện được phân loại chuẩn hóa và lưu trữ tại Google Drive. Vui lòng lưu ý tên thư mục trên Drive khi tải về:
 
-* 🌐 **Link tải Toàn Bộ Mô Hình (`models/`):**  
-  👉 [**Google Drive - Toàn Bộ Models Project**](https://drive.google.com/drive/folders/1zEIGdw3krTHwO8w5BmkCxSP0v6Wdw0LU?usp=drive_link)
+* 🌐 **Link tải Toàn Bộ Mô Hình Dự Án (`models/`):**  
+  - Tên thư mục trên Google Drive: **`models (2)`**  
+  - 👉 [**Google Drive - Toàn Bộ Models Project [models (2)]**](https://drive.google.com/drive/folders/1zEIGdw3krTHwO8w5BmkCxSP0v6Wdw0LU?usp=drive_link)  
+  - 📝 *Cách bố trí:* Sau khi tải thư mục **`models (2)`** về máy, đổi tên thư mục thành **`models`** (hoặc giải nén nội dung) và đặt tại thư mục gốc dự án: `Face-Project/models/`.
+
 * 🚀 **Link tải Mô Hình Server Module (`server_module/models/`):**  
-  👉 [**Google Drive - Server Module Models**](https://drive.google.com/drive/folders/1w-Xcl0irJzlXPCzJuVRYWPepxnH-3oiX?usp=drive_link)
+  - Tên thư mục trên Google Drive: **`models (3)`**  
+  - 👉 [**Google Drive - Server Module Models [models (3)]**](https://drive.google.com/drive/folders/1w-Xcl0irJzlXPCzJuVRYWPepxnH-3oiX?usp=drive_link)  
+  - 📝 *Cách bố trí:* Sau khi tải thư mục **`models (3)`** về máy, đổi tên thư mục thành **`models`** (hoặc giải nén nội dung) và đặt tại thư mục server: `Face-Project/server_module/models/`.
 
 ### 📊 Bảng Danh Mục Các Mô Hình Cốt Lõi:
 | Tác vụ | File / Thư mục lưu trữ | Định dạng | Dung lượng | Vai trò trong hệ thống |
@@ -105,7 +110,9 @@ pip install -r requirements.txt
 ```
 
 ### 2. Tải trọng số Mô hình AI
-Tải mô hình từ Google Drive theo link ở đầu tài liệu và giải nén vào thư mục `models/` và `server_module/models/`.
+Tải mô hình từ Google Drive theo link ở đầu tài liệu:
+1. Thư mục Drive **`models (2)`** ➔ Tải về, đổi tên thành **`models`** và đặt tại thư mục gốc: `Face-Project/models/` (dành cho toàn bộ dự án & test standalone).
+2. Thư mục Drive **`models (3)`** ➔ Tải về, đổi tên thành **`models`** và đặt tại: `Face-Project/server_module/models/` (dành riêng cho server microservice).
 
 ### 3. Khởi chạy hệ thống
 
