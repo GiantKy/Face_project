@@ -82,20 +82,18 @@ def preprocess_esp32_image(frame: np.ndarray, apply_clahe: bool = True, sharpen:
             is_backlit = (center_l < 78.0) or ((mean_l - center_l) > 18.0 and center_l < 95.0)
 
             if is_backlit:
-                # Nâng sáng vùng tối có chọn lọc (Shadow lifting gamma curve)
-                gamma = max(0.50, min(0.75, center_l / 115.0))
-                inv_gamma = 1.0 / gamma
-                table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+                # Nâng sáng vùng tối có chọn lọc (Shadow lifting gamma curve: gamma < 1.0 nâng sáng)
+                gamma = max(0.55, min(0.80, center_l / 115.0))
+                table = np.array([((i / 255.0) ** gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
                 l = cv2.LUT(l, table)
-                clip = 3.2
+                clip = 2.4
             elif mean_l < 85.0:
-                gamma = max(0.60, mean_l / 110.0)
-                inv_gamma = 1.0 / gamma
-                table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+                gamma = max(0.65, min(0.85, mean_l / 110.0))
+                table = np.array([((i / 255.0) ** gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
                 l = cv2.LUT(l, table)
-                clip = 2.8
+                clip = 2.2
             else:
-                clip = 2.0
+                clip = 1.8
 
             clahe = cv2.createCLAHE(clipLimit=clip, tileGridSize=(8, 8))
             cl = clahe.apply(l)

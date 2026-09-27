@@ -42,15 +42,17 @@ public:
         config.grab_mode    = CAMERA_GRAB_LATEST;
 
         if (psramFound()) {
-            config.frame_size   = FRAMESIZE_VGA;      // Độ phân giải VGA 640x480 trong PSRAM
-            config.jpeg_quality = 20;                 // Quality 20 theo chuẩn hệ thống
+            config.frame_size   = FRAMESIZE_UXGA;     // CameraWebServer1: UXGA khi có PSRAM
+            config.jpeg_quality = 10;                 // CameraWebServer1: quality 10 khi có PSRAM
             config.fb_count     = 2;
             config.fb_location  = CAMERA_FB_IN_PSRAM;
+            config.grab_mode    = CAMERA_GRAB_LATEST;
         } else {
-            config.frame_size   = FRAMESIZE_VGA;
-            config.jpeg_quality = 20;
+            config.frame_size   = FRAMESIZE_SVGA;     // CameraWebServer1: SVGA khi không có PSRAM
+            config.jpeg_quality = 12;
             config.fb_count     = 1;
             config.fb_location  = CAMERA_FB_IN_DRAM;
+            config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;
         }
 
         esp_err_t err = esp_camera_init(&config);
@@ -62,40 +64,43 @@ public:
 
         sensor_t *s = esp_camera_sensor_get();
         if (s != nullptr) {
-            s->set_framesize(s, FRAMESIZE_VGA);     // Độ phân giải VGA 640x480
-            s->set_quality(s, 20);                  // Quality 20: Sắc nét, nén tối ưu băng thông WiFi
-            s->set_brightness(s, 1);                // Brightness = +1 (Nâng sáng sàn để mặt không bị sập tối khi ngược sáng)
-            s->set_contrast(s, 0);                  // Contrast = 0 (Giảm tương phản để mở rộng dải động WDR, chống dìm đen bóng râm mặt)
-            s->set_saturation(s, 0);                // Saturation = 0 (tự nhiên)
-            s->set_sharpness(s, 2);                 // Sharpness = +2 (sắc nét chi tiết mắt & da)
-            s->set_denoise(s, 0);                   // De-Noise = 0 (TẮT khử nhiễu để tránh làm mờ/bệt chi tiết da)
-            
-            // Các chế độ phơi sáng, cân bằng trắng và khử quang sai:
-            s->set_gainceiling(s, GAINCEILING_16X); // Nâng Gainceiling lên 16X để tự động bù sáng tối ưu trong phòng
-            s->set_exposure_ctrl(s, 1);             // AEC1 Hardware Auto Exposure = ON (chạy phần cứng ổn định)
-            s->set_aec2(s, 0);                      // TẮT AEC2 DSP: Tránh lỗi kéo dài màn trập gây mờ ảnh và tụt FPS
-            s->set_ae_level(s, 1);                  // AE Level = +1: BÙ SÁNG NGƯỢC SÁNG (Backlight Compensation)! Ngăn mặt bị tối đen khi sau lưng có cửa sổ/đèn
-            s->set_gain_ctrl(s, 1);                 // AGC Enable = ON
-            s->set_bpc(s, 1);                       // BPC = ON
-            s->set_wpc(s, 1);                       // WPC = ON
-            s->set_raw_gma(s, 1);                   // GMA Enable (Gamma) = ON
-            s->set_lenc(s, 0);                      // Lens Correction = OFF (TẮT để loại bỏ hoàn toàn quầng hồng/tím ở tâm)
-            s->set_whitebal(s, 1);                  // AWB Enable = ON
-            s->set_awb_gain(s, 1);                  // Advanced AWB Gain = ON
-            s->set_dcw(s, 1);                       // Advanced AWB DCW = ON
-            s->set_special_effect(s, 0);            // Special Effect = No Effect
-            s->set_hmirror(s, 1);                   // H-Mirror = ON (đảo chiều ngang giúp quay đầu đúng hướng)
-            s->set_vflip(s, 1);                     // V-Flip = ON
+            Serial.printf("[CameraManager] Cam bien PID: 0x%x\n", s->id.PID);
+
+            // ============================================================
+            // CHUẨN XÁC THEO CameraWebServer1 (CameraWebServer.ino L83-102):
+            // CameraWebServer1 CHỈ ghi đè 3 thông số cho OV3660,
+            // còn tất cả thông số khác ĐỂ NGUYÊN HARDWARE DEFAULT!
+            // Việc ép quá nhiều giá trị (aec2, bpc, gainceiling, contrast...)
+            // chính là nguyên nhân gây sập tối hình.
+            // ============================================================
+
+            // 1. OV3660 cần chỉnh đặc biệt (CameraWebServer.ino L85-89)
+            if (s->id.PID == OV3660_PID) {
+                s->set_vflip(s, 1);
+                s->set_brightness(s, 1);   // OV3660 bắt buộc +1
+                s->set_saturation(s, -2);  // OV3660 bắt buộc -2
+            }
+
+            // 2. Hạ frame size xuống VGA cho eKYC (CameraWebServer1 dùng QVGA, ta dùng VGA để AI nhận diện tốt hơn)
+            s->set_framesize(s, FRAMESIZE_VGA);
+
+            // 3. ESP32S3_EYE set vflip (CameraWebServer.ino L100-102)
+        #if defined(CAMERA_MODEL_ESP32S3_EYE)
+            s->set_vflip(s, 1);
+        #endif
+
+            // 4. H-Mirror bổ sung cho eKYC (quay đầu đúng hướng trên UI)
+            s->set_hmirror(s, 1);
         }
 
-        // Xả 10 frame khởi động để AEC & DMA ổn định độ sáng chuẩn ngay khi mở (tránh lúc đầu bị tối)
+        // Xả 10 frame khởi động để AEC & DMA ổn định độ sáng (tránh lúc đầu bị tối)
         for (int i = 0; i < 10; i++) {
             camera_fb_t *fb = esp_camera_fb_get();
             if (fb) esp_camera_fb_return(fb);
             delay(30);
         }
 
-        Serial.println("[CameraManager] Camera da san sang! (Resolution: VGA 640x480, JPEG Quality: 20)");
+        Serial.println("[CameraManager] Camera da san sang! (Resolution: VGA 640x480)");
         m_initialized = true;
         return true;
     }
@@ -162,6 +167,30 @@ public:
             }
             s->set_gainceiling(s, gc);
         }
+    }
+
+    /**
+     * @brief Điều chỉnh độ sắc nét (-2 đến 2)
+     */
+    void setSharpness(int val) {
+        sensor_t *s = esp_camera_sensor_get();
+        if (s != nullptr) s->set_sharpness(s, constrain(val, -2, 2));
+    }
+
+    /**
+     * @brief Bật/Tắt AEC2 DSP (0: Tắt, 1: Bật)
+     */
+    void setAec2(int val) {
+        sensor_t *s = esp_camera_sensor_get();
+        if (s != nullptr) s->set_aec2(s, val ? 1 : 0);
+    }
+
+    /**
+     * @brief Bật/Tắt Khử nhiễu De-Noise (0: Tắt, 1: Bật)
+     */
+    void setDenoise(int val) {
+        sensor_t *s = esp_camera_sensor_get();
+        if (s != nullptr) s->set_denoise(s, val ? 1 : 0);
     }
 
     /**

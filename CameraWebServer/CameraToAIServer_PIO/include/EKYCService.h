@@ -555,13 +555,25 @@ private:
             m_camera.setGainCeiling(valStr.toInt());
             Serial.printf("[EKYCService] Set GainCeiling -> %d\n", valStr.toInt());
         }
+        if (getQueryParam(req, "sharpness", valStr)) {
+            m_camera.setSharpness(valStr.toInt());
+            Serial.printf("[EKYCService] Set Sharpness -> %d\n", valStr.toInt());
+        }
+        if (getQueryParam(req, "aec2", valStr)) {
+            m_camera.setAec2(valStr.toInt());
+            Serial.printf("[EKYCService] Set AEC2 -> %d\n", valStr.toInt());
+        }
+        if (getQueryParam(req, "denoise", valStr)) {
+            m_camera.setDenoise(valStr.toInt());
+            Serial.printf("[EKYCService] Set Denoise -> %d\n", valStr.toInt());
+        }
 
         sensor_t *s = esp_camera_sensor_get();
         char resp[256];
         if (s != nullptr) {
             snprintf(resp, sizeof(resp),
-                "{\"status\":\"OK\",\"brightness\":%d,\"ae_level\":%d,\"contrast\":%d}",
-                s->status.brightness, s->status.ae_level, s->status.contrast);
+                "{\"status\":\"OK\",\"brightness\":%d,\"ae_level\":%d,\"contrast\":%d,\"sharpness\":%d,\"aec2\":%d,\"gainceiling\":%d}",
+                s->status.brightness, s->status.ae_level, s->status.contrast, s->status.sharpness, s->status.aec2, s->status.gainceiling);
         } else {
             snprintf(resp, sizeof(resp), "{\"status\":\"OK\"}");
         }
