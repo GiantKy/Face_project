@@ -554,7 +554,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
     aligner = FaceAligner()
     ensemble_anti_spoof = EnsembleAntiSpoofDetector(yolo_file=yolo_file)
     glass_mask_detector = GlassAndMaskDetector()
-    head_movement_detector = HeadMovementDetector(yaw_threshold=16.0, pitch_threshold=12.0, timeout=7.0)
+    head_movement_detector = HeadMovementDetector(yaw_threshold=16.0, pitch_threshold=12.0, timeout=10.0)
     print("[OK] Đã sẵn sàng toàn bộ hệ thống Models!\n")
 
     cap = cv2.VideoCapture(cam_id)
@@ -597,6 +597,8 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
     blink_counter = 0
     blink_state = False
     blink_passed = False
+    blink_start_time = 0.0
+    blink_timeout_sec = 10.0
 
     head_movement_passed = False
     current_head_action = HeadAction.NONE
@@ -1014,11 +1016,22 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                 blink_counter = 0
                 blink_state = False
                 blink_passed = False
+                blink_start_time = time.time()
 
         # =====================================================================
         # GIAI ĐOẠN 3: ACTIVE LIVENESS - BLINK DETECTION (LIVE WEBCAM)
         # =====================================================================
         elif stage == PipelineStage.LIVE_BLINK:
+            elapsed_blink = time.time() - blink_start_time
+            blink_time_left = max(0.0, blink_timeout_sec - elapsed_blink)
+            if elapsed_blink > blink_timeout_sec and not blink_passed:
+                blink_passed = False
+                print(f"\n[LIVENESS 1: BLINK] HET THOI GIAN THUC HIEN ({blink_timeout_sec:.0f}s) -> TIMEOUT!")
+                stage = PipelineStage.LIVE_HEAD_MOVEMENT
+                current_head_action = head_movement_detector.start_challenge()
+                head_action_prompt = head_movement_detector.get_prompt()
+                print(f"[LIVENESS 2: HEAD MOVEMENT] Thu thach: {current_head_action.value} -> {head_action_prompt}")
+
             frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
             landmarks_live = landmark_detector.detect(frame_for_detect)
             if landmarks_live and len(landmarks_live) >= 468:
@@ -1077,7 +1090,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                 cv2.putText(display, f"CANH BAO: {occ_msg_blink.upper()}! THAO RA DE TIEP TUC", (28, 46),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 0, 255), 1, cv2.LINE_AA)
             else:
-                cv2.putText(display, f"VUI LONG CHOP MAT TU NHIEN | EAR: {ear_avg:.2f} | Blinks: {blink_counter}/1", (28, 46),
+                cv2.putText(display, f"VUI LONG CHOP MAT TU NHIEN | Thoi gian: {blink_time_left:.1f}s | EAR: {ear_avg:.2f} | Blinks: {blink_counter}/1", (28, 46),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 255, 255), 1, cv2.LINE_AA)
 
             bot_y = h - 56

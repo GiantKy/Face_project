@@ -46,7 +46,7 @@ class HeadMovementDetector:
         yaw_threshold: float = 16.0,
         pitch_threshold: float = 12.0,
         roll_threshold: float = 14.0,
-        timeout: float = 7.0,
+        timeout: float = 10.0,
         min_consecutive_frames: int = 2,
         delta_yaw_threshold: float = 3.5,
         delta_pitch_threshold: float = 4.0

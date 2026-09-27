@@ -306,7 +306,8 @@ class EKYCPipelineServer:
             "blink_passed": False,
             "head_passed": False,
             "blink_frame": None,
-            "head_frame": None
+            "head_frame": None,
+            "blink_start_time": time.time()
         }
 
         return {
@@ -678,7 +679,41 @@ class EKYCPipelineServer:
         has_face = bool(landmarks is not None and len(landmarks) >= 468 and num_faces > 0)
         ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks) if landmarks else (0.0, 0.0, 0.0)
 
-        # 1. Kiểm tra che mặt & mắt kính thực tế (Face Occlusion Defense)
+        # 1. Kiểm tra giới hạn thời gian thử thách chớp mắt (CHALLENGE_TIMEOUT_SECONDS = 10s)
+        blink_time_left = CHALLENGE_TIMEOUT_SECONDS
+        blink_timed_out = False
+        if session_id and session_id in self.liveness_sessions:
+            sess = self.liveness_sessions[session_id]
+            if "blink_start_time" not in sess:
+                sess["blink_start_time"] = time.time()
+            elapsed_blink = time.time() - sess["blink_start_time"]
+            blink_time_left = max(0.0, CHALLENGE_TIMEOUT_SECONDS - elapsed_blink)
+            if elapsed_blink > CHALLENGE_TIMEOUT_SECONDS:
+                blink_timed_out = True
+
+        if blink_timed_out:
+            return {
+                "has_face": bool(has_face),
+                "num_faces": num_faces,
+                "same_person": True,
+                "passed": False,
+                "timed_out": True,
+                "time_left": 0.0,
+                "timeout_seconds": CHALLENGE_TIMEOUT_SECONDS,
+                "error": "HẾT THỜI GIAN: Chưa hoàn thành chớp mắt đúng hạn (10s).",
+                "label": "⚠️ HẾT THỜI GIAN (10s)",
+                "ear_left": round(ear_l, 4),
+                "ear_right": round(ear_r, 4),
+                "ear_avg": round(ear_avg, 4),
+                "baseline_ear": round(baseline_ear, 4),
+                "closed_thresh": 0.18,
+                "open_thresh": 0.21,
+                "blink_counter": current_blink_counter,
+                "blink_state": False,
+                "progress": 0.0
+            }
+
+        # 2. Kiểm tra che mặt & mắt kính thực tế (Face Occlusion Defense)
         is_occluded = False
         occ_reason = ""
         occ_msg = ""
@@ -701,6 +736,9 @@ class EKYCPipelineServer:
                 "occlusion_reason": occ_reason,
                 "same_person": True,
                 "passed": False,
+                "timed_out": False,
+                "time_left": round(blink_time_left, 1),
+                "timeout_seconds": CHALLENGE_TIMEOUT_SECONDS,
                 "error": occ_msg or "CẢNH BÁO: Phát hiện che mặt hoặc đeo kính! Vui lòng tháo ra để chớp mắt.",
                 "label": "⚠️ PHÁT HIỆN CHE MẶT",
                 "ear_left": round(ear_l, 4),
@@ -792,6 +830,9 @@ class EKYCPipelineServer:
             "has_face": has_face,
             "num_faces": num_faces,
             "same_person": True,
+            "timed_out": False,
+            "time_left": round(blink_time_left, 1),
+            "timeout_seconds": CHALLENGE_TIMEOUT_SECONDS,
             "ear_left": round(ear_l, 4),
             "ear_right": round(ear_r, 4),
             "ear_avg": round(ear_avg, 4),

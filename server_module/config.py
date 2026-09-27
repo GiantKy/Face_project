@@ -66,7 +66,7 @@ HEAD_YAW_THRESHOLD = 16.0
 HEAD_PITCH_THRESHOLD = 12.0
 HEAD_DELTA_YAW_THRESHOLD = 3.5     # Ngưỡng nhích nhẹ đầu tối thiểu (3.5 độ nhẹ nhàng từ mốc ban đầu)
 HEAD_DELTA_PITCH_THRESHOLD = 4.0   # Ngưỡng nhích nhẹ gật đầu tối thiểu
-CHALLENGE_TIMEOUT_SECONDS = 7.0
+CHALLENGE_TIMEOUT_SECONDS = 10.0
 
 # =====================================================================
 # CHÍNH SÁCH KIỂM TRA VẬT CHE MẶT (OCCLUSION DEFENSE - POLICY A)

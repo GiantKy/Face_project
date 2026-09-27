@@ -1748,7 +1748,7 @@
                 <span id="challengeStageText">BƯỚC 2/3: THỬ THÁCH CHỚP MẮT</span>
               </span>
               <span class="challenge-timer-tag" id="challengeTimerTag">
-                ⏱️ <span id="challengeTimeVal">7.0s</span>
+                ⏱️ <span id="challengeTimeVal">10.0s</span>
               </span>
             </div>
 
@@ -2049,7 +2049,8 @@
     let headChallengeAction = 'turn_left';
     let headChallengePrompt = 'QUAY MẶT SANG TRÁI';
     let headPassed = false;
-    let headTimeoutSeconds = 7.0;
+    let headTimeoutSeconds = 10.0;
+    let blinkTimeoutSeconds = 10.0;
 
     // Intervals & Loops
     let poseCheckInterval = null;
@@ -2825,7 +2826,7 @@
         icon: '👁️',
         prompt: 'VUI LÒNG CHỚP MẮT TỰ NHIÊN',
         hint: 'Nhìn vào camera và chớp mắt 1 lần tự nhiên',
-        timerText: 'Chờ Chớp Mắt',
+        timerText: '10.0s',
         isTimerUrgent: false,
         telemetry: 'Đang khởi tạo định danh & đo lường EAR...',
         percent: '0%',
@@ -2876,8 +2877,8 @@
 
     function startBlinkChallengeLoop() {
       stopChallengeLoop();
-      let framesCount = 0;
-      const maxFramesTimeout = 120; // ~12s
+      const blinkStartTime = Date.now();
+      const maxBlinkTimeoutSec = 10.0;
 
       challengeLoopInterval = setInterval(async () => {
         if (currentState !== APP_STATE.CHALLENGE_BLINK || isBlinkProcessing) return;
@@ -2886,11 +2887,27 @@
           (inputMode === 'esp32');
         if (!isReady) return;
 
-        framesCount++;
-        if (framesCount > maxFramesTimeout) {
-          // Timeout chớp mắt -> chuyển tiếp với blink_passed = false
+        const elapsedSec = (Date.now() - blinkStartTime) / 1000;
+        const localTimeLeft = Math.max(0.0, maxBlinkTimeoutSec - elapsedSec);
+
+        if (localTimeLeft <= 0) {
+          // Timeout chớp mắt sau đúng 10s -> chuyển tiếp sang Bước 3 với blink_passed = false
           blinkPassed = false;
-          proceedToHeadMovementChallenge();
+          stopChallengeLoop();
+          updateChallengeHUD({
+            stageText: 'HẾT THỜI GIAN',
+            icon: '⚠️',
+            prompt: 'CHƯA HOÀN THÀNH CHỚP MẮT ĐÚNG HẠN',
+            hint: 'Đang chuyển sang Bước 3: Thử thách quay đầu...',
+            timerText: '0.0s',
+            isTimerUrgent: true,
+            telemetry: 'Quá thời hạn quy định (10s)',
+            percent: '0%',
+            fillWidth: '0%'
+          });
+          setTimeout(() => {
+            proceedToHeadMovementChallenge();
+          }, 800);
           return;
         }
 
@@ -2920,6 +2937,27 @@
 
           if (res.ok) {
             const data = await res.json();
+
+            // Kiểm tra timeout từ backend
+            if (data.timed_out) {
+              blinkPassed = false;
+              stopChallengeLoop();
+              updateChallengeHUD({
+                stageText: 'HẾT THỜI GIAN',
+                icon: '⚠️',
+                prompt: 'CHƯA HOÀN THÀNH CHỚP MẮT ĐÚNG HẠN',
+                hint: 'Đang chuyển sang Bước 3: Thử thách quay đầu...',
+                timerText: '0.0s',
+                isTimerUrgent: true,
+                telemetry: 'Quá thời hạn quy định (10s)',
+                percent: '0%',
+                fillWidth: '0%'
+              });
+              setTimeout(() => {
+                proceedToHeadMovementChallenge();
+              }, 800);
+              return;
+            }
 
             // Kiểm tra nhiều người hoặc đổi người trong lúc chớp mắt
             if (data.num_faces !== undefined && data.num_faces > 1) {
@@ -2951,12 +2989,14 @@
               const oval = document.getElementById('faceGuideOval');
               if (oval) oval.className = 'face-guide-oval state-warning';
               const earVal = (data.ear_avg !== undefined) ? data.ear_avg.toFixed(2) : '--';
+              const displayTime = (data.time_left !== undefined) ? data.time_left : localTimeLeft;
               updateChallengeHUD({
                 stageText: '⚠️ CẢNH BÁO: CHE MẶT / ĐEO KÍNH!',
                 icon: '👓',
                 prompt: (data.error || 'PHÁT HIỆN ĐEO KÍNH HOẶC CHE MẶT! VUI LÒNG THÁO RA').toUpperCase(),
                 hint: 'Tháo kính/khẩu trang ra để tiếp tục thử thách chớp mắt',
-                isTimerUrgent: true,
+                timerText: `${displayTime.toFixed(1)}s`,
+                isTimerUrgent: displayTime < 3.0,
                 telemetry: `EAR: ${earVal} | Trạng thái: CẢNH BÁO CHE MẶT/ĐEO KÍNH`
               });
               return;
@@ -2971,18 +3011,20 @@
             blinkState = Boolean(data.blink_state);
             blinkBaselineEAR = data.baseline_ear || blinkBaselineEAR;
             const earVal = (data.ear_avg !== undefined) ? data.ear_avg.toFixed(2) : '0.00';
-            const closedTarget = (data.closed_thresh !== undefined) ? data.closed_thresh.toFixed(2) : '0.19';
+            const closedTarget = (data.closed_thresh !== undefined) ? data.closed_thresh.toFixed(2) : '0.18';
             const openTarget = (data.open_thresh !== undefined) ? data.open_thresh.toFixed(2) : '0.21';
             const pct = Math.round((data.progress || 0) * 100);
+            const displayTime = (data.time_left !== undefined) ? data.time_left : localTimeLeft;
+            const isUrgent = displayTime < 3.0;
 
             updateChallengeHUD({
               stageText: 'BƯỚC 2/3: THỬ THÁCH CHỚP MẮT',
               icon: blinkState ? '😉' : '👁️',
               prompt: data.passed ? 'ĐÃ XÁC NHẬN CHỚP MẮT THÀNH CÔNG!' : (blinkState ? 'ĐANG NHẮM MẮT... MỞ MẮT ĐỂ HOÀN TẤT' : 'VUI LÒNG CHỚP MẮT TỰ NHIÊN'),
               hint: `Chỉ số EAR: ${earVal} | Mục tiêu: Nhắm (<${closedTarget}) -> Mở (>=${openTarget})`,
-              timerText: `${blinkCounter}/1 Lần`,
-              isTimerUrgent: false,
-              telemetry: `EAR: ${earVal} | Mốc: ${blinkBaselineEAR > 0 ? blinkBaselineEAR.toFixed(2) : '--'} | Trạng thái: ${data.label || ''}`,
+              timerText: `${displayTime.toFixed(1)}s`,
+              isTimerUrgent: isUrgent,
+              telemetry: `EAR: ${earVal} | Mốc: ${blinkBaselineEAR > 0 ? blinkBaselineEAR.toFixed(2) : '--'} | Đã chớp: ${blinkCounter}/1 | ${data.label || ''}`,
               percent: `${pct}%`,
               fillWidth: `${pct}%`
             });
@@ -2991,7 +3033,18 @@
               blinkPassed = true;
               blinkSuccessBlob = frameBlob;
               stopChallengeLoop();
-              // Chờ 500ms hiển thị badge thành công rồi chuyển sang Bước 2: Quay Đầu
+              updateChallengeHUD({
+                stageText: 'THÀNH CÔNG!',
+                icon: '✅',
+                prompt: 'ĐÃ XÁC NHẬN CHỚP MẮT THÀNH CÔNG!',
+                hint: 'Chuyển sang Bước 3: Thử thách quay đầu...',
+                timerText: 'PASS',
+                isTimerUrgent: false,
+                telemetry: 'Đạt chuẩn chớp mắt 100%',
+                percent: '100%',
+                fillWidth: '100%'
+              });
+              // Chờ 500ms hiển thị badge thành công rồi chuyển sang Bước 3: Quay Đầu
               setTimeout(() => {
                 proceedToHeadMovementChallenge();
               }, 500);
@@ -3019,7 +3072,7 @@
           const data = await res.json();
           headChallengeAction = data.action;
           headChallengePrompt = data.prompt;
-          headTimeoutSeconds = data.timeout_seconds || 7.0;
+          headTimeoutSeconds = data.timeout_seconds || 10.0;
         }
       } catch (err) {
         console.warn('Failed to start head challenge:', err);

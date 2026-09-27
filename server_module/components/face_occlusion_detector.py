@@ -49,6 +49,17 @@ class FaceOcclusionDetector:
             from inference import get_model
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             cache_dir = os.path.join(base_dir, "models", "roboflow")
+            target_cache = os.path.join(cache_dir, "glass-and-mask-q5de1", "2")
+            alt_cache = os.path.join(cache_dir, "Mask_Glass", "2")
+            if not os.path.exists(target_cache) and os.path.exists(alt_cache):
+                import shutil
+                os.makedirs(os.path.dirname(target_cache), exist_ok=True)
+                shutil.copytree(alt_cache, target_cache, dirs_exist_ok=True)
+            elif os.path.exists(target_cache) and not os.path.exists(alt_cache):
+                import shutil
+                os.makedirs(os.path.dirname(alt_cache), exist_ok=True)
+                shutil.copytree(target_cache, alt_cache, dirs_exist_ok=True)
+
             os.environ["MODEL_CACHE_DIR"] = cache_dir
             self.ai_model = get_model(model_id=self.model_id, api_key=self.api_key)
         except Exception as e:

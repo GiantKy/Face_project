@@ -170,6 +170,7 @@ class ChallengeSession:
         self.delta_yaw: float = 0.0
         self.delta_pitch: float = 0.0
         self.current_ear: float = 0.0
+        self.step_start_time: float = time.time()
 
     def is_expired(self) -> bool:
         return (time.time() - self.last_activity) > self.ttl_seconds
@@ -812,6 +813,37 @@ class ESP32ChallengeManager:
         #   ear < 0.18 → nhắm, ear >= 0.21 → mở lại, cần ≥ 1 blink
         # ---------------------------------------------------------------------
         if target_step == "eye_blink":
+            if not hasattr(session, "step_start_time") or session.step_start_time is None:
+                session.step_start_time = time.time()
+            elapsed_step = time.time() - session.step_start_time
+            if elapsed_step > 10.0:
+                session.eye_blink_passed = False
+                if "eye_blink" not in session.completed_steps:
+                    session.completed_steps.append("eye_blink")
+                session.current_step = "head_movement"
+                session.step_start_time = time.time()
+                t_ms = (time.time() - t0) * 1000
+                return {
+                    "success": True,
+                    "session_id": session_id,
+                    "step": "eye_blink",
+                    "passed": False,
+                    "timed_out": True,
+                    "next_step": "head_movement",
+                    "message": "Hết thời gian chớp mắt (10s). Chuyển tiếp sang thử thách quay đầu.",
+                    "challenge_action": session.target_head_action,
+                    "action_prompt": session.head_prompt,
+                    "target_head_action": session.target_head_action,
+                    "head_prompt": session.head_prompt,
+                    "blink_counter": session.blink_counter,
+                    "progress": 0.0,
+                    "ear": {
+                        "current": round(float(session.current_ear), 4),
+                        "baseline": round(float(session.baseline_ear), 4)
+                    },
+                    "processing_time_ms": round(t_ms, 1)
+                }
+
             ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks)
             base_ear = session.baseline_ear
             session.current_ear = float(ear_avg)
@@ -834,6 +866,7 @@ class ESP32ChallengeManager:
                 if "eye_blink" not in session.completed_steps:
                     session.completed_steps.append("eye_blink")
                 session.current_step = "head_movement"
+                session.step_start_time = time.time()
 
                 t_ms = (time.time() - t0) * 1000
                 return {
@@ -881,6 +914,11 @@ class ESP32ChallengeManager:
         # Quy ước góc PnP chuẩn: TURN_LEFT là Yaw ÂM, TURN_RIGHT là Yaw DƯƠNG
         # ---------------------------------------------------------------------
         if target_step == "head_movement":
+            if not hasattr(session, "step_start_time") or session.step_start_time is None:
+                session.step_start_time = time.time()
+            elapsed_step = time.time() - session.step_start_time
+            is_head_timeout = (elapsed_step > 10.0)
+
             pose_valid, text_status, pose_dict = pipeline.pose_validator.validate(
                 landmarks, get_landmark_point, img_w=w, img_h=h
             )
@@ -920,13 +958,19 @@ class ESP32ChallengeManager:
             # Cần >= 2 điểm tích lũy để pass
             progress = min(1.0, session.consecutive_turn_frames / 2.0)
 
-            if session.consecutive_turn_frames >= 2:
-                session.head_movement_passed = True
+            if session.consecutive_turn_frames >= 2 or is_head_timeout:
+                if session.consecutive_turn_frames >= 2:
+                    session.head_movement_passed = True
+                    progress = 1.0
+                    print(f"[HEAD PUSH] Đã hoàn thành quay đầu [{action}]!")
+                else:
+                    session.head_movement_passed = False
+                    progress = 0.0
+                    print(f"[HEAD PUSH] Hết thời gian quay đầu (10s) -> Chưa hoàn thành!")
+
                 if "head_movement" not in session.completed_steps:
                     session.completed_steps.append("head_movement")
                 session.current_step = "completed"
-                progress = 1.0
-                print(f"[HEAD PUSH] Đã hoàn thành quay đầu [{action}]!")
 
                 # Đánh giá điều kiện approved chuẩn test_pipeline_ensemble_full.py
                 reasons = []
@@ -1022,6 +1066,7 @@ class ESP32ChallengeManager:
 
             # Chưa đạt: trả về trạng thái tiến trình
             t_ms = (time.time() - t0) * 1000
+            time_left = max(0.0, 10.0 - elapsed_step)
             return {
                 "success": True,
                 "session_id": session_id,
@@ -1029,6 +1074,8 @@ class ESP32ChallengeManager:
                 "passed": False,
                 "next_step": "head_movement",
                 "progress": round(progress, 2),
+                "time_left": round(time_left, 1),
+                "timeout_seconds": 10.0,
                 "consecutive_frames": session.consecutive_turn_frames,
                 "challenge_action": action,
                 "action_prompt": session.head_prompt,

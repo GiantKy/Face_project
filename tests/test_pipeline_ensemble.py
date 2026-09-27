@@ -521,7 +521,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
     pose_validator = PoseValidator()
     aligner = FaceAligner()
     anti_spoof_ensemble = AntiSpoofOfficialEnsemble()
-    head_movement_detector = HeadMovementDetector(yaw_threshold=16.0, pitch_threshold=12.0, timeout=7.0)
+    head_movement_detector = HeadMovementDetector(yaw_threshold=16.0, pitch_threshold=12.0, timeout=10.0)
     print("[OK] Đã khởi tạo hoàn tất toàn bộ Models!\n")
 
     cap = cv2.VideoCapture(cam_id)
