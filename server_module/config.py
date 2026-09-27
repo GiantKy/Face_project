@@ -16,15 +16,15 @@ PROJECT_ROOT = os.path.dirname(SERVER_MODULE_DIR)
 MODELS_DIR = os.path.join(SERVER_MODULE_DIR, "models")
 
 # Đường dẫn các mô hình AI — tất cả nằm trong server_module/models/
-FACE_DETECTION_MODEL_PATH = os.path.join(MODELS_DIR, "Face_Detection.pt")
+FACE_DETECTION_MODEL_PATH = os.path.join(MODELS_DIR, "face_detection", "yolo_face_detection_official.pt") if os.path.exists(os.path.join(MODELS_DIR, "face_detection", "yolo_face_detection_official.pt")) else os.path.join(MODELS_DIR, "Face_Detection.pt")
 ANTI_SPOOF_YOLO_MODEL_PATH = os.path.join(MODELS_DIR, "Anti_Spoof_YOLO.pt")
-FACE_LANDMARKER_MODEL_PATH = os.path.join(MODELS_DIR, "face_landmarker.task")
+FACE_LANDMARKER_MODEL_PATH = os.path.join(MODELS_DIR, "landmarks", "mediapipe_face_landmarker_official.task") if os.path.exists(os.path.join(MODELS_DIR, "landmarks", "mediapipe_face_landmarker_official.task")) else os.path.join(MODELS_DIR, "face_landmarker.task")
 
 # =====================================================================
 # ENSEMBLE ANTI-SPOOF: YOLO_4 + RF-DETR Small
 # =====================================================================
 # Model 1: YOLO_4 (Anti_Spoof_YOLO_4.pt) — Object Detection local
-ANTI_SPOOF_YOLO4_MODEL_PATH = os.path.join(MODELS_DIR, "Anti_Spoof_YOLO_4.pt")
+ANTI_SPOOF_YOLO4_MODEL_PATH = os.path.join(MODELS_DIR, "anti_spoof", "yolo", "yolo_anti_spoof_v4_official.pt") if os.path.exists(os.path.join(MODELS_DIR, "anti_spoof", "yolo", "yolo_anti_spoof_v4_official.pt")) else os.path.join(MODELS_DIR, "Anti_Spoof_YOLO_4.pt")
 
 # Model 2: RF-DETR Small — Roboflow Inference (Transformer)
 RFDETR_MODEL_ID = "k-thi-gia-s-workspace/face-spoof-detection-liika-owgrl-1-rfdetr-small-t1"

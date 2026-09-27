@@ -49,7 +49,9 @@ class FaceIdentityVerifier:
     def __init__(self, model_path: Optional[str] = None):
         if model_path is None:
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            model_path = os.path.join(base_dir, "models", "face_landmarker.task")
+            cand_new = os.path.join(base_dir, "models", "landmarks", "mediapipe_face_landmarker_official.task")
+            cand_old = os.path.join(base_dir, "models", "face_landmarker.task")
+            model_path = cand_new if os.path.exists(cand_new) else cand_old
 
         self.model_path = model_path
         self._landmarker = None

@@ -1,4 +1,4 @@
-﻿import cv2
+import cv2
 import os
 import numpy as np
 import mediapipe as mp
@@ -9,7 +9,9 @@ FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MODEL_PATH = os.path.join(BASE_DIR, "models", "face_landmarker.task")
+cand_landmark_new = os.path.join(BASE_DIR, "models", "landmarks", "mediapipe_face_landmarker_official.task")
+cand_landmark_old = os.path.join(BASE_DIR, "models", "face_landmarker.task")
+MODEL_PATH = cand_landmark_new if os.path.exists(cand_landmark_new) else cand_landmark_old
 
 
 class FaceAligner:

@@ -1,0 +1,4 @@
+glass
+mask
+no_glass
+no_mask

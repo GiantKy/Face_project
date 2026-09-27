@@ -181,18 +181,21 @@ def json_serialize_helper(obj):
 class AntiSpoofDetector:
     def __init__(self, model_version="YOLO"):
         candidate_files = [
+            os.path.join("anti_spoof", "yolo", "yolo_anti_spoof_v4_official.pt"),
+            os.path.join("anti_spoof", "yolo", "yolo_anti_spoof_v0_legacy.pt"),
+            "Anti_Spoof_YOLO_4.pt",
             "Anti_Spoof_YOLO.pt"
         ]
 
         self.model_path = None
         for filename in candidate_files:
-            path = os.path.join(BASE_DIR, "models", filename)
+            path = os.path.join(BASE_DIR, "models", filename) if not os.path.isabs(filename) else filename
             if os.path.exists(path):
                 self.model_path = path
                 break
 
         if self.model_path is None:
-            pts = glob.glob(os.path.join(BASE_DIR, "models", "*Anti_Spoof*.pt"))
+            pts = glob.glob(os.path.join(BASE_DIR, "models", "**", "*anti_spoof*.pt"), recursive=True) + glob.glob(os.path.join(BASE_DIR, "models", "*Anti_Spoof*.pt"))
             if pts:
                 self.model_path = pts[0]
             else:

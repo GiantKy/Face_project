@@ -616,29 +616,39 @@ class OfficialImageCropper:
 def find_official_ensemble_models() -> Tuple[str, str]:
     """Tìm 2 file model chính thức trong models/ hoặc Silent-Face-Anti-Spoofing-master"""
     search_dirs = [
+        os.path.join(BASE_DIR, "models", "anti_spoof", "minifasnet"),
         os.path.join(BASE_DIR, "models"),
         os.path.join(BASE_DIR, "Silent-Face-Anti-Spoofing-master", "resources", "anti_spoof_models"),
         os.path.join(BASE_DIR, "resources", "anti_spoof_models"),
     ]
-    m1_name = "2.7_80x80_MiniFASNetV2.pth"
-    m2_name = "4_0_0_80x80_MiniFASNetV1SE.pth"
+    m1_candidates = ["minifasnet_v2_exp.pth", "2.7_80x80_MiniFASNetV2.pth"]
+    m2_candidates = ["minifasnet_v1se_exp.pth", "4_0_0_80x80_MiniFASNetV1SE.pth"]
 
     m1_path = None
     m2_path = None
 
     for d in search_dirs:
-        p1 = os.path.join(d, m1_name)
-        if m1_path is None and os.path.exists(p1):
-            m1_path = p1
-        p2 = os.path.join(d, m2_name)
-        if m2_path is None and os.path.exists(p2):
-            m2_path = p2
+        if not os.path.exists(d):
+            continue
+        if m1_path is None:
+            for name in m1_candidates:
+                p = os.path.join(d, name)
+                if os.path.exists(p):
+                    m1_path = p
+                    break
+        if m2_path is None:
+            for name in m2_candidates:
+                p = os.path.join(d, name)
+                if os.path.exists(p):
+                    m2_path = p
+                    break
 
     if m1_path is None or m2_path is None:
         raise FileNotFoundError(
             f"Không tìm thấy đủ 2 file weights chính thức:\n"
-            f"  - Model 1: {m1_name} -> {m1_path}\n"
-            f"  - Model 2: {m2_name} -> {m2_path}"
+            f"  - Model 1: {m1_candidates} -> {m1_path}\n"
+            f"  - Model 2: {m2_candidates} -> {m2_path}\n"
+            f"Vui lòng kiểm tra thư mục 'models/anti_spoof/minifasnet/'."
         )
     return m1_path, m2_path
 

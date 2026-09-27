@@ -171,10 +171,15 @@ def json_serialize_helper(obj):
 class EnsembleAntiSpoofDetector:
     def __init__(self, yolo_file="Anti_Spoof_YOLO_4.pt"):
         # 1. Load YOLO_4
-        self.yolo_path = os.path.join(BASE_DIR, "models", yolo_file)
-        if not os.path.exists(self.yolo_path):
-            pts = glob.glob(os.path.join(BASE_DIR, "models", "*Anti_Spoof*.pt"))
-            self.yolo_path = pts[0] if pts else os.path.join(BASE_DIR, "models", "Anti_Spoof_YOLO.pt")
+        cand_yolo_official = os.path.join(BASE_DIR, "models", "anti_spoof", "yolo", "yolo_anti_spoof_v4_official.pt")
+        cand_yolo_root = os.path.join(BASE_DIR, "models", yolo_file)
+        if os.path.exists(cand_yolo_official) and (yolo_file == "Anti_Spoof_YOLO_4.pt" or not os.path.exists(cand_yolo_root)):
+            self.yolo_path = cand_yolo_official
+        elif os.path.exists(cand_yolo_root):
+            self.yolo_path = cand_yolo_root
+        else:
+            pts = glob.glob(os.path.join(BASE_DIR, "models", "**", "*anti_spoof*.pt"), recursive=True) + glob.glob(os.path.join(BASE_DIR, "models", "*Anti_Spoof*.pt"))
+            self.yolo_path = pts[0] if pts else cand_yolo_official
 
         print(f"[INFO] Loading Model 1 (YOLO): {self.yolo_path}")
         self.yolo_model = YOLO(self.yolo_path)
@@ -425,24 +430,80 @@ class GlassAndMaskDetector:
 
         return detections
 
-    def check_occlusion(self, frame, conf_threshold=0.38):
+    def check_occlusion(self, frame, conf_threshold=0.55, oval_center=None, oval_axes=None):
         """
         Kiểm tra vi phạm che mặt / đeo kính / đeo khẩu trang:
+        - So sánh đối kháng (Contrasting Comparison) giữa class 'glass' và 'no_glass':
+          + Nếu 'no_glass' có độ tin cậy >= 'glass' hoặc conf(no_glass) >= 0.50 -> XÁC NHẬN KHÔNG ĐEO KÍNH.
+          + Chỉ báo 'glass' khi conf(glass) >= conf_threshold (mặc định 0.55) VÀ conf(glass) > conf(no_glass) + 0.08.
+        - So sánh đối kháng giữa class 'mask' và 'no_mask':
+          + Tương tự: 'no_mask' áp đảo 'mask'.
+        - Lọc không gian (Spatial Filter):
+          + Nếu có oval_center và oval_axes, chỉ xét các detection nằm bên trong hoặc cắt khung oval khuôn mặt.
         Returns:
             Tuple[is_occluded, reason_code, message, detections]
         """
-        dets = self.predict(frame, conf_threshold=conf_threshold)
-        has_glass = any(d["class_name"] == "glass" for d in dets)
-        has_mask = any(d["class_name"] == "mask" for d in dets)
+        dets = self.predict(frame, conf_threshold=0.25)
+        if not dets:
+            return False, "OK", "", []
+
+        # Lọc không gian nếu có oval
+        valid_dets = []
+        for d in dets:
+            if oval_center is not None and oval_axes is not None:
+                cx, cy = oval_center
+                ax, ay = oval_axes
+                bx1, by1, bx2, by2 = d["bbox"]
+                bcx = (bx1 + bx2) / 2.0
+                bcy = (by1 + by2) / 2.0
+                if ax > 0 and ay > 0:
+                    norm_x = (bcx - cx) / float(ax * 1.25)
+                    norm_y = (bcy - cy) / float(ay * 1.25)
+                    if (norm_x ** 2 + norm_y ** 2) > 1.0:
+                        continue  # Bỏ qua detection ở ngoài vùng oval khuôn mặt
+            valid_dets.append(d)
+
+        # Phân loại độ tin cậy lớn nhất của từng nhãn
+        glass_confs = [d["confidence"] for d in valid_dets if d["class_name"] == "glass"]
+        no_glass_confs = [d["confidence"] for d in valid_dets if d["class_name"] == "no_glass"]
+        mask_confs = [d["confidence"] for d in valid_dets if d["class_name"] == "mask"]
+        no_mask_confs = [d["confidence"] for d in valid_dets if d["class_name"] == "no_mask"]
+
+        max_glass = max(glass_confs, default=0.0)
+        max_no_glass = max(no_glass_confs, default=0.0)
+        max_mask = max(mask_confs, default=0.0)
+        max_no_mask = max(no_mask_confs, default=0.0)
+
+        # 1. Logic phân định Kính mắt:
+        # Nếu model phát hiện no_glass mạnh (>= 0.50) hoặc no_glass >= glass -> Chắc chắn KHÔNG ĐEO KÍNH
+        if max_no_glass >= 0.50 or max_no_glass >= max_glass:
+            has_glass = False
+        else:
+            # Chỉ báo vi phạm khi glass đạt ngưỡng cao (>= conf_threshold) VÀ vượt trội hơn no_glass
+            has_glass = (max_glass >= conf_threshold and max_glass > max_no_glass + 0.08)
+
+        # 2. Logic phân định Khẩu trang:
+        if max_no_mask >= 0.50 or max_no_mask >= max_mask:
+            has_mask = False
+        else:
+            has_mask = (max_mask >= conf_threshold and max_mask > max_no_mask + 0.08)
+
+        # Trả về các detection hợp lệ
+        returned_dets = [
+            d for d in valid_dets
+            if (d["class_name"] == "glass" and has_glass)
+            or (d["class_name"] == "mask" and has_mask)
+            or (d["class_name"] in ("no_glass", "no_mask") and d["confidence"] >= 0.45)
+        ]
 
         if has_glass and has_mask:
-            return True, "GLASS_AND_MASK_DETECTED", "Phat hien deo kinh mat va khau trang", dets
+            return True, "GLASS_AND_MASK_DETECTED", "Phat hien deo kinh mat va khau trang", returned_dets
         elif has_glass:
-            return True, "GLASS_DETECTED", "Phat hien deo kinh mat", dets
+            return True, "GLASS_DETECTED", "Phat hien deo kinh mat", returned_dets
         elif has_mask:
-            return True, "MASK_DETECTED", "Phat hien deo khau trang", dets
+            return True, "MASK_DETECTED", "Phat hien deo khau trang", returned_dets
 
-        return False, "OK", "", dets
+        return False, "OK", "", returned_dets
 
 
 # =============================================================================
@@ -567,6 +628,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
     auto_capture_mode = False
     quick_snapshot_mode = False
     consecutive_center_frames = 0
+    consecutive_occluded_frames = 0
     is_aligned_good = False
     capture_blocked_frames = 0
     is_light_ok = True
@@ -619,7 +681,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
         nonlocal all_spoof_dets, yolo_debug_dets, rfdetr_debug_dets
         nonlocal blink_counter, blink_state, blink_passed, head_movement_passed, current_head_action, head_action_prompt
         nonlocal final_pass, reasons, final_display_img, final_record, consecutive_center_frames, quick_snapshot_mode
-        nonlocal is_aligned_good, capture_blocked_frames, is_light_ok, mean_lum
+        nonlocal is_aligned_good, capture_blocked_frames, is_light_ok, mean_lum, consecutive_occluded_frames
 
         current_img_idx = get_next_image_index(DATA_RAW_DIR)
         stage = PipelineStage.PREVIEW_ALIGN
@@ -658,6 +720,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
         final_display_img = None
         final_record = None
         consecutive_center_frames = 0
+        consecutive_occluded_frames = 0
         is_aligned_good = False
         capture_blocked_frames = 0
         is_light_ok = True
@@ -741,19 +804,36 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             occ_code_live = ""
             occ_msg_live = ""
             if frame_idx % 2 == 0:
-                is_occluded_live, occ_code_live, occ_msg_live, glass_mask_dets_live = glass_mask_detector.check_occlusion(frame)
-                if not is_occluded_live:
-                    glass_mask_dets_live.clear()
-                    capture_blocked_frames = 0
-            elif glass_mask_dets_live:
-                is_occluded_live = any(d["class_name"] in ("glass", "mask") for d in glass_mask_dets_live)
-                if is_occluded_live:
-                    has_g = any(d["class_name"] == "glass" for d in glass_mask_dets_live)
-                    has_m = any(d["class_name"] == "mask" for d in glass_mask_dets_live)
-                    occ_code_live = "GLASS_AND_MASK_DETECTED" if (has_g and has_m) else ("GLASS_DETECTED" if has_g else "MASK_DETECTED")
-                    occ_msg_live = "Phat hien deo kinh mat va khau trang" if (has_g and has_m) else ("Phat hien deo kinh mat" if has_g else "Phat hien deo khau trang")
+                raw_occ, raw_code, raw_msg, raw_dets = glass_mask_detector.check_occlusion(
+                    frame, conf_threshold=0.55, oval_center=oval_center, oval_axes=oval_axes
+                )
+                if raw_occ:
+                    consecutive_occluded_frames += 1
                 else:
-                    glass_mask_dets_live.clear()
+                    consecutive_occluded_frames = 0
+
+                # Yêu cầu xác nhận liên tục ít nhất 2 lần kiểm tra để tránh báo động giả do nhiễu ánh sáng
+                if consecutive_occluded_frames >= 2:
+                    is_occluded_live = True
+                    occ_code_live = raw_code
+                    occ_msg_live = raw_msg
+                    glass_mask_dets_live = raw_dets
+                else:
+                    is_occluded_live = False
+                    occ_code_live = "OK"
+                    occ_msg_live = ""
+                    glass_mask_dets_live = raw_dets if raw_occ else []
+                    capture_blocked_frames = 0
+            elif glass_mask_dets_live and consecutive_occluded_frames >= 2:
+                is_occluded_live = True
+                has_g = any(d["class_name"] == "glass" for d in glass_mask_dets_live)
+                has_m = any(d["class_name"] == "mask" for d in glass_mask_dets_live)
+                occ_code_live = "GLASS_AND_MASK_DETECTED" if (has_g and has_m) else ("GLASS_DETECTED" if has_g else "MASK_DETECTED")
+                occ_msg_live = "Phat hien deo kinh mat va khau trang" if (has_g and has_m) else ("Phat hien deo kinh mat" if has_g else "Phat hien deo khau trang")
+            else:
+                is_occluded_live = False
+                occ_code_live = "OK"
+                occ_msg_live = ""
 
             is_aligned_good = (
                 (landmarks_live is not None) and
@@ -926,7 +1006,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             # 4.5 Kiểm tra vật che mặt, Mắt kính & Khẩu trang (Model Deep Learning YOLO26n)
             print("[Occlusion Defense] Đang kiểm tra Mắt kính & Khẩu trang bằng mô hình AI YOLO26n...")
             is_occluded_static, occ_code_static, occ_msg_static, glass_mask_dets_static = glass_mask_detector.check_occlusion(
-                captured_frame, conf_threshold=0.38
+                captured_frame, conf_threshold=0.55, oval_center=oval_center, oval_axes=oval_axes
             )
 
             if is_occluded_static:
@@ -1046,7 +1126,9 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             is_occ_blink = False
             occ_msg_blink = ""
             if frame_idx % 4 == 0:
-                is_occ_b, code_b, msg_b, b_dets = glass_mask_detector.check_occlusion(frame, conf_threshold=0.38)
+                is_occ_b, code_b, msg_b, b_dets = glass_mask_detector.check_occlusion(
+                    frame, conf_threshold=0.55, oval_center=oval_center, oval_axes=oval_axes
+                )
                 if is_occ_b:
                     is_occ_blink = True
                     occ_msg_blink = msg_b
@@ -1124,7 +1206,9 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             is_occ_hm = False
             occ_msg_hm = ""
             if frame_idx % 4 == 0:
-                is_occ_h, code_h, msg_h, h_dets = glass_mask_detector.check_occlusion(frame, conf_threshold=0.38)
+                is_occ_h, code_h, msg_h, h_dets = glass_mask_detector.check_occlusion(
+                    frame, conf_threshold=0.55, oval_center=oval_center, oval_axes=oval_axes
+                )
                 if is_occ_h:
                     is_occ_hm = True
                     occ_msg_hm = msg_h

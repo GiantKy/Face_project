@@ -1,0 +1,5 @@
+{
+    "project_task_type": "object-detection",
+    "model_type": "yolov11n",
+    "model_id": "face-spoof-detection-liika-qopyy/1"
+}

@@ -32,7 +32,7 @@ class FaceOcclusionDetector:
         self,
         model_id: str = "glass-and-mask-q5de1/2",
         api_key: str = "lGvF9eLaX4ZhhERgN5u2",
-        conf_threshold: float = 0.38,
+        conf_threshold: float = 0.55,
         strict_glasses: bool = STRICT_GLASSES_POLICY
     ):
         self.model_id = model_id
@@ -129,17 +129,28 @@ class FaceOcclusionDetector:
                 elif hasattr(preds, "predictions"):
                     pred_list = preds.predictions
 
-                has_glass = False
-                has_mask = False
+                glass_confs = [float(getattr(p, "confidence", 0.0)) for p in pred_list if str(getattr(p, "class_name", "")).lower().strip() == "glass"]
+                no_glass_confs = [float(getattr(p, "confidence", 0.0)) for p in pred_list if str(getattr(p, "class_name", "")).lower().strip() == "no_glass"]
+                mask_confs = [float(getattr(p, "confidence", 0.0)) for p in pred_list if str(getattr(p, "class_name", "")).lower().strip() == "mask"]
+                no_mask_confs = [float(getattr(p, "confidence", 0.0)) for p in pred_list if str(getattr(p, "class_name", "")).lower().strip() == "no_mask"]
 
-                for p in pred_list:
-                    cls_name = str(getattr(p, "class_name", "")).lower().strip()
-                    conf = float(getattr(p, "confidence", 0.0))
-                    if conf >= self.conf_threshold:
-                        if cls_name == "glass":
-                            has_glass = True
-                        elif cls_name == "mask":
-                            has_mask = True
+                max_glass = max(glass_confs, default=0.0)
+                max_no_glass = max(no_glass_confs, default=0.0)
+                max_mask = max(mask_confs, default=0.0)
+                max_no_mask = max(no_mask_confs, default=0.0)
+
+                # Logic phân định Kính mắt:
+                # Nếu model phát hiện no_glass mạnh (>= 0.50) hoặc no_glass >= glass -> Chắc chắn KHÔNG ĐEO KÍNH
+                if max_no_glass >= 0.50 or max_no_glass >= max_glass:
+                    has_glass = False
+                else:
+                    has_glass = (max_glass >= self.conf_threshold and max_glass > max_no_glass + 0.08)
+
+                # Logic phân định Khẩu trang:
+                if max_no_mask >= 0.50 or max_no_mask >= max_mask:
+                    has_mask = False
+                else:
+                    has_mask = (max_mask >= self.conf_threshold and max_mask > max_no_mask + 0.08)
 
                 self._last_check_time = now
 

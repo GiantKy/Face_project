@@ -86,8 +86,7 @@ class EnsembleAntiSpoofDetector:
         self.yolo_path = yolo_model_path or ANTI_SPOOF_YOLO4_MODEL_PATH
 
         if not os.path.exists(self.yolo_path):
-            # Fallback: Tìm bất kỳ file Anti_Spoof*.pt nào trong server_module/models/
-            pts = glob.glob(os.path.join(MODELS_DIR, "*Anti_Spoof*.pt"))
+            pts = glob.glob(os.path.join(MODELS_DIR, "**", "*anti_spoof*.pt"), recursive=True) + glob.glob(os.path.join(MODELS_DIR, "*Anti_Spoof*.pt"))
             self.yolo_path = pts[0] if pts else ANTI_SPOOF_YOLO4_MODEL_PATH
 
         print(f"[EnsembleAntiSpoof] Loading Model 1 (YOLO_4): {self.yolo_path}")

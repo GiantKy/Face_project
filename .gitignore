@@ -34,33 +34,28 @@ CameraWebServer/esp32cam-rtsp/
 
 # =============================================================================
 # Large AI Models / Weights (> 5MB)
+# (Toàn bộ Model AI được lưu trữ trên Google Drive):
+# - Link model server_module: https://drive.google.com/drive/folders/1w-Xcl0irJzlXPCzJuVRYWPepxnH-3oiX?usp=drive_link
+# - Link toàn bộ model: https://drive.google.com/drive/folders/1zEIGdw3krTHwO8w5BmkCxSP0v6Wdw0LU?usp=drive_link
 # =============================================================================
 *.pt
 *.pth
 *.onnx
+*.safetensors
+*.bin
 *.engine
 *.tflite
 *.h5
 *.ckpt
 *.task
-
-# Allow production models required for CI/CD server_module testing
-!server_module/models/*.pt
-!server_module/models/*.task
-!models/Face_Detection.pt
-!models/Anti_Spoof_YOLO.pt
-!models/face_landmarker.task
-!models/roboflow/**/weights.onnx
-
-# Ignore heavy Transformer / RF-DETR model weights (> 100MB) to comply with GitHub / GitLab limits
-models/roboflow/*rfdetr*/**/weights.onnx
-models/roboflow/*rfdetr*/*.onnx
-models/roboflow/**/*rfdetr*/**/*.onnx
-models/roboflow/*rfder*/**/weights.onnx
-models/roboflow/*rfder*/*.onnx
-models/roboflow/**/*rfder*/**/*.onnx
-models/*rfdetr*.onnx
 *.db
+
+# Giữ cấu trúc thư mục models và tài liệu README
+!models/**/.gitkeep
+!server_module/models/**/.gitkeep
+!models/**/README.md
+!models/README.md
+!server_module/models/**/README.md
 
 # =============================================================================
 # Datasets, Captured Photos & Output Folders

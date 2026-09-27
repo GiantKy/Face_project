@@ -27,16 +27,20 @@ def find_default_mobilenetv2_model() -> str:
     """
     Tự động tìm thư mục chứa model MobileNetV2 trong thư mục models/
     """
-    candidate = os.path.join(BASE_DIR, "models", "Model_MobilenetV2")
-    if os.path.exists(candidate):
-        return candidate
+    candidate_new = os.path.join(BASE_DIR, "models", "anti_spoof", "mobilenet", "mobilenetv2_exp")
+    if os.path.exists(candidate_new):
+        return candidate_new
+
+    candidate_old = os.path.join(BASE_DIR, "models", "Model_MobilenetV2")
+    if os.path.exists(candidate_old):
+        return candidate_old
 
     models_dir = os.path.join(BASE_DIR, "models")
     if os.path.exists(models_dir):
-        for item in os.listdir(models_dir):
-            item_path = os.path.join(models_dir, item)
-            if os.path.isdir(item_path) and "mobilenet" in item.lower():
-                return item_path
+        for root, dirs, _ in os.walk(models_dir):
+            for d in dirs:
+                if "mobilenet" in d.lower():
+                    return os.path.join(root, d)
 
     raise FileNotFoundError(
         f"Không tìm thấy thư mục model MobileNetV2 trong {os.path.join(BASE_DIR, 'models')}!"

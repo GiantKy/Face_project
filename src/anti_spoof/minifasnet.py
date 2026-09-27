@@ -196,6 +196,9 @@ def find_default_minifasnet_model() -> str:
     ưu tiên các file hiện hành: Anti_Spoof_minifasnet.pth hoặc các phiên bản tương đương.
     """
     candidate_files = [
+        os.path.join("anti_spoof", "minifasnet", "minifasnet_legacy.pth"),
+        os.path.join("anti_spoof", "minifasnet", "minifasnet_v2_exp.pth"),
+        os.path.join("anti_spoof", "minifasnet", "minifasnet_v1se_exp.pth"),
         "Anti_Spoof_minifasnet.pth",
         "Anti_Spoof_minifasnetv2.pth",
         "Anti_Spoof_minifasnetv2_(4).pth",
@@ -211,11 +214,11 @@ def find_default_minifasnet_model() -> str:
         if os.path.exists(path):
             return path
 
-    all_pth = glob.glob(os.path.join(BASE_DIR, "models", "*minifas*.pth"))
+    all_pth = glob.glob(os.path.join(BASE_DIR, "models", "**", "*minifas*.pth"), recursive=True) + glob.glob(os.path.join(BASE_DIR, "models", "*minifas*.pth"))
     if all_pth:
         return max(all_pth, key=os.path.getmtime)
 
-    return os.path.join(BASE_DIR, "models", "Anti_Spoof_minifasnet.pth")
+    return os.path.join(BASE_DIR, "models", "anti_spoof", "minifasnet", "minifasnet_legacy.pth")
 
 
 def load_minifasnet_model(model_path: Optional[str] = None, device: Optional[torch.device] = None) -> Tuple[MiniFASNetV2, Dict[str, Any]]:
