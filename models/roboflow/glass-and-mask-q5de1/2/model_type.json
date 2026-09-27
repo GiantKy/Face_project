@@ -1,0 +1,5 @@
+{
+    "project_task_type": "object-detection",
+    "model_type": "yolo26n",
+    "model_id": "glass-and-mask-q5de1/2"
+}

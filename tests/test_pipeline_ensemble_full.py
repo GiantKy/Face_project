@@ -56,8 +56,8 @@ warnings.filterwarnings("ignore")
 
 if hasattr(sys.stdout, "reconfigure"):
     try:
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
+        sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
+        sys.stderr.reconfigure(encoding="utf-8", line_buffering=True)
     except Exception:
         pass
 
@@ -89,7 +89,6 @@ from server_module.utils import (
     create_pipeline_result_dashboard,
     create_side_by_side_result
 )
-from server_module.components.face_occlusion_detector import FaceOcclusionDetector
 
 DATA_RAW_DIR = os.path.join(BASE_DIR, "data_raw")
 OUTPUT_DIR = os.path.join(CURRENT_DIR, "output")
@@ -346,6 +345,95 @@ class EnsembleAntiSpoofDetector:
 
 
 # =============================================================================
+# 1.5 GLASS & MASK DETECTOR (ROBOFLOW YOLO26n - 100% OFFLINE CACHE)
+# =============================================================================
+class GlassAndMaskDetector:
+    """
+    Bộ phát hiện Kính & Khẩu trang sử dụng mô hình Deep Learning YOLO26 Nano từ Roboflow:
+      - Model ID: glass-and-mask-q5de1/2
+      - Trọng số: models/roboflow/glass-and-mask-q5de1/2/weights.onnx (~9.8 MB)
+      - Chạy OFFLINE 100% qua ONNX Runtime (tận dụng GPU DirectML / CUDA).
+      - Nhãn phân loại: glass, mask, no_glass, no_mask (4 lớp, mAP 96.72%).
+    """
+    def __init__(self, model_id="glass-and-mask-q5de1/2", api_key="lGvF9eLaX4ZhhERgN5u2"):
+        self.model_id = model_id
+        self.api_key = api_key
+        print(f"[INFO] Loading Model 3 (Glass & Mask YOLO26n): {self.model_id}...")
+        try:
+            self.model = get_model(model_id=self.model_id, api_key=self.api_key)
+            print("[OK] Glass & Mask model loaded successfully!\n")
+        except Exception as e:
+            print(f"[WARN] Failed to load Glass & Mask model '{self.model_id}': {e}")
+            self.model = None
+
+    def predict(self, frame, conf_threshold=0.38):
+        if self.model is None or frame is None or frame.size == 0:
+            return []
+
+        h, w = frame.shape[:2]
+        preds = self.model.infer(frame)
+        pred_list = []
+        if isinstance(preds, list) and len(preds) > 0:
+            pred_list = getattr(preds[0], "predictions", [])
+        elif hasattr(preds, "predictions"):
+            pred_list = preds.predictions
+
+        detections = []
+        for p in pred_list:
+            cls_name = str(getattr(p, "class_name", "")).lower().strip()
+            conf = float(getattr(p, "confidence", 0.0))
+            if conf < conf_threshold:
+                continue
+
+            cx = float(getattr(p, "x", 0.0))
+            cy = float(getattr(p, "y", 0.0))
+            pw = float(getattr(p, "width", 0.0))
+            ph = float(getattr(p, "height", 0.0))
+
+            if 0.0 <= cx <= 1.0 and 0.0 <= pw <= 1.0 and w > 1:
+                cx *= w; cy *= h; pw *= w; ph *= h
+
+            x1 = max(0, int(cx - pw / 2.0))
+            y1 = max(0, int(cy - ph / 2.0))
+            x2 = min(w, int(cx + pw / 2.0))
+            y2 = min(h, int(cy + ph / 2.0))
+
+            label_vn = "DEO KINH" if cls_name == "glass" else (
+                "DEO KHAU TRANG" if cls_name == "mask" else (
+                    "KHONG KINH" if cls_name == "no_glass" else "KHONG KHAU TRANG"
+                )
+            )
+
+            detections.append({
+                "bbox": [x1, y1, x2, y2],
+                "confidence": conf,
+                "class_name": cls_name,
+                "label_vn": label_vn
+            })
+
+        return detections
+
+    def check_occlusion(self, frame, conf_threshold=0.38):
+        """
+        Kiểm tra vi phạm che mặt / đeo kính / đeo khẩu trang:
+        Returns:
+            Tuple[is_occluded, reason_code, message, detections]
+        """
+        dets = self.predict(frame, conf_threshold=conf_threshold)
+        has_glass = any(d["class_name"] == "glass" for d in dets)
+        has_mask = any(d["class_name"] == "mask" for d in dets)
+
+        if has_glass and has_mask:
+            return True, "GLASS_AND_MASK_DETECTED", "Phat hien deo kinh mat va khau trang", dets
+        elif has_glass:
+            return True, "GLASS_DETECTED", "Phat hien deo kinh mat", dets
+        elif has_mask:
+            return True, "MASK_DETECTED", "Phat hien deo khau trang", dets
+
+        return False, "OK", "", dets
+
+
+# =============================================================================
 # 2. HUD & OVAL GUIDE DRAWING UTILITIES
 # =============================================================================
 def draw_ui_card(image, x, y, w, h, bg_color=(15, 15, 20), alpha=0.85):
@@ -453,8 +541,8 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
     pose_validator = PoseValidator()
     aligner = FaceAligner()
     ensemble_anti_spoof = EnsembleAntiSpoofDetector(yolo_file=yolo_file)
+    glass_mask_detector = GlassAndMaskDetector()
     head_movement_detector = HeadMovementDetector(yaw_threshold=16.0, pitch_threshold=12.0, timeout=7.0)
-    occlusion_detector = FaceOcclusionDetector()
     print("[OK] Đã sẵn sàng toàn bộ hệ thống Models!\n")
 
     cap = cv2.VideoCapture(cam_id)
@@ -487,6 +575,9 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
     is_occluded_static = False
     occ_code_static = "OK"
     occ_msg_static = ""
+    glass_mask_dets_static = []
+    glass_mask_dets_live = []
+    frame_idx = 0
     all_spoof_dets = []
     yolo_debug_dets = []
     rfdetr_debug_dets = []
@@ -510,7 +601,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
         nonlocal stage, current_img_idx, captured_frame, captured_img_path, captured_result_dir
         nonlocal primary_face, landmarks_static, pose_dict_static, pose_valid_static
         nonlocal face_crop_static, aligned_img_static, best_spoof_static
-        nonlocal is_occluded_static, occ_code_static, occ_msg_static
+        nonlocal is_occluded_static, occ_code_static, occ_msg_static, glass_mask_dets_static, glass_mask_dets_live
         nonlocal all_spoof_dets, yolo_debug_dets, rfdetr_debug_dets
         nonlocal blink_counter, blink_state, blink_passed, head_movement_passed, current_head_action, head_action_prompt
         nonlocal final_pass, reasons, final_display_img, final_record, consecutive_center_frames, quick_snapshot_mode
@@ -533,6 +624,8 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
         is_occluded_static = False
         occ_code_static = "OK"
         occ_msg_static = ""
+        glass_mask_dets_static.clear()
+        glass_mask_dets_live.clear()
         all_spoof_dets.clear()
         yolo_debug_dets.clear()
         rfdetr_debug_dets.clear()
@@ -563,6 +656,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
         if not ret:
             break
 
+        frame_idx += 1
         frame = cv2.flip(frame, 1)
         h, w = frame.shape[:2]
         display = frame.copy()
@@ -628,17 +722,19 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             mean_lum = light_info.get("mean_luminance", 100.0)
             is_light_ok = (mean_lum >= 55.0)
 
-            # KIỂM TRA MẮT KÍNH & VẬT CHE MẶT TRƯỚC KHI CHỤP (Pre-Capture Check)
+            # KIỂM TRA MẮT KÍNH & KHẨU TRANG TRƯỚC KHI CHỤP (AI Model YOLO26n)
             is_occluded_live = False
             occ_code_live = ""
             occ_msg_live = ""
-            if landmarks_live and len(landmarks_live) >= 468:
-                is_occluded_live, occ_code_live, occ_msg_live = occlusion_detector.check_occlusion(
-                    frame=frame,
-                    landmarks=landmarks_live,
-                    num_faces=1,
-                    pose_dict=pose_dict_live
-                )
+            if frame_idx % 3 == 0:
+                is_occluded_live, occ_code_live, occ_msg_live, glass_mask_dets_live = glass_mask_detector.check_occlusion(frame)
+            elif glass_mask_dets_live:
+                is_occluded_live = any(d["class_name"] in ("glass", "mask") for d in glass_mask_dets_live)
+                if is_occluded_live:
+                    has_g = any(d["class_name"] == "glass" for d in glass_mask_dets_live)
+                    has_m = any(d["class_name"] == "mask" for d in glass_mask_dets_live)
+                    occ_code_live = "GLASS_AND_MASK_DETECTED" if (has_g and has_m) else ("GLASS_DETECTED" if has_g else "MASK_DETECTED")
+                    occ_msg_live = "Phat hien deo kinh mat va khau trang" if (has_g and has_m) else ("Phat hien deo kinh mat" if has_g else "Phat hien deo khau trang")
 
             is_aligned_good = (
                 (landmarks_live is not None) and
@@ -808,17 +904,19 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                     landmarks_static = None
             print(f"[3. Landmarks] Trích xuất được {len(landmarks_static) if landmarks_static else 0} điểm.")
 
-            # 4.5 Kiểm tra vật che mặt & Mắt kính (Chính sách A - Strict Policy)
-            if landmarks_static:
-                is_occluded_static, occ_code_static, occ_msg_static = occlusion_detector.check_occlusion(
-                    frame=captured_frame,
-                    landmarks=landmarks_static,
-                    num_faces=len(faces)
-                )
-                if is_occluded_static:
-                    print(f"[Occlusion Defense] VI PHẠM: {occ_msg_static} ({occ_code_static})")
-                else:
-                    print("[Occlusion Defense] Khuôn mặt thông thoáng, không đeo kính và không đeo khẩu trang -> PASS!")
+            # 4.5 Kiểm tra vật che mặt, Mắt kính & Khẩu trang (Model Deep Learning YOLO26n)
+            print("[Occlusion Defense] Đang kiểm tra Mắt kính & Khẩu trang bằng mô hình AI YOLO26n...")
+            is_occluded_static, occ_code_static, occ_msg_static, glass_mask_dets_static = glass_mask_detector.check_occlusion(
+                captured_frame, conf_threshold=0.38
+            )
+
+            if is_occluded_static:
+                print(f"[Occlusion Defense] VI PHẠM: {occ_msg_static} ({occ_code_static})")
+                for d in glass_mask_dets_static:
+                    if d["class_name"] in ("glass", "mask"):
+                        print(f"  * {d['label_vn']} ({d['class_name']}): Conf={d['confidence']*100:.1f}%")
+            else:
+                print("[Occlusion Defense] Khuôn mặt thông thoáng, không đeo kính và không đeo khẩu trang -> PASS!")
 
             # 5. Pose 3D
             pose_valid_static = False
@@ -917,14 +1015,16 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             # Kiểm tra che mặt & mắt kính trong lúc chớp mắt (Sau khi chụp)
             is_occ_blink = False
             occ_msg_blink = ""
-            if landmarks_live and len(landmarks_live) >= 468:
-                is_occ_b, code_b, msg_b = occlusion_detector.check_occlusion(frame, landmarks_live, num_faces=1)
-                if is_occ_b and (code_b != "SUNGLASSES_DETECTED" or ear_avg >= 0.20):
+            if frame_idx % 4 == 0:
+                is_occ_b, code_b, msg_b, b_dets = glass_mask_detector.check_occlusion(frame, conf_threshold=0.38)
+                if is_occ_b:
                     is_occ_blink = True
                     occ_msg_blink = msg_b
                     is_occluded_static = True
                     occ_code_static = code_b
                     occ_msg_static = msg_b
+                    if not glass_mask_dets_static:
+                        glass_mask_dets_static = b_dets
 
             if is_occ_blink:
                 # Phát hiện đeo kính/che mặt trong lúc chớp mắt: Tạm dừng tích lũy blink
@@ -993,14 +1093,16 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             # Kiểm tra che mặt & mắt kính trong lúc quay đầu (Sau khi chụp)
             is_occ_hm = False
             occ_msg_hm = ""
-            if landmarks_live and len(landmarks_live) >= 468:
-                is_occ_h, code_h, msg_h = occlusion_detector.check_occlusion(frame, landmarks_live, num_faces=1, pose_dict=pose_dict_live)
+            if frame_idx % 4 == 0:
+                is_occ_h, code_h, msg_h, h_dets = glass_mask_detector.check_occlusion(frame, conf_threshold=0.38)
                 if is_occ_h:
                     is_occ_hm = True
                     occ_msg_hm = msg_h
                     is_occluded_static = True
                     occ_code_static = code_h
                     occ_msg_static = msg_h
+                    if not glass_mask_dets_static:
+                        glass_mask_dets_static = h_dets
 
             if is_occ_hm:
                 hm_status = {"passed": False, "state": "WARNING", "prompt": f"CANH BAO: {occ_msg_hm.upper()}", "time_left": 10.0, "progress": 0.0}
@@ -1154,7 +1256,8 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                     "output_folder": captured_result_dir,
                     "models_used": {
                         "model_1": yolo_file,
-                        "model_2": "RF-DETR Small (Transformer)"
+                        "model_2": "RF-DETR Small (Transformer)",
+                        "model_3": "Glass and Mask Detector (YOLO26n)"
                     },
                     "face_detection": {
                         "face_detected": primary_face is not None,
@@ -1181,6 +1284,13 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                         "rfdetr_detail": best_spoof_static.get("rfdetr_res") if best_spoof_static else "N/A",
                         "agreement": best_spoof_static.get("agreement") if best_spoof_static else False,
                         "all_ensemble_detections": spoof_res
+                    },
+                    "occlusion_defense": {
+                        "passed": not is_occluded_static,
+                        "is_occluded": bool(is_occluded_static),
+                        "reason_code": occ_code_static,
+                        "message": occ_msg_static,
+                        "detections": glass_mask_dets_static
                     },
                     "active_liveness": {
                         "blink_passed": bool(blink_passed),
@@ -1226,6 +1336,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                 print(f"  * Ensemble Verdict : {final_record['ensemble_anti_spoof']['label']} ({final_record['ensemble_anti_spoof']['confidence']*100:.1f}%)")
                 print(f"  * Chi tiết YOLO_4  : {final_record['ensemble_anti_spoof']['yolo_detail']}")
                 print(f"  * Chi tiết RF-DETR : {final_record['ensemble_anti_spoof']['rfdetr_detail']}")
+                print(f"  * Kính & Khẩu trang: {'VI PHẠM: ' + occ_msg_static if is_occluded_static else 'PASS (Không đeo kính/khẩu trang)'}")
                 print(f"  * Ảnh kết quả lưu  : {captured_result_dir}")
                 print("=" * 68 + "\n")
 
