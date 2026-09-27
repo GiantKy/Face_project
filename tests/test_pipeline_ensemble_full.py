@@ -371,7 +371,15 @@ class GlassAndMaskDetector:
             return []
 
         h, w = frame.shape[:2]
-        preds = self.model.infer(frame)
+        max_dim = max(h, w)
+        if max_dim > 416:
+            scale = 416.0 / max_dim
+            infer_frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
+        else:
+            infer_frame = frame
+            scale = 1.0
+
+        preds = self.model.infer(infer_frame)
         pred_list = []
         if isinstance(preds, list) and len(preds) > 0:
             pred_list = getattr(preds[0], "predictions", [])
@@ -390,8 +398,12 @@ class GlassAndMaskDetector:
             pw = float(getattr(p, "width", 0.0))
             ph = float(getattr(p, "height", 0.0))
 
-            if 0.0 <= cx <= 1.0 and 0.0 <= pw <= 1.0 and w > 1:
+            # Nếu tọa độ được trả về ở tỷ lệ tương đối hoặc kích thước infer_frame
+            ih, iw = infer_frame.shape[:2]
+            if 0.0 <= cx <= 1.0 and 0.0 <= pw <= 1.0 and iw > 1:
                 cx *= w; cy *= h; pw *= w; ph *= h
+            elif scale != 1.0:
+                cx /= scale; cy /= scale; pw /= scale; ph /= scale
 
             x1 = max(0, int(cx - pw / 2.0))
             y1 = max(0, int(cy - ph / 2.0))
@@ -726,8 +738,11 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
             is_occluded_live = False
             occ_code_live = ""
             occ_msg_live = ""
-            if frame_idx % 3 == 0:
+            if frame_idx % 2 == 0:
                 is_occluded_live, occ_code_live, occ_msg_live, glass_mask_dets_live = glass_mask_detector.check_occlusion(frame)
+                if not is_occluded_live:
+                    glass_mask_dets_live.clear()
+                    capture_blocked_frames = 0
             elif glass_mask_dets_live:
                 is_occluded_live = any(d["class_name"] in ("glass", "mask") for d in glass_mask_dets_live)
                 if is_occluded_live:
@@ -735,6 +750,8 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
                     has_m = any(d["class_name"] == "mask" for d in glass_mask_dets_live)
                     occ_code_live = "GLASS_AND_MASK_DETECTED" if (has_g and has_m) else ("GLASS_DETECTED" if has_g else "MASK_DETECTED")
                     occ_msg_live = "Phat hien deo kinh mat va khau trang" if (has_g and has_m) else ("Phat hien deo kinh mat" if has_g else "Phat hien deo khau trang")
+                else:
+                    glass_mask_dets_live.clear()
 
             is_aligned_good = (
                 (landmarks_live is not None) and
@@ -1369,7 +1386,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
         elif (key == ord('s') or key == ord('S')):
             if stage == PipelineStage.PREVIEW_ALIGN:
                 if not is_aligned_good:
-                    capture_blocked_frames = 40
+                    capture_blocked_frames = 12
                     if is_occluded_live:
                         print(f"\n[CHẶN CHỤP] {occ_msg_live} ({occ_code_live})! Vui lòng tháo kính/khẩu trang ra trước khi chụp.")
                     elif not is_light_ok:
@@ -1390,7 +1407,7 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False, yolo_file="Anti_Spoof_
         # Phím SPACE hoặc 'c': Chụp ảnh và chạy Full quy trình eKYC
         elif (key == 32 or key == ord('c') or key_trigger == ord(' ')) and stage == PipelineStage.PREVIEW_ALIGN:
             if not is_aligned_good:
-                capture_blocked_frames = 40
+                capture_blocked_frames = 12
                 if is_occluded_live:
                     print(f"\n[CHẶN CHỤP] {occ_msg_live} ({occ_code_live})! Vui lòng tháo kính/khẩu trang ra trước khi chụp.")
                 elif not is_light_ok:

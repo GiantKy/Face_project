@@ -433,8 +433,8 @@
       pointer-events: none;
       backdrop-filter: blur(14px) brightness(0.42);
       -webkit-backdrop-filter: blur(14px) brightness(0.42);
-      mask-image: radial-gradient(ellipse 140px 190px at center 50%, transparent 97%, black 100%);
-      -webkit-mask-image: radial-gradient(ellipse 140px 190px at center 50%, transparent 97%, black 100%);
+      mask-image: radial-gradient(ellipse 110px 170px at center 50.5%, transparent 95%, black 100%);
+      -webkit-mask-image: radial-gradient(ellipse 110px 170px at center 50.5%, transparent 95%, black 100%);
       transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
       display: none;
       z-index: 5;
@@ -538,7 +538,7 @@
     }
 
     .face-guide-oval {
-      width: 250px;
+      width: 220px;
       height: 340px;
       border-radius: 50% / 46%;
       position: relative;
@@ -2579,16 +2579,20 @@
     // =========================================================================
     // PREVIEW & OVAL ALIGNMENT LOOP (Bước 1: Canh Oval)
     // =========================================================================
+    let isPoseChecking = false;
+
     function startPoseCheckLoop() {
       stopPoseCheckLoop();
       consecutiveGoodFrames = 0;
       autoTriggerBlocked = false;
+      isPoseChecking = false;
 
       poseCheckInterval = setInterval(async () => {
         const isCameraReady = (inputMode === 'webcam' && webcamStream && document.getElementById('webcamVideo').readyState >= 2) ||
           (inputMode === 'esp32');
-        if (!isCameraReady || currentState !== APP_STATE.PREVIEW_ALIGN || autoTriggerBlocked) return;
+        if (!isCameraReady || currentState !== APP_STATE.PREVIEW_ALIGN || autoTriggerBlocked || isPoseChecking) return;
 
+        isPoseChecking = true;
         const video = document.getElementById('webcamVideo');
 
         try {
@@ -2612,8 +2616,10 @@
           }
         } catch (e) {
           // Ignore transient preview network errors
+        } finally {
+          isPoseChecking = false;
         }
-      }, 350);
+      }, 200);
     }
 
     function stopPoseCheckLoop() {
@@ -2944,13 +2950,14 @@
             if (data.is_occluded) {
               const oval = document.getElementById('faceGuideOval');
               if (oval) oval.className = 'face-guide-oval state-warning';
+              const earVal = (data.ear_avg !== undefined) ? data.ear_avg.toFixed(2) : '--';
               updateChallengeHUD({
-                stageText: '⚠️ CẢNH BÁO: CHE MẶT!',
-                icon: '✋',
-                prompt: 'PHÁT HIỆN CHE MẶT! VUI LÒNG BỎ TAY/VẬT CẢN RA',
-                hint: 'Không được che mặt, che mắt hoặc che miệng khi chớp mắt!',
+                stageText: '⚠️ CẢNH BÁO: CHE MẶT / ĐEO KÍNH!',
+                icon: '👓',
+                prompt: (data.error || 'PHÁT HIỆN ĐEO KÍNH HOẶC CHE MẶT! VUI LÒNG THÁO RA').toUpperCase(),
+                hint: 'Tháo kính/khẩu trang ra để tiếp tục thử thách chớp mắt',
                 isTimerUrgent: true,
-                telemetry: 'Trạng thái: ĐÃ KHÓA CHỈ SỐ EAR (DO CHE MẶT)'
+                telemetry: `EAR: ${earVal} | Trạng thái: CẢNH BÁO CHE MẶT/ĐEO KÍNH`
               });
               return;
             } else {
@@ -3590,7 +3597,11 @@
               canvas.width = targetW;
               canvas.height = targetH;
               const ctx = canvas.getContext('2d');
+              ctx.save();
+              ctx.translate(targetW, 0);
+              ctx.scale(-1, 1); // Đồng bộ gương chuẩn như webcam
               ctx.drawImage(espImg, 0, 0, targetW, targetH);
+              ctx.restore();
               canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.85);
             });
             if (blob && blob.size > 500) {
@@ -3637,7 +3648,11 @@
               canvas.width = vw;
               canvas.height = vh;
               const ctx = canvas.getContext('2d');
+              ctx.save();
+              ctx.translate(vw, 0);
+              ctx.scale(-1, 1); // Đồng bộ gương chuẩn như webcam
               ctx.drawImage(espImg, 0, 0, vw, vh);
+              ctx.restore();
               canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.95);
             });
             if (blob && blob.size > 1000) return blob;

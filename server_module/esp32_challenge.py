@@ -331,6 +331,7 @@ class ESP32ChallengeManager:
         t0 = time.time()
 
         raw_frame = load_image(image_input)
+        raw_frame = cv2.flip(raw_frame, 1)  # Đồng bộ hướng gương chuẩn như webcam (test_pipeline_ensemble_full.py)
         h, w = raw_frame.shape[:2]
 
         # 0. Kiểm tra số lượng người nghiêm ngặt (Single Person Strict Enforcement)
@@ -737,6 +738,7 @@ class ESP32ChallengeManager:
         target_step = step_name or session.current_step
 
         raw_frame = load_image(image_input)
+        raw_frame = cv2.flip(raw_frame, 1)  # Đồng bộ hướng gương chuẩn như webcam (test_pipeline_ensemble_full.py)
         h, w = raw_frame.shape[:2]
         proc_frame = preprocess_esp32_image(raw_frame)
 
@@ -807,18 +809,16 @@ class ESP32ChallengeManager:
         # ---------------------------------------------------------------------
         # XỬ LÝ BƯỚC 2: EYE BLINK (CHỚP MẮT) - State Machine: MỞ→NHẮM→MỞ = 1 blink
         # Ngưỡng tham chiếu từ test_pipeline_ensemble_full.py:
-        #   ear < 0.18 → nhắm, ear >= 0.22 → mở lại, cần ≥ 1 blink
+        #   ear < 0.18 → nhắm, ear >= 0.21 → mở lại, cần ≥ 1 blink
         # ---------------------------------------------------------------------
         if target_step == "eye_blink":
             ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks)
             base_ear = session.baseline_ear
             session.current_ear = float(ear_avg)
 
-            # State machine: MẮT MỞ → MẮT NHẮM → MẮT MỞ LẠI = 1 blink
-            # Độ nhạy thích ứng: nhắm mắt (EAR giảm > 20% hoặc < 0.18)
-            is_closed = (ear_avg < 0.18) or (ear_avg <= base_ear * 0.80)
-            # Mở lại: phục hồi về >= 0.20 hoặc >= 88% baseline ban đầu
-            is_opened = (ear_avg >= 0.20) or (ear_avg >= base_ear * 0.88)
+            # State machine: MẮT MỞ → MẮT NHẮM → MẮT MỞ LẠI = 1 blink (chuẩn test_pipeline_ensemble_full.py)
+            is_closed = (0.04 < ear_avg < 0.18) or (base_ear > 0.18 and ear_avg <= base_ear * 0.82)
+            is_opened = (ear_avg >= 0.21) or (base_ear > 0.18 and ear_avg >= base_ear * 0.88)
 
             if is_closed:
                 # Mắt đang nhắm
@@ -895,21 +895,21 @@ class ESP32ChallengeManager:
             session.current_pitch = curr_pitch
             session.delta_yaw = delta_yaw
 
-            # Đánh giá theo thử thách ngẫu nhiên (Đúng chuẩn hệ tọa độ PnP: TRÁI là ÂM, PHẢI là DƯƠNG)
+            # Đánh giá theo thử thách ngẫu nhiên
             head_matched = False
             action = session.target_head_action
 
             if action == "TURN_LEFT":
-                # Quay TRÁI của người dùng: delta_yaw DƯƠNG (>= 3.5°)
-                head_matched = (delta_yaw >= 3.5) or (curr_yaw >= 4.5)
+                # Quay TRÁI của người dùng: delta_yaw DƯƠNG (>= 3.0°)
+                head_matched = (delta_yaw >= 3.0) or (curr_yaw >= 3.5)
             elif action == "TURN_RIGHT":
-                # Quay PHẢI của người dùng: delta_yaw ÂM (<= -3.5°)
-                head_matched = (delta_yaw <= -3.5) or (curr_yaw <= -4.5)
+                # Quay PHẢI của người dùng: delta_yaw ÂM (<= -3.0°)
+                head_matched = (delta_yaw <= -3.0) or (curr_yaw <= -3.5)
 
             if head_matched:
-                # Nếu quay góc rõ rệt (|delta_yaw| >= 4.5 hoặc |curr_yaw| >= 6.0): cho pass ngay sau 1 frame rõ
-                if (action == "TURN_LEFT" and (delta_yaw >= 4.5 or curr_yaw >= 6.0)) or \
-                   (action == "TURN_RIGHT" and (delta_yaw <= -4.5 or curr_yaw <= -6.0)):
+                # Nếu quay góc rõ rệt (|delta_yaw| >= 3.5 hoặc |curr_yaw| >= 4.5): cho pass ngay sau 1 frame rõ
+                if (action == "TURN_LEFT" and (delta_yaw >= 3.5 or curr_yaw >= 4.5)) or \
+                   (action == "TURN_RIGHT" and (delta_yaw <= -3.5 or curr_yaw <= -4.5)):
                     session.consecutive_turn_frames += 2
                 else:
                     session.consecutive_turn_frames += 1

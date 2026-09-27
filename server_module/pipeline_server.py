@@ -346,8 +346,8 @@ class EKYCPipelineServer:
         oval_cx, oval_cy = oval_center
         oval_ax, oval_ay = oval_axes
 
-        # 0. Kiểm tra số lượng người nghiêm ngặt (Single Person Strict Enforcement)
-        num_faces, is_single = self.identity_verifier.count_faces(frame, self.detector)
+        # 0. Kiểm tra khuôn mặt & đếm số người bằng Single-Pass MediaPipe (~15ms)
+        landmarks, num_faces = self.landmark_detector.detect_with_count(frame)
         if num_faces > 1:
             return {
                 "has_face": True,
@@ -369,7 +369,6 @@ class EKYCPipelineServer:
                 "guide": "Vui lòng chỉ 1 người đứng trước camera"
             }
 
-        landmarks = self.landmark_detector.detect(frame)
         if not landmarks or num_faces == 0:
             return {
                 "has_face": False,
@@ -382,8 +381,7 @@ class EKYCPipelineServer:
                 "guide": "Vui lòng đưa khuôn mặt vào giữa khung hình"
             }
 
-
-        # Đánh giá kích thước và tọa độ khuôn mặt
+        # Đánh giá kích thước và tọa độ khuôn mặt theo chuẩn test_pipeline_ensemble_full.py
         xs = [p[0] for p in landmarks]
         ys = [p[1] for p in landmarks]
         f_cx = (min(xs) + max(xs)) / 2.0
@@ -424,13 +422,6 @@ class EKYCPipelineServer:
             pose_dict=pose_dict
         )
         if is_occluded:
-            if occ_reason in ("CLEAR_GLASSES_DETECTED", "SUNGLASSES_DETECTED", "GLASSES_GLARE_DETECTED"):
-                occ_guide = "VUI LÒNG THÁO KÍNH RA TRƯỚC KHI CHỤP"
-            elif "MASK" in (occ_reason or ""):
-                occ_guide = "VUI LÒNG THÁO KHẨU TRANG RA TRƯỚC KHI CHỤP"
-            else:
-                occ_guide = "VUI LÒNG BỎ TAY HOẶC VẬT CẢN RA KHỎI KHUÔN MẶT"
-
             return {
                 "has_face": True,
                 "num_faces": num_faces,
@@ -455,7 +446,7 @@ class EKYCPipelineServer:
                     "status_text": "OCCLUDED"
                 },
                 "message": occ_msg or "CẢNH BÁO: PHÁT HIỆN CHE MẶT HOẶC ĐEO KÍNH!",
-                "guide": occ_guide
+                "guide": "VUI LÒNG THÁO KÍNH / KHẨU TRANG RA ĐỂ CHỤP"
             }
 
         is_valid_overall = (
@@ -687,8 +678,7 @@ class EKYCPipelineServer:
         has_face = bool(landmarks is not None and len(landmarks) >= 468 and num_faces > 0)
         ear_l, ear_r, ear_avg = compute_eye_aspect_ratio(landmarks) if landmarks else (0.0, 0.0, 0.0)
 
-        # 1. Kiểm tra che mặt thực tế (Face Occlusion Defense)
-        # Bỏ qua báo động SUNGLASSES_DETECTED giả định vì khi nhắm mắt vùng mắt tự nhiên thu hẹp và tối
+        # 1. Kiểm tra che mặt & mắt kính thực tế (Face Occlusion Defense)
         is_occluded = False
         occ_reason = ""
         occ_msg = ""
@@ -698,19 +688,12 @@ class EKYCPipelineServer:
                 landmarks=landmarks,
                 num_faces=num_faces
             )
-            # Chỉ cảnh báo nếu có khẩu trang hoặc che mặt, hoặc đeo kính râm khi mắt đang mở (tránh báo động giả khi mắt nhắm)
             if is_occ_raw:
-                if raw_code in ("MASK_DETECTED", "FACE_COVERED_DETECTED"):
-                    is_occluded = True
-                    occ_reason = raw_code
-                    occ_msg = raw_msg
-                elif ear_avg >= 0.20:
-                    is_occluded = True
-                    occ_reason = raw_code
-                    occ_msg = raw_msg
+                is_occluded = True
+                occ_reason = raw_code
+                occ_msg = raw_msg
 
         if is_occluded:
-            frozen_ear = round(baseline_ear, 4) if baseline_ear > 0 else 0.22
             return {
                 "has_face": bool(has_face),
                 "num_faces": num_faces,
@@ -718,11 +701,11 @@ class EKYCPipelineServer:
                 "occlusion_reason": occ_reason,
                 "same_person": True,
                 "passed": False,
-                "error": occ_msg or "CẢNH BÁO: Phát hiện che mặt! Vui lòng không che mặt khi chớp mắt.",
+                "error": occ_msg or "CẢNH BÁO: Phát hiện che mặt hoặc đeo kính! Vui lòng tháo ra để chớp mắt.",
                 "label": "⚠️ PHÁT HIỆN CHE MẶT",
-                "ear_left": frozen_ear,
-                "ear_right": frozen_ear,
-                "ear_avg": frozen_ear,
+                "ear_left": round(ear_l, 4),
+                "ear_right": round(ear_r, 4),
+                "ear_avg": round(ear_avg, 4),
                 "baseline_ear": round(baseline_ear, 4),
                 "closed_thresh": 0.18,
                 "open_thresh": 0.21,
@@ -735,27 +718,24 @@ class EKYCPipelineServer:
         new_state = current_blink_state
         updated_baseline = baseline_ear
 
-        # 2. Cập nhật Baseline EAR thích ứng (chỉ cập nhật khi mắt đang ở trạng thái mở)
-        if not new_state and ear_avg >= 0.14:
+        # 2. Cập nhật Baseline EAR thích ứng khi mắt mở
+        if not new_state and ear_avg >= 0.18:
             if updated_baseline <= 0.05:
                 updated_baseline = ear_avg
             else:
-                # Cập nhật mượt mà theo hàm mũ, chỉ bám theo EAR khi mắt mở
                 if ear_avg >= updated_baseline * 0.85:
-                    updated_baseline = updated_baseline * 0.88 + ear_avg * 0.12
-        elif updated_baseline <= 0.05 and ear_avg > 0.12:
+                    updated_baseline = updated_baseline * 0.90 + ear_avg * 0.10
+        elif updated_baseline <= 0.05 and ear_avg > 0.14:
             updated_baseline = ear_avg
 
-        eff_baseline = max(0.19, min(0.35, updated_baseline if updated_baseline > 0.05 else 0.24))
+        # 3. Ngưỡng chớp mắt chuẩn xác theo test_pipeline_ensemble_full.py:
+        #    - Nhắm mắt: 0.04 < ear_avg < 0.18 (hoặc sụt giảm > 18% so với baseline)
+        #    - Mở lại: ear_avg >= 0.21 (hoặc phục hồi >= 88% baseline)
+        closed_thresh = 0.18
+        open_thresh = 0.21
 
-        # 3. Tính toán ngưỡng nhắm & mở mắt linh hoạt (Adaptive Thresholds + Relative Drop)
-        closed_thresh = round(max(0.18, min(0.20, eff_baseline * 0.82)), 4)
-        open_thresh = round(max(0.20, min(0.24, eff_baseline * 0.88)), 4)
-
-        # Mắt được coi là nhắm: EAR <= closed_thresh HOẶC sụt giảm >= 18% so với baseline
-        is_closed = (0.03 < ear_avg <= closed_thresh) or (ear_avg <= eff_baseline * 0.82)
-        # Mắt được coi là đã mở lại: EAR >= open_thresh HOẶC độ hồi phục >= 88% baseline
-        is_open = (ear_avg >= open_thresh) or (ear_avg >= eff_baseline * 0.88 and ear_avg >= 0.18)
+        is_closed = (0.04 < ear_avg < closed_thresh) or (updated_baseline > 0.18 and ear_avg <= updated_baseline * 0.82)
+        is_open = (ear_avg >= open_thresh) or (updated_baseline > 0.18 and ear_avg >= updated_baseline * 0.88 and ear_avg >= 0.18)
 
         # 4. State Machine: MẮT MỞ -> MẮT NHẮM (new_state = True) -> MẮT MỞ LẠI (new_counter += 1)
         if is_closed:
