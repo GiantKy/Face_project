@@ -1056,13 +1056,14 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
         # GIAI ĐOẠN 4: ACTIVE LIVENESS - HEAD MOVEMENT CHALLENGE (LIVE WEBCAM)
         # =====================================================================
         elif stage == PipelineStage.LIVE_HEAD_MOVEMENT:
-            # Chỉ nhận diện người trong khung oval, bỏ qua người bên ngoài
-            frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes)
+            # GIAI ĐOẠN QUAY ĐẦU: Phóng to oval ngang +25% để giữ trọn vẹn khuôn mặt khi quay
+            oval_axes_turn = (int(oval_axes[0] * 1.25), int(oval_axes[1] * 1.08))
+            frame_for_detect = get_oval_masked_frame(frame, oval_center, oval_axes_turn)
             landmarks_live = landmark_detector.detect(frame_for_detect)
             if landmarks_live and len(landmarks_live) >= 468:
                 xs = [p[0] for p in landmarks_live]
                 ys = [p[1] for p in landmarks_live]
-                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes, tolerance=1.15):
+                if not is_point_in_oval(((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), oval_center, oval_axes_turn, tolerance=1.20):
                     landmarks_live = None
 
             pose_dict_live = None
@@ -1084,12 +1085,12 @@ def main_pipeline_ensemble(cam_id=0, skip_liveness=False):
                 print(f"[LIVENESS 2: HEAD MOVEMENT] HẾT THỜI GIAN THỰC HIỆN -> FAIL!")
                 stage = PipelineStage.FINAL_DECISION
 
-            # KHUNG OVAL GIỮ NGUYÊN NGAY CẢ KHI THỰC HIỆN CÁC THỬ THÁCH
+            # KHUNG OVAL PHÓNG TO ĐỂ GIỮ TRỌN VẸN MẶT KHI QUAY
             hm_col = (0, 255, 127) if hm_status["passed"] else (0, 230, 255)
             display = draw_oval_face_guide(
                 display,
                 center=oval_center,
-                axes=oval_axes,
+                axes=oval_axes_turn,
                 is_aligned=True,
                 is_detected=(landmarks_live is not None),
                 color=hm_col

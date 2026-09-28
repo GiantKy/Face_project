@@ -42,6 +42,27 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     @keyframes slideLeft { 0% { transform: translateX(0); } 100% { transform: translateX(-6px); } }
     @keyframes slideRight { 0% { transform: translateX(0); } 100% { transform: translateX(6px); } }
 
+    /* HUD Oval Guide: Căn khuôn mặt trực quan & Tự động phóng to ở Giai đoạn 3 */
+    .stream-oval-wrapper { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 4; }
+    .stream-oval { width: 185px; height: 255px; border-radius: 50% / 46%; position: relative; border: 2.5px dashed #38bdf8; box-shadow: 0 0 22px rgba(56, 189, 248, 0.4), inset 0 0 15px rgba(56, 189, 248, 0.15); transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    .stream-oval.blink { border: 3px solid #10b981; box-shadow: 0 0 25px rgba(16, 185, 129, 0.55), inset 0 0 18px rgba(16, 185, 129, 0.2); animation: pulse 1.2s infinite; }
+    /* Giai đoạn 3: Phóng to oval ngang +25% để giữ trọn khuôn mặt khi quay */
+    .stream-oval.stage-turn { width: 255px !important; height: 275px !important; border-radius: 48% / 46% !important; border: 3px solid #f59e0b !important; box-shadow: 0 0 35px rgba(245, 158, 11, 0.65), inset 0 0 22px rgba(245, 158, 11, 0.25) !important; }
+    .stream-oval.stage-turn.turn-left { animation: slideLeft 1s infinite alternate; }
+    .stream-oval.stage-turn.turn-right { animation: slideRight 1s infinite alternate; }
+    .stream-oval.completed { border: 3.5px solid #10b981 !important; box-shadow: 0 0 35px rgba(16, 185, 129, 0.8) !important; }
+    .stream-radar-line { position: absolute; top: 0; left: 10%; right: 10%; height: 2px; background: linear-gradient(90deg, transparent, #38bdf8, transparent); box-shadow: 0 0 10px #38bdf8; animation: radarScan 2.2s ease-in-out infinite alternate; }
+    .stream-oval.blink .stream-radar-line { background: linear-gradient(90deg, transparent, #10b981, transparent); box-shadow: 0 0 12px #10b981; }
+    .stream-oval.stage-turn .stream-radar-line { background: linear-gradient(90deg, transparent, #fbbf24, transparent); box-shadow: 0 0 14px #f59e0b; }
+    @keyframes radarScan { 0% { top: 6%; opacity: 0.3; } 50% { opacity: 1; } 100% { top: 92%; opacity: 0.3; } }
+    .stream-oval-tick { position: absolute; background: #38bdf8; }
+    .stream-oval.blink .stream-oval-tick { background: #10b981; }
+    .stream-oval.stage-turn .stream-oval-tick { background: #f59e0b; }
+    .stream-oval-tick.tick-top { top: -6px; left: 50%; transform: translateX(-50%); width: 22px; height: 3px; border-radius: 2px; }
+    .stream-oval-tick.tick-bottom { bottom: -6px; left: 50%; transform: translateX(-50%); width: 22px; height: 3px; border-radius: 2px; }
+    .stream-oval-tick.tick-left { left: -6px; top: 50%; transform: translateY(-50%); width: 3px; height: 22px; border-radius: 2px; }
+    .stream-oval-tick.tick-right { right: -6px; top: 50%; transform: translateY(-50%); width: 3px; height: 22px; border-radius: 2px; }
+
     .step-hud { background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 12px; margin-bottom: 14px; text-align: left; }
     .step-title { font-size: 13px; font-weight: 700; color: #38bdf8; margin-bottom: 4px; display: flex; justify-content: space-between; }
     .step-desc { font-size: 12px; color: #cbd5e1; line-height: 1.4; }
@@ -77,6 +98,16 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       <span id="streamBadge" class="stream-badge">LIVE 30 FPS</span>
       <button class="stream-reload-btn" onclick="reloadStream()" title="Tải lại luồng Stream">🔄</button>
       <img id="camStream" src="" alt="Camera Live Stream" onerror="handleStreamError(this)">
+      <!-- HUD Oval Guide: Căn chỉnh khuôn mặt trực quan & Phóng to ở Giai đoạn 3 -->
+      <div class="stream-oval-wrapper">
+        <div class="stream-oval" id="streamOvalGuide">
+          <div class="stream-radar-line"></div>
+          <div class="stream-oval-tick tick-top"></div>
+          <div class="stream-oval-tick tick-bottom"></div>
+          <div class="stream-oval-tick tick-left"></div>
+          <div class="stream-oval-tick tick-right"></div>
+        </div>
+      </div>
       <div id="streamChallengeOverlay" class="stream-challenge-overlay">
         <span id="overlayIcon">👀</span>
         <span id="overlayText">NHÌN THẲNG VÀO CAMERA</span>
@@ -155,6 +186,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       const text = document.getElementById('overlayText');
       const box = document.getElementById('streamBox');
       const badge = document.getElementById('streamBadge');
+      const oval = document.getElementById('streamOvalGuide');
 
       if (step === 'start') {
         if (badge) badge.innerText = 'QVGA 320x240';
@@ -162,22 +194,26 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         text.innerText = 'NHÌN THẲNG VÀO CAMERA';
         overlay.className = 'stream-challenge-overlay';
         box.style.borderColor = '#38bdf8';
+        if (oval) oval.className = 'stream-oval';
       } else if (step === 'eye_blink') {
         if (badge) badge.innerText = 'QVGA 320x240 (HIGH FPS)';
         icon.innerText = '👁️';
         text.innerText = 'NHẮM MẮT LẠI RỒI MỞ RA';
         overlay.className = 'stream-challenge-overlay blink';
         box.style.borderColor = '#10b981';
+        if (oval) oval.className = 'stream-oval blink';
       } else if (step === 'head_movement') {
         if (badge) badge.innerText = 'CHALLENGE 320x240 (HIGH FPS)';
         if (action === 'TURN_LEFT') {
           icon.innerText = '⬅️';
           text.innerText = 'QUAY MẶT SANG BÊN TRÁI';
           overlay.className = 'stream-challenge-overlay turn-left';
+          if (oval) oval.className = 'stream-oval stage-turn turn-left';
         } else {
           icon.innerText = '➡️';
           text.innerText = 'QUAY MẶT SANG BÊN PHẢI';
           overlay.className = 'stream-challenge-overlay turn-right';
+          if (oval) oval.className = 'stream-oval stage-turn turn-right';
         }
         box.style.borderColor = '#f59e0b';
       } else if (step === 'completed') {
@@ -186,6 +222,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         text.innerText = 'XÁC THỰC THÀNH CÔNG (REAL)!';
         overlay.className = 'stream-challenge-overlay';
         box.style.borderColor = '#10b981';
+        if (oval) oval.className = 'stream-oval completed';
       }
     }
 

@@ -582,6 +582,20 @@
       box-shadow: 0 0 35px rgba(56, 189, 248, 0.5), inset 0 0 30px rgba(56, 189, 248, 0.2) !important;
     }
 
+    /* Giai đoạn 3: Phóng to oval ngang +25% để giữ trọn khuôn mặt khi quay đầu */
+    .face-guide-oval.stage-turn {
+      width: 275px !important;
+      height: 360px !important;
+      border-radius: 48% / 46% !important;
+      border: 3.5px solid #38bdf8 !important;
+      box-shadow: 0 0 40px rgba(56, 189, 248, 0.6), inset 0 0 25px rgba(56, 189, 248, 0.25) !important;
+    }
+
+    .bokeh-blur-overlay.stage-turn {
+      mask-image: radial-gradient(ellipse 138px 180px at center 50.5%, transparent 95%, black 100%) !important;
+      -webkit-mask-image: radial-gradient(ellipse 138px 180px at center 50.5%, transparent 95%, black 100%) !important;
+    }
+
     /* Scan Radar Laser */
     .radar-line {
       position: absolute;
@@ -3063,6 +3077,12 @@
       setStepStatus(3, 'active');
       currentState = APP_STATE.CHALLENGE_HEAD;
 
+      // PHÓNG TO OVAL ĐỂ GIỮ TRỌN KHUÔN MẶT KHI QUAY
+      const faceOval = document.getElementById('faceGuideOval');
+      if (faceOval) faceOval.classList.add('stage-turn');
+      const bokeh = document.getElementById('bokehBlurOverlay');
+      if (bokeh) bokeh.classList.add('stage-turn');
+
       // Gọi server lấy thử thách ngẫu nhiên mới
       try {
         const res = await fetch(`${API_BASE_URL}/api/v1/liveness/start-head`, {
@@ -3299,6 +3319,7 @@
       // Reset viền Oval hướng dẫn và feedback text
       const oval = document.getElementById('faceGuideOval');
       if (oval) oval.className = 'face-guide-oval';
+      document.getElementById('bokehBlurOverlay')?.classList.remove('stage-turn');
       const pill = document.getElementById('ovalFeedbackPill');
       if (pill) pill.className = 'oval-feedback-pill';
       const feedbackText = document.getElementById('ovalFeedbackText');
@@ -3369,6 +3390,8 @@
 
       hideChallengeHUD();
       document.getElementById('cancelChallengeBtn').style.display = 'none';
+      document.getElementById('faceGuideOval')?.classList.remove('stage-turn');
+      document.getElementById('bokehBlurOverlay')?.classList.remove('stage-turn');
 
       // Submit baseFrameBlob with actual liveness results
       if (!baseFrameBlob) {
