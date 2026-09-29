@@ -31,12 +31,12 @@ class FaceOcclusionDetector:
     def __init__(
         self,
         model_id: str = "glass-and-mask-q5de1/2",
-        api_key: str = "lGvF9eLaX4ZhhERgN5u2",
+        api_key: Optional[str] = None,
         conf_threshold: float = 0.55,
         strict_glasses: bool = STRICT_GLASSES_POLICY
     ):
         self.model_id = model_id
-        self.api_key = api_key
+        self.api_key = api_key if api_key is not None else os.environ.get("ROBOFLOW_API_KEY", "")
         self.conf_threshold = conf_threshold
         self.strict_glasses = strict_glasses
         self.ai_model = None

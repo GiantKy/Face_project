@@ -28,7 +28,7 @@ ANTI_SPOOF_YOLO4_MODEL_PATH = os.path.join(MODELS_DIR, "anti_spoof", "yolo", "yo
 
 # Model 2: RF-DETR Small — Roboflow Inference (Transformer)
 RFDETR_MODEL_ID = "k-thi-gia-s-workspace/face-spoof-detection-liika-owgrl-1-rfdetr-small-t1"
-RFDETR_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "ydUs8YBnVWjyjFFVvcpx")
+RFDETR_API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
 
 # Roboflow model cache — nằm trong server_module/models/roboflow/
 ROBOFLOW_CACHE_DIR = os.path.join(MODELS_DIR, "roboflow")
@@ -38,7 +38,7 @@ ENSEMBLE_CONF_THRESHOLD = 0.30       # Ngưỡng confidence tối thiểu cho m�
 ENSEMBLE_IOU_THRESHOLD = 0.40        # Ngưỡng IoU để ghép cặp detection giữa 2 model
 ENSEMBLE_W_YOLO = 0.5                # Trọng số YOLO trong Soft Voting
 ENSEMBLE_W_RFDETR = 0.5              # Trọng số RF-DETR trong Soft Voting
-ENSEMBLE_SPOOF_VETO_THRESHOLD = 0.68 # Ngưỡng Spoof Veto: nếu 1 model phát hiện SPOOF >= ngưỡng → VETO
+ENSEMBLE_SPOOF_VETO_THRESHOLD = 0.65 # Ngưỡng Spoof Veto: nếu 1 model phát hiện SPOOF >= ngưỡng → VETO
 
 # Thư mục lưu kết quả mặc định
 DEFAULT_DATA_RAW_DIR = os.path.join(PROJECT_ROOT, "data_raw")

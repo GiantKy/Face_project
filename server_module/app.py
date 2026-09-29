@@ -847,6 +847,10 @@ def trigger_esp32_relay(esp32_ip: str, timeout: float = 2.5) -> bool:
     if not esp32_ip:
         return False
     ip_clean = esp32_ip.strip()
+    if ip_clean in ("127.0.0.1", "localhost", "::1", "testclient") or ip_clean.startswith("http://127.0.0.1") or ip_clean.startswith("http://localhost"):
+        print(f"[ESP32 RELAY] Bỏ qua mở cửa: Địa chỉ '{ip_clean}' là máy chủ cục bộ (Loopback).")
+        return False
+
     if not ip_clean.startswith("http"):
         url = f"http://{ip_clean}/open"
     else:
@@ -1115,9 +1119,15 @@ async def esp32_challenge_step(
 
         # Tự động kích hoạt mở cửa ESP32 nếu approved
         if res.get("approved"):
-            target_esp_ip = request.headers.get("X-ESP32-IP") or (request.client.host if request.client else None)
+            explicit_ip = request.headers.get("X-ESP32-IP") or request.query_params.get("esp32_ip")
+            client_host = request.client.host if request.client else None
+            is_loopback = client_host in ("127.0.0.1", "localhost", "::1", "testclient")
+
+            target_esp_ip = explicit_ip or (client_host if not is_loopback else None)
             if target_esp_ip:
                 background_tasks.add_task(trigger_esp32_relay, target_esp_ip)
+            else:
+                print("[ESP32 RELAY] Bỏ qua kích hoạt mở cửa qua HTTP: Không có header X-ESP32-IP và Client là loopback/proxy.")
 
     return res
 

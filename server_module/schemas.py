@@ -4,7 +4,38 @@ Pydantic Schemas for E-KYC FastAPI Server.
 """
 
 from typing import List, Optional, Dict, Any
+from enum import Enum
 from pydantic import BaseModel, Field
+
+
+class ChallengeStep(str, Enum):
+    """Các giai đoạn trong quy trình thử thách liveness đa bước."""
+    FACE_DETECT = "face_detect"
+    EYE_BLINK = "eye_blink"
+    HEAD_MOVEMENT = "head_movement"
+    COMPLETED = "completed"
+
+
+class ChallengeAction(str, Enum):
+    """Hành động thử thách quay đầu ngẫu nhiên."""
+    TURN_LEFT = "TURN_LEFT"
+    TURN_RIGHT = "TURN_RIGHT"
+
+
+class VerificationVerdict(str, Enum):
+    """Kết luận thẩm định eKYC."""
+    REAL = "REAL"
+    SPOOF = "SPOOF"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    TIMEOUT_BLINK = "TIMEOUT_BLINK"
+    TIMEOUT_HEAD = "TIMEOUT_HEAD"
+    DISCARD_LACK_CONSENSUS = "DISCARD_LACK_CONSENSUS"
+    FACE_OCCLUDED = "FACE_OCCLUDED"
+    MULTI_FACES = "MULTI_FACES"
+    NO_FACE = "NO_FACE"
+    TOO_FAR = "TOO_FAR"
+    NOT_FRONTAL = "NOT_FRONTAL"
 
 
 # =============================================================================

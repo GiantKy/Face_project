@@ -627,3 +627,31 @@ def show_dual_window_result(
         return cv2.waitKey(0) & 0xFF
     return -1
 
+
+def extract_landmarks_with_fallback(
+    landmark_detector: Any,
+    raw_frame: np.ndarray,
+    proc_frame: Optional[np.ndarray] = None,
+    min_landmarks: int = 468
+) -> Optional[List[Tuple[int, int]]]:
+    """
+    Trích xuất khuôn mặt và 468/478 landmarks MediaPipe với cơ chế fallback thích nghi:
+    1. Dò trên ảnh tiền xử lý (proc_frame) nếu được cung cấp (tối ưu khi thiếu sáng/ngược sáng).
+    2. Fallback sang ảnh gốc tự nhiên (raw_frame) nếu ảnh tiền xử lý không bắt đủ landmarks.
+    """
+    if landmark_detector is None or raw_frame is None or raw_frame.size == 0:
+        return None
+    landmarks = None
+    if proc_frame is not None and proc_frame.size > 0:
+        try:
+            landmarks = landmark_detector.detect(proc_frame)
+        except Exception:
+            landmarks = None
+    if not landmarks or len(landmarks) < min_landmarks:
+        try:
+            landmarks = landmark_detector.detect(raw_frame)
+        except Exception:
+            landmarks = None
+    return landmarks if (landmarks and len(landmarks) >= min_landmarks) else None
+
+

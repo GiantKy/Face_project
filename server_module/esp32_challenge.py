@@ -31,7 +31,8 @@ try:
         is_face_in_oval,
         compute_eye_aspect_ratio,
         create_pipeline_result_dashboard,
-        create_side_by_side_result
+        create_side_by_side_result,
+        extract_landmarks_with_fallback
     )
     from server_module.components.pose_validation.utils import get_landmark_point
 except ImportError:
@@ -43,7 +44,8 @@ except ImportError:
         is_face_in_oval,
         compute_eye_aspect_ratio,
         create_pipeline_result_dashboard,
-        create_side_by_side_result
+        create_side_by_side_result,
+        extract_landmarks_with_fallback
     )
     from components.pose_validation.utils import get_landmark_point
 
@@ -369,9 +371,7 @@ class ESP32ChallengeManager:
         # Nếu YOLO bỏ sót do góc nghiêng hoặc ánh sáng, tận dụng MediaPipe Landmark Detector
         landmarks = None
         if not faces:
-            landmarks = pipeline.landmark_detector.detect(proc_frame)
-            if not landmarks or len(landmarks) < 468:
-                landmarks = pipeline.landmark_detector.detect(raw_frame)
+            landmarks = extract_landmarks_with_fallback(pipeline.landmark_detector, raw_frame, proc_frame)
             if landmarks and len(landmarks) >= 468:
                 xs = [p[0] for p in landmarks]
                 ys = [p[1] for p in landmarks]
@@ -461,9 +461,7 @@ class ESP32ChallengeManager:
 
         # 2. MediaPipe Landmarks & Pose Baseline
         if landmarks is None or len(landmarks) < 468:
-            landmarks = pipeline.landmark_detector.detect(proc_frame)
-            if not landmarks or len(landmarks) < 468:
-                landmarks = pipeline.landmark_detector.detect(raw_frame)
+            landmarks = extract_landmarks_with_fallback(pipeline.landmark_detector, raw_frame, proc_frame)
 
         if not landmarks or len(landmarks) < 468:
             captured_b64 = image_to_base64(raw_frame, quality=75)
@@ -695,6 +693,8 @@ class ESP32ChallengeManager:
             "is_real": True,
             "confidence": round(confidence, 4),
             "next_step": "eye_blink",
+            "target_head_action": chosen_action,
+            "head_prompt": prompt_text,
             "challenge_action": chosen_action,
             "action_prompt": prompt_text,
             "message": "Xác thực khuôn mặt thật thành công (REAL)! Tiếp theo: Chớp mắt tự nhiên.",
@@ -742,9 +742,7 @@ class ESP32ChallengeManager:
         proc_frame = preprocess_esp32_image(raw_frame)
 
         # Trích xuất Landmarks trên frame
-        landmarks = pipeline.landmark_detector.detect(proc_frame)
-        if not landmarks or len(landmarks) < 468:
-            landmarks = pipeline.landmark_detector.detect(raw_frame)
+        landmarks = extract_landmarks_with_fallback(pipeline.landmark_detector, raw_frame, proc_frame)
 
         if not landmarks or len(landmarks) < 468:
             return {
@@ -815,25 +813,44 @@ class ESP32ChallengeManager:
                 session.step_start_time = time.time()
             elapsed_step = time.time() - session.step_start_time
             if elapsed_step > 10.0:
+                # FAIL-FAST: Hết thời gian chớp mắt (10s) -> Dừng ngay lập tức, không chuyển sang quay đầu
                 session.eye_blink_passed = False
-                if "eye_blink" not in session.completed_steps:
-                    session.completed_steps.append("eye_blink")
-                session.current_step = "head_movement"
-                session.step_start_time = time.time()
+                reasons = ["Hết thời gian chớp mắt (10s) - Thất bại thử thách Liveness (Fail-Fast)."]
+                session.reasons = reasons
+                session.current_step = "completed"
+
+                side_by_side, dual_window_b64, report_data = self._generate_dual_window_report(
+                    session=session,
+                    approved=False,
+                    reasons=reasons
+                )
+
+                annotated_b64 = None
+                if session.frontal_frame is not None:
+                    annotated = session.frontal_frame.copy()
+                    if session.primary_face_bbox:
+                        bx = session.primary_face_bbox
+                        cv2.rectangle(annotated, (bx[0], bx[1]), (bx[2], bx[3]), (0, 0, 255), 2)
+                        cv2.putText(annotated, "TIMEOUT: BLINK FAILED", (bx[0], max(18, bx[1] - 8)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1, cv2.LINE_AA)
+                    annotated_b64 = image_to_base64(annotated, quality=75)
+
                 t_ms = (time.time() - t0) * 1000
+                del self.sessions[session_id]
+
                 return {
-                    "success": True,
+                    "success": False,
                     "session_id": session_id,
                     "step": "eye_blink",
                     "passed": False,
+                    "approved": False,
                     "timed_out": True,
-                    "next_step": "head_movement",
-                    "message": "Hết thời gian chớp mắt (10s). Chuyển tiếp sang thử thách quay đầu.",
-                    "challenge_action": session.target_head_action,
-                    "action_prompt": session.head_prompt,
-                    "target_head_action": session.target_head_action,
-                    "head_prompt": session.head_prompt,
-                    "blink_counter": session.blink_counter,
+                    "verdict": "TIMEOUT_BLINK",
+                    "message": "CẢNH BÁO: Hết thời gian chớp mắt (10s). Thất bại thử thách Liveness (Fail-Fast). Vui lòng thực hiện lại từ đầu.",
+                    "reasons": reasons,
+                    "captured_image_base64": annotated_b64,
+                    "dual_window_image_base64": dual_window_b64,
+                    "crop_face_base64": session.crop_face_base64,
                     "progress": 0.0,
                     "ear": {
                         "current": round(float(session.current_ear), 4),

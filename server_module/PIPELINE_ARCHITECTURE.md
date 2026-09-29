@@ -37,7 +37,7 @@ Hệ thống eKYC hoạt động theo mô hình tối ưu băng thông & tài ng
                                 ┌────────────────────────────────────┐
                                 │ BƯỚC 2: PUSH-IMAGE - EYE BLINK     │
                                 │ • ESP32 gửi frame mỗi ~200ms       │
-                                │ • EAR < 0.18 (nhắm), >= 0.22 (mở)  │
+                                │ • EAR < 0.18 (nhắm), >= 0.21 (mở)  │
                                 │ • Chu kỳ: Mở -> Nhắm -> Mở (1 lần) │
                                 └─────────────────┬──────────────────┘
                                                   │ (Chớp mắt ĐẠT)
@@ -45,7 +45,7 @@ Hệ thống eKYC hoạt động theo mô hình tối ưu băng thông & tài ng
                                 ┌────────────────────────────────────┐
                                 │ BƯỚC 3: PUSH-IMAGE - HEAD MOVEMENT │
                                 │ • Thử thách ngẫu nhiên TRÁI / PHẢI │
-                                │ • Delta Yaw >= 4.5° (hoặc >= 7.5°) │
+                                │ • Delta Yaw >= 3.0° (Yaw >= 3.5°)  │
                                 │ • Tích lũy >= 2 frame liên tiếp    │
                                 └─────────────────┬──────────────────┘
                                                   │ (Quay đầu ĐẠT)
@@ -94,8 +94,9 @@ Hệ thống eKYC hoạt động theo mô hình tối ưu băng thông & tài ng
   - Tính toán $EAR$ (Eye Aspect Ratio):
     $$EAR = \frac{||p_{160} - p_{144}|| + ||p_{158} - p_{153}||}{2 \cdot ||p_{33} - p_{133}||}$$
   - Máy trạng thái:
-    $$\text{MẮT MỞ } (EAR \ge 0.22) \longrightarrow \text{MẮT NHẮM } (EAR < 0.18 \text{ hoặc } \le 80\% \text{ baseline}) \longrightarrow \text{MẮT MỞ LẠI } (EAR \ge 0.22)$$
+    $$\text{MẮT MỞ } (EAR \ge 0.21 \text{ hoặc } \ge 88\% \text{ baseline}) \longrightarrow \text{MẮT NHẮM } (EAR < 0.18 \text{ hoặc } \le 82\% \text{ baseline}) \longrightarrow \text{MẮT MỞ LẠI } (EAR \ge 0.21)$$
   - Khi hoàn thành $\ge 1$ lần chớp mắt: Trả về `passed: True, next_step: 'head_movement'`, chuyển sang Bước 3.
+  - **Nguyên tắc Fail-Fast khi Timeout:** Nếu hết thời gian 10s mà chưa chớp mắt thành công, hệ thống lập tức dừng phiên (Fail-Fast), trả về từ chối `verdict: "TIMEOUT_BLINK"`, hủy session và **KHÔNG** chuyển sang Bước 3.
 
 ---
 
@@ -106,9 +107,9 @@ Hệ thống eKYC hoạt động theo mô hình tối ưu băng thông & tài ng
 - **Hành động yêu cầu:** Sinh ngẫu nhiên từ Bước 1 (`TURN_LEFT` hoặc `TURN_RIGHT`).
 - **Tiêu chuẩn tham chiếu (`test_pipeline_ensemble_full.py`):**
   - Tính toán độ lệch góc: $\Delta \text{Yaw} = \text{Yaw}_{\text{hiện tại}} - \text{Yaw}_{\text{baseline}}$.
-  - Điều kiện đạt:
-    + `TURN_LEFT`: $\Delta \text{Yaw} \ge +4.5^\circ$ hoặc $\text{Yaw}_{\text{hiện tại}} \ge +7.5^\circ$.
-    + `TURN_RIGHT`: $\Delta \text{Yaw} \le -4.5^\circ$ hoặc $\text{Yaw}_{\text{hiện tại}} \le -7.5^\circ$.
+  - Điều kiện đạt (tối ưu hóa nhạy cho cảm biến góc rộng ESP32-CAM):
+    + `TURN_LEFT`: $\Delta \text{Yaw} \ge +3.0^\circ$ hoặc $\text{Yaw}_{\text{hiện tại}} \ge +3.5^\circ$.
+    + `TURN_RIGHT`: $\Delta \text{Yaw} \le -3.0^\circ$ hoặc $\text{Yaw}_{\text{hiện tại}} \le -3.5^\circ$.
   - Tích lũy $\ge 2$ frame liên tiếp đạt chuẩn để xác nhận (`consecutive_turn_frames >= 2`).
   - **Lưu ý:** Không cần chạy lại Anti-Spoof ở bước này vì đã xác thực ở Bước 1.
 
@@ -127,7 +128,7 @@ Khi Bước 3 hoàn thành (`step == "completed"` và `approved == True`):
 
 | Method | Endpoint | Mô tả | Đầu vào | Đầu ra chính |
 | :--- | :--- | :--- | :--- | :--- |
-| `POST` | `/api/v1/esp32/challenge/start` | **BƯỚC 1:** Tiếp nhận 1 ảnh snapshot, chạy Face Detect & Ensemble Anti-Spoof (Fail-Fast) | Binary JPEG / Multipart | `session_id`, `is_real`, `target_head_action`, `head_prompt`, `captured_image_base64` |
+| `POST` | `/api/v1/esp32/challenge/start` | **BƯỚC 1:** Tiếp nhận 1 ảnh snapshot, chạy Face Detect & Ensemble Anti-Spoof (Fail-Fast) | Binary JPEG / Multipart | `session_id`, `is_real`, `target_head_action`, `head_prompt`, `challenge_action`, `action_prompt`, `captured_image_base64` |
 | `POST` | `/api/v1/esp32/challenge/step` | **BƯỚC 2 & 3:** ESP32 push từng frame kiểm tra chớp mắt (`eye_blink`) và quay đầu (`head_movement`). Tự kích hoạt relay + webhook khi hoàn thành | Binary JPEG / JSON `image_base64` | `passed`, `step`, `next_step`, `progress`, `approved`, `ear`, `delta` |
 | `POST` | `/api/v1/esp32/challenge/reset` | Hủy phiên thử thách hiện tại khi timeout hoặc người dùng hủy | JSON `{ "session_id" }` | `success`, `message` |
 | `POST` | `/api/v1/esp32/verify` | Chụp 1 ảnh duy nhất (Single-shot không qua thử thách động) | Binary JPEG / Multipart | `approved`, `is_real`, `captured_image_base64` |
