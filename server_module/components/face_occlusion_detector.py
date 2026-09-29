@@ -73,28 +73,14 @@ class FaceOcclusionDetector:
         num_faces: int = 1,
         yolo_faces: Optional[List[Dict[str, Any]]] = None,
         pose_dict: Optional[Dict[str, float]] = None,
-        force_fresh: bool = False
+        force_fresh: bool = False,
+        oval_center: Optional[Tuple[int, int]] = None,
+        oval_axes: Optional[Tuple[int, int]] = None,
+        filter_oval: bool = True
     ) -> Tuple[bool, str, str]:
         """
         Kiểm tra khuôn mặt có đang đeo kính mắt hoặc đeo khẩu trang hay không bằng mô hình AI.
-        Tối ưu tốc độ cao (~25ms) và khử trễ tối đa:
-        - Tự động downscale ảnh về max dimension 416 để tăng tốc inference gấp 2.5 lần.
-        - Cache kết quả 150ms tránh nghẽn threadpool khi client gửi frame liên tục.
-        - Hồi phục tức thì (0ms lag) ngay khi người dùng tháo kính/khẩu trang ra.
-
-        Args:
-            frame: Ảnh BGR gốc.
-            landmarks: Danh sách tọa độ pixel (x, y) của landmarks (tùy chọn).
-            num_faces: Số lượng khuôn mặt đếm được từ detector.
-            yolo_faces: Danh sách kết quả từ YOLO Face Detector (nếu có).
-            pose_dict: Góc quay 3D Euler (yaw, pitch, roll).
-            force_fresh: Bắt buộc chạy inference mới, không dùng cache.
-
-        Returns:
-            Tuple[is_occluded, reason_code, message]
-            - is_occluded: True nếu phát hiện đeo kính hoặc khẩu trang, False nếu mặt thông thoáng.
-            - reason_code: Mã kỹ thuật (GLASS_DETECTED, MASK_DETECTED, OK).
-            - message: Thông báo cảnh báo hướng dẫn người dùng.
+        Hỗ trợ lọc oval: chỉ kiểm tra khuôn mặt nằm trong khung oval, bỏ qua các mặt ngoài oval.
         """
         if frame is None or frame.size == 0:
             return True, "EMPTY_FRAME", "Không nhận được khung hình camera"
@@ -116,6 +102,7 @@ class FaceOcclusionDetector:
                 # Tối ưu kích thước ảnh đầu vào để giảm thiểu độ trễ tối đa
                 h, w = frame.shape[:2]
                 max_dim = max(h, w)
+                scale = 1.0
                 if max_dim > 416:
                     scale = 416.0 / max_dim
                     infer_frame = cv2.resize(frame, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LINEAR)
@@ -129,10 +116,26 @@ class FaceOcclusionDetector:
                 elif hasattr(preds, "predictions"):
                     pred_list = preds.predictions
 
-                glass_confs = [float(getattr(p, "confidence", 0.0)) for p in pred_list if str(getattr(p, "class_name", "")).lower().strip() == "glass"]
-                no_glass_confs = [float(getattr(p, "confidence", 0.0)) for p in pred_list if str(getattr(p, "class_name", "")).lower().strip() == "no_glass"]
-                mask_confs = [float(getattr(p, "confidence", 0.0)) for p in pred_list if str(getattr(p, "class_name", "")).lower().strip() == "mask"]
-                no_mask_confs = [float(getattr(p, "confidence", 0.0)) for p in pred_list if str(getattr(p, "class_name", "")).lower().strip() == "no_mask"]
+                # Lọc không gian nếu có oval: chỉ xét detection nằm trong khung oval
+                valid_preds = []
+                for p in pred_list:
+                    if filter_oval and oval_center is not None and oval_axes is not None:
+                        cx, cy = oval_center
+                        ax, ay = oval_axes
+                        scale_factor = scale if (max_dim > 416 and scale > 0) else 1.0
+                        px = float(getattr(p, "x", 0.0)) / scale_factor
+                        py = float(getattr(p, "y", 0.0)) / scale_factor
+                        if ax > 0 and ay > 0 and (px > 0 or py > 0):
+                            norm_x = (px - cx) / float(ax * 1.25)
+                            norm_y = (py - cy) / float(ay * 1.25)
+                            if (norm_x ** 2 + norm_y ** 2) > 1.0:
+                                continue  # Bỏ qua detection ở ngoài vùng oval khuôn mặt
+                    valid_preds.append(p)
+
+                glass_confs = [float(getattr(p, "confidence", 0.0)) for p in valid_preds if str(getattr(p, "class_name", "")).lower().strip() == "glass"]
+                no_glass_confs = [float(getattr(p, "confidence", 0.0)) for p in valid_preds if str(getattr(p, "class_name", "")).lower().strip() == "no_glass"]
+                mask_confs = [float(getattr(p, "confidence", 0.0)) for p in valid_preds if str(getattr(p, "class_name", "")).lower().strip() == "mask"]
+                no_mask_confs = [float(getattr(p, "confidence", 0.0)) for p in valid_preds if str(getattr(p, "class_name", "")).lower().strip() == "no_mask"]
 
                 max_glass = max(glass_confs, default=0.0)
                 max_no_glass = max(no_glass_confs, default=0.0)

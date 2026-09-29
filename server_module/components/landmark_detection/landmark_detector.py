@@ -24,6 +24,38 @@ cand_landmark_old = os.path.join(BASE_DIR, "models", "face_landmarker.task")
 MODEL_PATH = cand_landmark_new if os.path.exists(cand_landmark_new) else cand_landmark_old
 
 
+import math
+
+def _get_default_oval_params_local(w: int, h: int):
+    cx = w // 2
+    cy = int(h * 0.505)
+    ay = int(h * 0.38)
+    ax = int(ay * 0.65)
+    return (cx, cy), (ax, ay)
+
+def _is_landmarks_in_oval_local(landmarks, w, h, center, axes, tolerance=1.10):
+    if not landmarks or not center or not axes:
+        return False
+    cx, cy = center
+    ax, ay = axes
+    if ax <= 0 or ay <= 0:
+        return False
+    xs = [lm.x * w if hasattr(lm, "x") else lm[0] for lm in landmarks]
+    ys = [lm.y * h if hasattr(lm, "y") else lm[1] for lm in landmarks]
+    fcx = (min(xs) + max(xs)) / 2.0
+    fcy = (min(ys) + max(ys)) / 2.0
+    norm_x = (float(fcx) - cx) / float(ax * tolerance)
+    norm_y = (float(fcy) - cy) / float(ay * tolerance)
+    return (norm_x ** 2 + norm_y ** 2) <= 1.0
+
+def _face_distance_to_oval_center_local(flm, w, h, center):
+    xs = [lm.x * w if hasattr(lm, "x") else lm[0] for lm in flm]
+    ys = [lm.y * h if hasattr(lm, "y") else lm[1] for lm in flm]
+    fcx = (min(xs) + max(xs)) / 2.0
+    fcy = (min(ys) + max(ys)) / 2.0
+    return math.hypot(fcx - center[0], fcy - center[1])
+
+
 class LandmarkDetector:
 
     def __init__(self):
@@ -41,8 +73,12 @@ class LandmarkDetector:
 
         self.landmarker = FaceLandmarker.create_from_options(options)
 
-    def detect(self, frame):
-
+    def detect(self, frame, oval_center=None, oval_axes=None, filter_oval=True):
+        """
+        Trích xuất landmarks khuôn mặt chính.
+        Nếu filter_oval=True và có nhiều khuôn mặt, ưu tiên khuôn mặt nằm trong khung oval
+        và bỏ qua các khuôn mặt ở ngoài oval.
+        """
         rgb = cv2.cvtColor(
             frame,
             cv2.COLOR_BGR2RGB
@@ -58,36 +94,125 @@ class LandmarkDetector:
         landmarks = []
         if result.face_landmarks:
             h, w, _ = frame.shape
-            for lm in result.face_landmarks[0]:
+            all_faces = result.face_landmarks
+            if filter_oval and len(all_faces) > 1:
+                if oval_center is None or oval_axes is None:
+                    oval_center, oval_axes = _get_default_oval_params_local(w, h)
+                faces_in_oval = [
+                    flm for flm in all_faces
+                    if _is_landmarks_in_oval_local(flm, w, h, oval_center, oval_axes, tolerance=1.12)
+                ]
+                if faces_in_oval:
+                    chosen_face = min(
+                        faces_in_oval,
+                        key=lambda flm: _face_distance_to_oval_center_local(flm, w, h, oval_center)
+                    )
+                else:
+                    chosen_face = min(
+                        all_faces,
+                        key=lambda flm: _face_distance_to_oval_center_local(flm, w, h, oval_center)
+                    )
+            else:
+                chosen_face = all_faces[0]
+
+            for lm in chosen_face:
                 x = int(lm.x * w)
                 y = int(lm.y * h)
                 landmarks.append((x, y))
 
         return landmarks
 
-    def detect_with_count(self, frame):
-        """Trả về tuple: (landmarks_mặt_chính, số_lượng_khuôn_mặt)."""
+    def detect_with_count(self, frame, oval_center=None, oval_axes=None, filter_oval=True, oval_tolerance=1.10):
+        """
+        Trả về tuple: (landmarks_mặt_chính, số_lượng_khuôn_mặt).
+        Nếu filter_oval=True:
+        - Chỉ nhận khuôn mặt nằm trong khung oval và bỏ đi các mặt ngoài oval.
+        - Nếu có 1 mặt trong oval và các mặt khác ngoài oval -> num_faces = 1, landmarks = mặt trong oval.
+        - Nếu có >= 2 mặt cùng trong oval -> num_faces = số mặt trong oval.
+        - Nếu không có mặt nào trong oval -> num_faces = tổng số mặt tìm thấy.
+        """
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = self.landmarker.detect(mp_image)
 
-        num_faces = len(result.face_landmarks) if result.face_landmarks else 0
+        if not result.face_landmarks:
+            return [], 0
+
+        h, w = frame.shape[:2]
+        all_faces = result.face_landmarks
+
+        if filter_oval:
+            if oval_center is None or oval_axes is None:
+                oval_center, oval_axes = _get_default_oval_params_local(w, h)
+
+            faces_in_oval = [
+                flm for flm in all_faces
+                if _is_landmarks_in_oval_local(flm, w, h, oval_center, oval_axes, tolerance=oval_tolerance)
+            ]
+
+            if faces_in_oval:
+                # Bỏ đi các mặt ngoài oval, chỉ nhận mặt trong oval
+                num_faces = len(faces_in_oval)
+                chosen_face = min(
+                    faces_in_oval,
+                    key=lambda flm: _face_distance_to_oval_center_local(flm, w, h, oval_center)
+                )
+            else:
+                num_faces = len(all_faces)
+                chosen_face = min(
+                    all_faces,
+                    key=lambda flm: _face_distance_to_oval_center_local(flm, w, h, oval_center)
+                )
+        else:
+            num_faces = len(all_faces)
+            chosen_face = all_faces[0]
+
         landmarks = []
-        if num_faces > 0:
-            h, w, _ = frame.shape
-            for lm in result.face_landmarks[0]:
-                x = int(lm.x * w)
-                y = int(lm.y * h)
-                landmarks.append((x, y))
+        for lm in chosen_face:
+            x = int(lm.x * w)
+            y = int(lm.y * h)
+            landmarks.append((x, y))
 
         return landmarks, num_faces
 
-    def detect_raw_3d(self, frame):
-        """Trả về tuple: (landmarks_3d_mặt_chính, số_lượng_khuôn_mặt)."""
+    def detect_raw_3d(self, frame, oval_center=None, oval_axes=None, filter_oval=True, oval_tolerance=1.10):
+        """
+        Trả về tuple: (landmarks_3d_mặt_chính, số_lượng_khuôn_mặt).
+        Nếu filter_oval=True: chỉ nhận mặt trong oval và bỏ qua các mặt ngoài oval.
+        """
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = self.landmarker.detect(mp_image)
 
-        num_faces = len(result.face_landmarks) if result.face_landmarks else 0
-        landmarks_3d = result.face_landmarks[0] if num_faces > 0 else []
-        return landmarks_3d, num_faces
+        if not result.face_landmarks:
+            return [], 0
+
+        h, w = frame.shape[:2]
+        all_faces = result.face_landmarks
+
+        if filter_oval:
+            if oval_center is None or oval_axes is None:
+                oval_center, oval_axes = _get_default_oval_params_local(w, h)
+
+            faces_in_oval = [
+                flm for flm in all_faces
+                if _is_landmarks_in_oval_local(flm, w, h, oval_center, oval_axes, tolerance=oval_tolerance)
+            ]
+
+            if faces_in_oval:
+                num_faces = len(faces_in_oval)
+                chosen_face = min(
+                    faces_in_oval,
+                    key=lambda flm: _face_distance_to_oval_center_local(flm, w, h, oval_center)
+                )
+            else:
+                num_faces = len(all_faces)
+                chosen_face = min(
+                    all_faces,
+                    key=lambda flm: _face_distance_to_oval_center_local(flm, w, h, oval_center)
+                )
+        else:
+            num_faces = len(all_faces)
+            chosen_face = all_faces[0]
+
+        return chosen_face, num_faces

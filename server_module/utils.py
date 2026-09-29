@@ -165,6 +165,83 @@ def is_face_in_oval(bbox: Union[List[int], Tuple[int, ...]], center: Tuple[int, 
     return is_point_in_oval((face_cx, face_cy), center, axes, tolerance=tolerance)
 
 
+def is_landmarks_in_oval(
+    landmarks: Union[List[Tuple[int, int]], List[Any]],
+    img_w: int,
+    img_h: int,
+    center: Optional[Tuple[int, int]] = None,
+    axes: Optional[Tuple[int, int]] = None,
+    tolerance: float = 1.08
+) -> bool:
+    """
+    Kiểm tra tâm khuôn mặt từ landmarks (pixel hoặc normalized) có nằm trong khung oval hay không.
+    """
+    if not landmarks:
+        return False
+    if center is None or axes is None:
+        center, axes = get_default_oval_params(img_w, img_h)
+
+    xs = []
+    ys = []
+    for lm in landmarks:
+        if hasattr(lm, "x") and hasattr(lm, "y"):
+            xs.append(lm.x * img_w)
+            ys.append(lm.y * img_h)
+        elif isinstance(lm, (tuple, list)) and len(lm) >= 2:
+            if 0.0 <= lm[0] <= 1.0 and 0.0 <= lm[1] <= 1.0 and img_w > 1 and img_h > 1:
+                xs.append(lm[0] * img_w)
+                ys.append(lm[1] * img_h)
+            else:
+                xs.append(float(lm[0]))
+                ys.append(float(lm[1]))
+
+    if not xs or not ys:
+        return False
+
+    face_cx = (min(xs) + max(xs)) / 2.0
+    face_cy = (min(ys) + max(ys)) / 2.0
+    return is_point_in_oval((face_cx, face_cy), center, axes, tolerance=tolerance)
+
+
+def filter_faces_in_oval(
+    faces: List[Dict[str, Any]],
+    center: Optional[Tuple[int, int]] = None,
+    axes: Optional[Tuple[int, int]] = None,
+    img_w: int = 640,
+    img_h: int = 480,
+    tolerance: float = 1.08,
+    return_split: bool = False,
+    oval_center: Optional[Tuple[int, int]] = None,
+    oval_axes: Optional[Tuple[int, int]] = None
+) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]]:
+    """
+    Lọc danh sách khuôn mặt theo khung oval:
+    - Nếu return_split=True: trả về tuple (faces_in_oval, faces_outside_oval).
+    - Nếu return_split=False (mặc định):
+      + Nếu có ít nhất 1 khuôn mặt trong oval: loại bỏ các khuôn mặt ngoài oval, chỉ trả về các mặt trong oval.
+      + Nếu không có khuôn mặt nào trong oval: giữ nguyên danh sách ban đầu (để hệ thống có thể hướng dẫn đưa mặt vào oval).
+    """
+    if center is None:
+        center = oval_center
+    if axes is None:
+        axes = oval_axes
+    if center is None or axes is None:
+        center, axes = get_default_oval_params(img_w, img_h)
+    in_oval = []
+    out_oval = []
+    for f in faces:
+        bbox = f.get("bbox") if isinstance(f, dict) else f
+        if bbox is not None and is_face_in_oval(bbox, center, axes, tolerance=tolerance):
+            in_oval.append(f)
+        else:
+            out_oval.append(f)
+
+    if return_split:
+        return in_oval, out_oval
+
+    return in_oval if in_oval else faces
+
+
 def get_oval_masked_frame(
     frame: np.ndarray,
     center: Optional[Tuple[int, int]] = None,
@@ -632,26 +709,45 @@ def extract_landmarks_with_fallback(
     landmark_detector: Any,
     raw_frame: np.ndarray,
     proc_frame: Optional[np.ndarray] = None,
-    min_landmarks: int = 468
+    min_landmarks: int = 468,
+    oval_center: Optional[Tuple[int, int]] = None,
+    oval_axes: Optional[Tuple[int, int]] = None,
+    filter_oval: bool = True
 ) -> Optional[List[Tuple[int, int]]]:
     """
     Trích xuất khuôn mặt và 468/478 landmarks MediaPipe với cơ chế fallback thích nghi:
     1. Dò trên ảnh tiền xử lý (proc_frame) nếu được cung cấp (tối ưu khi thiếu sáng/ngược sáng).
     2. Fallback sang ảnh gốc tự nhiên (raw_frame) nếu ảnh tiền xử lý không bắt đủ landmarks.
+    Hỗ trợ lọc oval để ưu tiên khuôn mặt trong khung oval khi có nhiều người.
     """
     if landmark_detector is None or raw_frame is None or raw_frame.size == 0:
         return None
     landmarks = None
     if proc_frame is not None and proc_frame.size > 0:
         try:
+            landmarks = landmark_detector.detect(
+                proc_frame,
+                oval_center=oval_center,
+                oval_axes=oval_axes,
+                filter_oval=filter_oval
+            )
+        except TypeError:
             landmarks = landmark_detector.detect(proc_frame)
         except Exception:
             landmarks = None
     if not landmarks or len(landmarks) < min_landmarks:
         try:
+            landmarks = landmark_detector.detect(
+                raw_frame,
+                oval_center=oval_center,
+                oval_axes=oval_axes,
+                filter_oval=filter_oval
+            )
+        except TypeError:
             landmarks = landmark_detector.detect(raw_frame)
         except Exception:
             landmarks = None
     return landmarks if (landmarks and len(landmarks) >= min_landmarks) else None
+
 
 

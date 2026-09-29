@@ -29,6 +29,7 @@ try:
         calculate_iou,
         get_default_oval_params,
         is_face_in_oval,
+        filter_faces_in_oval,
         compute_eye_aspect_ratio,
         create_pipeline_result_dashboard,
         create_side_by_side_result,
@@ -42,6 +43,7 @@ except ImportError:
         calculate_iou,
         get_default_oval_params,
         is_face_in_oval,
+        filter_faces_in_oval,
         compute_eye_aspect_ratio,
         create_pipeline_result_dashboard,
         create_side_by_side_result,
@@ -62,6 +64,9 @@ def preprocess_esp32_image(frame: np.ndarray, apply_clahe: bool = True, sharpen:
     """
     if frame is None or frame.size == 0:
         return frame
+
+    # 0. Xoay ảnh 90° sang trái (COUNTERCLOCKWISE) để sửa hướng camera ESP32
+    frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
     enhanced = frame.copy()
 
@@ -334,10 +339,15 @@ class ESP32ChallengeManager:
         raw_frame = load_image(image_input)
         raw_frame = cv2.flip(raw_frame, 1)  # Đồng bộ hướng gương chuẩn như webcam (test_pipeline_ensemble_full.py)
         h, w = raw_frame.shape[:2]
+        oval_center, oval_axes = get_default_oval_params(w, h)
 
         # 0. Kiểm tra số lượng người nghiêm ngặt (Single Person Strict Enforcement)
+        # Chỉ nhận mặt trong khung oval, bỏ qua các mặt ngoài oval
         if hasattr(pipeline, "identity_verifier") and pipeline.identity_verifier is not None:
-            num_faces, is_single = pipeline.identity_verifier.count_faces(raw_frame, pipeline.detector)
+            num_faces, is_single = pipeline.identity_verifier.count_faces(
+                raw_frame, pipeline.detector,
+                oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+            )
             if num_faces > 1:
                 captured_b64 = image_to_base64(raw_frame, quality=75)
                 return {
@@ -367,11 +377,18 @@ class ESP32ChallengeManager:
             # Tầng 3: Dò với conf nhạy hơn 0.18
             faces = pipeline.detector.detect(raw_frame, conf=0.18, min_size=18)
 
+        # Lọc bỏ các mặt ngoài oval nếu có ít nhất 1 mặt trong oval
+        if faces:
+            faces = filter_faces_in_oval(faces, oval_center=oval_center, oval_axes=oval_axes)
+
         # Tầng 4 (MediaPipe BlazeFace Fallback):
         # Nếu YOLO bỏ sót do góc nghiêng hoặc ánh sáng, tận dụng MediaPipe Landmark Detector
         landmarks = None
         if not faces:
-            landmarks = extract_landmarks_with_fallback(pipeline.landmark_detector, raw_frame, proc_frame)
+            landmarks = extract_landmarks_with_fallback(
+                pipeline.landmark_detector, raw_frame, proc_frame,
+                oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+            )
             if landmarks and len(landmarks) >= 468:
                 xs = [p[0] for p in landmarks]
                 ys = [p[1] for p in landmarks]
@@ -461,7 +478,10 @@ class ESP32ChallengeManager:
 
         # 2. MediaPipe Landmarks & Pose Baseline
         if landmarks is None or len(landmarks) < 468:
-            landmarks = extract_landmarks_with_fallback(pipeline.landmark_detector, raw_frame, proc_frame)
+            landmarks = extract_landmarks_with_fallback(
+                pipeline.landmark_detector, raw_frame, proc_frame,
+                oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+            )
 
         if not landmarks or len(landmarks) < 468:
             captured_b64 = image_to_base64(raw_frame, quality=75)
@@ -483,7 +503,10 @@ class ESP32ChallengeManager:
             is_occ, occ_code, occ_msg = pipeline.occlusion_detector.check_occlusion(
                 frame=raw_frame,
                 landmarks=landmarks,
-                num_faces=num_faces
+                num_faces=num_faces,
+                oval_center=oval_center,
+                oval_axes=oval_axes,
+                filter_oval=True
             )
             if is_occ:
                 captured_b64 = image_to_base64(raw_frame, quality=75)
@@ -676,7 +699,9 @@ class ESP32ChallengeManager:
         session.target_angle_threshold = target_thresh
 
         if hasattr(pipeline, "identity_verifier") and pipeline.identity_verifier is not None:
-            session.base_descriptor = pipeline.identity_verifier.extract_descriptor(raw_frame)
+            session.base_descriptor = pipeline.identity_verifier.extract_descriptor(
+                raw_frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+            )
 
         self.sessions[session_id] = session
 
@@ -741,8 +766,17 @@ class ESP32ChallengeManager:
         h, w = raw_frame.shape[:2]
         proc_frame = preprocess_esp32_image(raw_frame)
 
-        # Trích xuất Landmarks trên frame
-        landmarks = extract_landmarks_with_fallback(pipeline.landmark_detector, raw_frame, proc_frame)
+        oval_center, oval_axes = get_default_oval_params(w, h)
+        if target_step == "head_movement":
+            step_oval_axes = (int(oval_axes[0] * 1.25), oval_axes[1])
+        else:
+            step_oval_axes = oval_axes
+
+        # Trích xuất Landmarks trên frame (ưu tiên khuôn mặt trong oval)
+        landmarks = extract_landmarks_with_fallback(
+            pipeline.landmark_detector, raw_frame, proc_frame,
+            oval_center=oval_center, oval_axes=step_oval_axes, filter_oval=True
+        )
 
         if not landmarks or len(landmarks) < 468:
             return {
@@ -755,8 +789,12 @@ class ESP32ChallengeManager:
             }
 
         # Kiểm tra nhiều người trong khung hình & kiểm tra tráo đổi người (Face Continuity Defense)
+        # Chỉ nhận mặt trong oval, bỏ qua các mặt ngoài oval
         if hasattr(pipeline, "identity_verifier") and pipeline.identity_verifier is not None:
-            num_faces, is_single = pipeline.identity_verifier.count_faces(raw_frame, pipeline.detector)
+            num_faces, is_single = pipeline.identity_verifier.count_faces(
+                raw_frame, pipeline.detector,
+                oval_center=oval_center, oval_axes=step_oval_axes, filter_oval=True
+            )
             if num_faces > 1:
                 return {
                     "success": False,
@@ -768,7 +806,10 @@ class ESP32ChallengeManager:
                     "reasons": ["MULTI_FACES_DETECTED"]
                 }
             if getattr(session, "base_descriptor", None) is not None:
-                cand_desc = pipeline.identity_verifier.extract_descriptor(raw_frame)
+                cand_desc = pipeline.identity_verifier.extract_descriptor(
+                    raw_frame,
+                    oval_center=oval_center, oval_axes=step_oval_axes, filter_oval=True
+                )
                 if cand_desc is not None:
                     is_same, score, details = pipeline.identity_verifier.verify_identity(session.base_descriptor, cand_desc)
                     if not is_same:
@@ -788,7 +829,10 @@ class ESP32ChallengeManager:
             is_occ, occ_code, occ_msg = pipeline.occlusion_detector.check_occlusion(
                 frame=raw_frame,
                 landmarks=landmarks,
-                num_faces=num_faces
+                num_faces=num_faces,
+                oval_center=oval_center,
+                oval_axes=step_oval_axes,
+                filter_oval=True
             )
             if is_occ:
                 return {
@@ -1011,7 +1055,10 @@ class ESP32ChallengeManager:
                     is_occ_final, occ_code_final, occ_msg_final = pipeline.occlusion_detector.check_occlusion(
                         frame=raw_frame,
                         landmarks=landmarks,
-                        num_faces=num_faces
+                        num_faces=num_faces,
+                        oval_center=oval_center,
+                        oval_axes=oval_axes,
+                        filter_oval=True
                     )
                     if is_occ_final:
                         reasons.append(occ_msg_final or f"Phat hien deo kinh hoac che mat tai frame ket thuc ({occ_code_final})")
