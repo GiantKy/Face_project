@@ -397,7 +397,7 @@
     .capture-box {
       position: relative;
       width: 100%;
-      height: 560px;
+      height: 440px;
       background: #090d16;
       border-radius: 16px;
       overflow: hidden;
@@ -433,8 +433,8 @@
       pointer-events: none;
       backdrop-filter: blur(14px) brightness(0.42);
       -webkit-backdrop-filter: blur(14px) brightness(0.42);
-      mask-image: radial-gradient(ellipse 95px 145px at center 50.5%, transparent 95%, black 100%);
-      -webkit-mask-image: radial-gradient(ellipse 95px 145px at center 50.5%, transparent 95%, black 100%);
+      mask-image: radial-gradient(ellipse 110px 170px at center 50.5%, transparent 95%, black 100%);
+      -webkit-mask-image: radial-gradient(ellipse 110px 170px at center 50.5%, transparent 95%, black 100%);
       transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
       display: none;
       z-index: 5;
@@ -538,8 +538,8 @@
     }
 
     .face-guide-oval {
-      width: 190px;
-      height: 290px;
+      width: 220px;
+      height: 340px;
       border-radius: 50% / 46%;
       position: relative;
       transition: all 0.35s ease;
@@ -584,16 +584,16 @@
 
     /* Giai đoạn 3: Phóng to oval ngang +25% để giữ trọn khuôn mặt khi quay đầu */
     .face-guide-oval.stage-turn {
-      width: 240px !important;
-      height: 310px !important;
+      width: 275px !important;
+      height: 360px !important;
       border-radius: 48% / 46% !important;
       border: 3.5px solid #38bdf8 !important;
       box-shadow: 0 0 40px rgba(56, 189, 248, 0.6), inset 0 0 25px rgba(56, 189, 248, 0.25) !important;
     }
 
     .bokeh-blur-overlay.stage-turn {
-      mask-image: radial-gradient(ellipse 120px 155px at center 50.5%, transparent 95%, black 100%) !important;
-      -webkit-mask-image: radial-gradient(ellipse 120px 155px at center 50.5%, transparent 95%, black 100%) !important;
+      mask-image: radial-gradient(ellipse 138px 180px at center 50.5%, transparent 95%, black 100%) !important;
+      -webkit-mask-image: radial-gradient(ellipse 138px 180px at center 50.5%, transparent 95%, black 100%) !important;
     }
 
     /* Scan Radar Laser */
@@ -1224,7 +1224,7 @@
     #esp32StreamImg {
       width: 100%;
       height: 100%;
-      object-fit: contain;
+      object-fit: cover;
       display: none;
       transform: scaleX(1);
       image-rendering: -webkit-optimize-contrast;
