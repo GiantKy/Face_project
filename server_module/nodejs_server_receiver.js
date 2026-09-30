@@ -17,8 +17,12 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const sharp = require('sharp');
 
 const PORT = process.env.PORT || 3000;
+// Góc xoay hình ảnh từ ESP32 (0, 90, 180, 270). Đặt 90 = xoay phải 90 độ.
+// Đặt 0 để tắt xoay.
+const ROTATION_ANGLE = 90;
 const SAVE_DIR = path.join(__dirname, 'captured_faces');
 
 // Tạo thư mục lưu ảnh khuôn mặt nếu chưa có
@@ -108,24 +112,39 @@ const server = http.createServer((req, res) => {
     req.on('end', () => {
       const buffer = Buffer.concat(chunks);
       if (buffer.length > 500) {
-        latestFrame = buffer;
-        latestFrameTime = Date.now();
+        // Hàm xử lý sau khi có frame (gốc hoặc đã xoay)
+        const processFrame = (frameBuffer) => {
+          latestFrame = frameBuffer;
+          latestFrameTime = Date.now();
 
-        // Ghi nhận IP ESP32
-        const rawIp = req.headers['x-esp32-ip'] || req.socket.remoteAddress || '';
-        esp32DeviceIp = rawIp.replace(/^::ffff:/, '');
+          // Ghi nhận IP ESP32
+          const rawIp = req.headers['x-esp32-ip'] || req.socket.remoteAddress || '';
+          esp32DeviceIp = rawIp.replace(/^::ffff:/, '');
 
-        frameReceiveCounter++;
-        const now = Date.now();
-        if (now - lastLogTimestamp >= 5000) {
-          const fps = Math.round((frameReceiveCounter * 1000) / Math.max(1, now - lastLogTimestamp));
-          console.log(`${Colors.cyan}[ESP32 STREAM INGEST] Đang nhận frame từ ${esp32DeviceIp || 'ESP32'} (~${fps} FPS, ${buffer.length} bytes, viewers: ${streamClients.size})${Colors.reset}`);
-          frameReceiveCounter = 0;
-          lastLogTimestamp = now;
+          frameReceiveCounter++;
+          const now = Date.now();
+          if (now - lastLogTimestamp >= 5000) {
+            const fps = Math.round((frameReceiveCounter * 1000) / Math.max(1, now - lastLogTimestamp));
+            console.log(`${Colors.cyan}[ESP32 STREAM INGEST] Đang nhận frame từ ${esp32DeviceIp || 'ESP32'} (~${fps} FPS, ${frameBuffer.length} bytes, viewers: ${streamClients.size}${ROTATION_ANGLE ? `, rotated: ${ROTATION_ANGLE}°` : ''})${Colors.reset}`);
+            frameReceiveCounter = 0;
+            lastLogTimestamp = now;
+          }
+
+          // Broadcast ngay lập tức cho các client đang xem
+          broadcastFrame(frameBuffer);
+        };
+
+        // Xoay ảnh nếu ROTATION_ANGLE > 0
+        if (ROTATION_ANGLE > 0) {
+          sharp(buffer)
+            .rotate(ROTATION_ANGLE)
+            .jpeg({ quality: 95, chromaSubsampling: '4:4:4' })
+            .toBuffer()
+            .then(rotatedBuffer => processFrame(rotatedBuffer))
+            .catch(() => processFrame(buffer)); // Fallback: dùng frame gốc nếu xoay lỗi
+        } else {
+          processFrame(buffer);
         }
-
-        // Broadcast ngay lập tức cho các client đang xem
-        broadcastFrame(buffer);
       }
 
       res.writeHead(200, {
