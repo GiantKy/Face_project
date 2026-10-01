@@ -30,6 +30,8 @@ dist/
 .pytest_cache/
 .ipynb_checkpoints/
 .pio/
+node_modules/
+package-lock.json
 CameraWebServer/esp32cam-rtsp/
 
 # =============================================================================
@@ -85,3 +87,5 @@ gitlab_token.md
 config_secret.h
 *secret*.h
 !config_secret.example.h
+
+CameraWebServer/CameraWebServer

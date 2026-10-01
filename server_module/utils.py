@@ -157,7 +157,7 @@ def is_point_in_oval(pt: Tuple[float, float], center: Tuple[int, int], axes: Tup
     return (norm_x ** 2 + norm_y ** 2) <= 1.0
 
 
-def is_face_in_oval(bbox: Union[List[int], Tuple[int, ...]], center: Tuple[int, int], axes: Tuple[int, int], tolerance: float = 1.08) -> bool:
+def is_face_in_oval(bbox: Union[List[int], Tuple[int, ...]], center: Tuple[int, int], axes: Tuple[int, int], tolerance: float = 1.0) -> bool:
     """Kiểm tra tâm khuôn mặt có nằm gọn trong khung Oval hay không."""
     x1, y1, x2, y2 = bbox
     face_cx = (x1 + x2) / 2.0
@@ -171,7 +171,7 @@ def is_landmarks_in_oval(
     img_h: int,
     center: Optional[Tuple[int, int]] = None,
     axes: Optional[Tuple[int, int]] = None,
-    tolerance: float = 1.08
+    tolerance: float = 1.0
 ) -> bool:
     """
     Kiểm tra tâm khuôn mặt từ landmarks (pixel hoặc normalized) có nằm trong khung oval hay không.
@@ -209,7 +209,7 @@ def filter_faces_in_oval(
     axes: Optional[Tuple[int, int]] = None,
     img_w: int = 640,
     img_h: int = 480,
-    tolerance: float = 1.08,
+    tolerance: float = 1.0,
     return_split: bool = False,
     oval_center: Optional[Tuple[int, int]] = None,
     oval_axes: Optional[Tuple[int, int]] = None
@@ -218,8 +218,10 @@ def filter_faces_in_oval(
     Lọc danh sách khuôn mặt theo khung oval:
     - Nếu return_split=True: trả về tuple (faces_in_oval, faces_outside_oval).
     - Nếu return_split=False (mặc định):
-      + Nếu có ít nhất 1 khuôn mặt trong oval: loại bỏ các khuôn mặt ngoài oval, chỉ trả về các mặt trong oval.
-      + Nếu không có khuôn mặt nào trong oval: giữ nguyên danh sách ban đầu (để hệ thống có thể hướng dẫn đưa mặt vào oval).
+      Chỉ lấy các khuôn mặt có tâm nằm trong khung oval, các khuôn mặt ngoài oval thì lược bỏ hoàn toàn.
+      Nếu không có khuôn mặt nào trong oval, trả về danh sách rỗng [].
+    - Áp dụng Central Face Anchor: nếu có >= 2 mặt nhưng có 1 mặt trung tâm và mặt khác ở rìa biên,
+      sẽ tự động loại bỏ mặt ở rìa biên, giữ lại mặt trung tâm duy nhất.
     """
     if center is None:
         center = oval_center
@@ -236,10 +238,36 @@ def filter_faces_in_oval(
         else:
             out_oval.append(f)
 
+    # Central Face Anchor Prioritization
+    if len(in_oval) > 1 and axes[0] > 0 and axes[1] > 0:
+        cx, cy = center
+        ax, ay = axes
+
+        def _get_norm_dist(face_item):
+            b = face_item.get("bbox") if isinstance(face_item, dict) else face_item
+            if b is None or len(b) < 4:
+                return 999.0
+            fcx = (b[0] + b[2]) / 2.0
+            fcy = (b[1] + b[3]) / 2.0
+            return math.sqrt(((fcx - cx) / float(ax)) ** 2 + ((fcy - cy) / float(ay)) ** 2)
+
+        dists = [_get_norm_dist(f) for f in in_oval]
+        min_dist = min(dists)
+        # Nếu có 1 mặt chủ thể nằm chuẩn ở trung tâm (dist <= 0.45 * axes)
+        # và có mặt khác ở rìa biên ngoài (dist > 0.75 * axes), loại bỏ mặt ở rìa biên
+        if min_dist <= 0.45:
+            anchored_in = []
+            for f, d in zip(in_oval, dists):
+                if d <= 0.75:
+                    anchored_in.append(f)
+                else:
+                    out_oval.append(f)
+            in_oval = anchored_in
+
     if return_split:
         return in_oval, out_oval
 
-    return in_oval if in_oval else faces
+    return in_oval
 
 
 def get_oval_masked_frame(

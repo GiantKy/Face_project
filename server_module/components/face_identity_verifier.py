@@ -27,7 +27,7 @@ except Exception:
         ax = int(ay * 0.65)
         return (cx, cy), (ax, ay)
 
-    def is_point_in_oval(pt, center, axes, tolerance=1.08):
+    def is_point_in_oval(pt, center, axes, tolerance=1.0):
         cx, cy = center
         ax, ay = axes
         if ax <= 0 or ay <= 0:
@@ -36,7 +36,7 @@ except Exception:
         norm_y = (float(pt[1]) - cy) / float(ay * tolerance)
         return (norm_x ** 2 + norm_y ** 2) <= 1.0
 
-    def is_face_in_oval(bbox, center, axes, tolerance=1.08):
+    def is_face_in_oval(bbox, center, axes, tolerance=1.0):
         x1, y1, x2, y2 = bbox
         face_cx = (x1 + x2) / 2.0
         face_cy = (y1 + y2) / 2.0
@@ -112,7 +112,7 @@ class FaceIdentityVerifier:
         oval_center: Optional[Tuple[int, int]] = None,
         oval_axes: Optional[Tuple[int, int]] = None,
         filter_oval: bool = True,
-        oval_tolerance: float = 1.08
+        oval_tolerance: float = 1.0
     ) -> Tuple[int, bool]:
         """
         Đếm số lượng khuôn mặt chính xác bằng cơ chế bảo vệ kép (Dual Guard):
@@ -148,10 +148,44 @@ class FaceIdentityVerifier:
                     fcy = (min(ys) + max(ys)) / 2.0
                     if is_point_in_oval((fcx, fcy), oval_center, oval_axes, tolerance=oval_tolerance):
                         mp_in_oval.append(flm)
-                if mp_in_oval:
-                    mp_count = len(mp_in_oval)
-                else:
-                    mp_count = len(res.face_landmarks)
+
+                # Deduplicate overlapping/duplicate MediaPipe faces for same person
+                if len(mp_in_oval) > 1:
+                    deduped = []
+                    for flm in mp_in_oval:
+                        xs = [lm.x * w for lm in flm]
+                        ys = [lm.y * h for lm in flm]
+                        fcx = (min(xs) + max(xs)) / 2.0
+                        fcy = (min(ys) + max(ys)) / 2.0
+                        is_dup = False
+                        for ex in deduped:
+                            ex_xs = [lm.x * w for lm in ex]
+                            ex_ys = [lm.y * h for lm in ex]
+                            ex_fcx = (min(ex_xs) + max(ex_xs)) / 2.0
+                            ex_fcy = (min(ex_ys) + max(ex_ys)) / 2.0
+                            if math.hypot(fcx - ex_fcx, fcy - ex_fcy) < 45.0:
+                                is_dup = True
+                                break
+                        if not is_dup:
+                            deduped.append(flm)
+                    mp_in_oval = deduped
+
+                # Central Face Anchor Prioritization
+                if len(mp_in_oval) > 1 and oval_axes[0] > 0 and oval_axes[1] > 0:
+                    dists = []
+                    for flm in mp_in_oval:
+                        xs = [lm.x * w for lm in flm]
+                        ys = [lm.y * h for lm in flm]
+                        fcx = (min(xs) + max(xs)) / 2.0
+                        fcy = (min(ys) + max(ys)) / 2.0
+                        dists.append(math.hypot(fcx - oval_center[0], fcy - oval_center[1]))
+                    min_dist = min(dists)
+                    if min_dist <= 0.45 * oval_axes[0]:
+                        anchored = [flm for flm, d in zip(mp_in_oval, dists) if d <= 0.75 * oval_axes[0]]
+                        if anchored:
+                            mp_in_oval = anchored
+
+                mp_count = len(mp_in_oval)
             else:
                 mp_count = len(res.face_landmarks)
 
@@ -172,10 +206,21 @@ class FaceIdentityVerifier:
                         f for f in valid_yolo
                         if is_face_in_oval(f["bbox"], oval_center, oval_axes, tolerance=oval_tolerance)
                     ]
-                    if yolo_in_oval:
-                        yolo_count = len(yolo_in_oval)
-                    else:
-                        yolo_count = len(valid_yolo)
+                    # Central Face Anchor Prioritization
+                    if len(yolo_in_oval) > 1 and oval_axes[0] > 0 and oval_axes[1] > 0:
+                        dists = []
+                        for f in yolo_in_oval:
+                            bx1, by1, bx2, by2 = f["bbox"]
+                            fcx = (bx1 + bx2) / 2.0
+                            fcy = (by1 + by2) / 2.0
+                            dists.append(math.hypot(fcx - oval_center[0], fcy - oval_center[1]))
+                        min_dist = min(dists)
+                        if min_dist <= 0.45 * oval_axes[0]:
+                            anchored = [f for f, d in zip(yolo_in_oval, dists) if d <= 0.75 * oval_axes[0]]
+                            if anchored:
+                                yolo_in_oval = anchored
+
+                    yolo_count = len(yolo_in_oval)
                 else:
                     yolo_count = len(valid_yolo)
             except Exception:
@@ -200,7 +245,7 @@ class FaceIdentityVerifier:
         - Histogram màu sắc da LAB trong vùng mặt để đối chiếu sắc thái ngoại hình.
         
         Returns:
-            Dict chứa descriptor sinh trắc học hoặc None nếu không thấy mặt.
+            Dict chứa descriptor sinh trắc học hoặc None nếu không thấy mặt trong oval.
         """
         if frame is None or frame.size == 0:
             return None
@@ -216,6 +261,16 @@ class FaceIdentityVerifier:
             elif isinstance(first_lm, (tuple, list)) and len(first_lm) > 2 and abs(first_lm[2]) > 1e-6:
                 face_landmarks_3d = precomputed_landmarks
 
+            if face_landmarks_3d is not None and filter_oval:
+                if oval_center is None or oval_axes is None:
+                    oval_center, oval_axes = get_default_oval_params(w, h)
+                xs = [lm.x * w if hasattr(lm, "x") else float(lm[0]) for lm in face_landmarks_3d]
+                ys = [lm.y * h if hasattr(lm, "y") else float(lm[1]) for lm in face_landmarks_3d]
+                fcx = (min(xs) + max(xs)) / 2.0
+                fcy = (min(ys) + max(ys)) / 2.0
+                if not is_point_in_oval((fcx, fcy), oval_center, oval_axes, tolerance=1.0):
+                    face_landmarks_3d = None
+
         if face_landmarks_3d is None:
             if self._landmarker is None:
                 self._init_landmarker()
@@ -224,7 +279,7 @@ class FaceIdentityVerifier:
             res = self._landmarker.detect(mp_img)
             if not res.face_landmarks:
                 return None
-            if filter_oval and len(res.face_landmarks) > 1:
+            if filter_oval:
                 if oval_center is None or oval_axes is None:
                     oval_center, oval_axes = get_default_oval_params(w, h)
                 faces_in_oval = []
@@ -233,7 +288,7 @@ class FaceIdentityVerifier:
                     ys = [lm.y * h for lm in flm]
                     fcx = (min(xs) + max(xs)) / 2.0
                     fcy = (min(ys) + max(ys)) / 2.0
-                    if is_point_in_oval((fcx, fcy), oval_center, oval_axes, tolerance=1.12):
+                    if is_point_in_oval((fcx, fcy), oval_center, oval_axes, tolerance=1.0):
                         faces_in_oval.append(flm)
                 if faces_in_oval:
                     face_landmarks_3d = min(
@@ -242,7 +297,7 @@ class FaceIdentityVerifier:
                                                    ((min([l.y * h for l in flm]) + max([l.y * h for l in flm])) / 2.0) - oval_center[1])
                     )
                 else:
-                    face_landmarks_3d = res.face_landmarks[0]
+                    return None
             else:
                 face_landmarks_3d = res.face_landmarks[0]
 

@@ -33,7 +33,8 @@ try:
         compute_eye_aspect_ratio,
         create_pipeline_result_dashboard,
         create_side_by_side_result,
-        extract_landmarks_with_fallback
+        extract_landmarks_with_fallback,
+        get_oval_masked_frame
     )
     from server_module.components.pose_validation.utils import get_landmark_point
 except ImportError:
@@ -47,7 +48,8 @@ except ImportError:
         compute_eye_aspect_ratio,
         create_pipeline_result_dashboard,
         create_side_by_side_result,
-        extract_landmarks_with_fallback
+        extract_landmarks_with_fallback,
+        get_oval_masked_frame
     )
     from components.pose_validation.utils import get_landmark_point
 
@@ -342,11 +344,12 @@ class ESP32ChallengeManager:
         oval_center, oval_axes = get_default_oval_params(w, h)
 
         # 0. Kiểm tra số lượng người nghiêm ngặt (Single Person Strict Enforcement)
-        # Chỉ nhận mặt trong khung oval, bỏ qua các mặt ngoài oval
+        # Làm mờ ngoại vi để triệt tiêu người thứ 2 ngoài oval
+        masked_frame = get_oval_masked_frame(raw_frame, oval_center, oval_axes, blur_ksize=45, dim_factor=0.35)
         if hasattr(pipeline, "identity_verifier") and pipeline.identity_verifier is not None:
             num_faces, is_single = pipeline.identity_verifier.count_faces(
-                raw_frame, pipeline.detector,
-                oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+                masked_frame, pipeline.detector,
+                oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
             )
             if num_faces > 1:
                 captured_b64 = image_to_base64(raw_frame, quality=75)
@@ -367,28 +370,34 @@ class ESP32ChallengeManager:
         # Áp dụng tiền xử lý tối ưu cho ESP32
         proc_frame = preprocess_esp32_image(raw_frame)
 
-        # 1. Face Detection đa tầng độ nhạy cao cho ESP32-CAM
-        # Tầng 1: Dò trên ảnh gốc với conf=0.28, min_size=20
-        faces = pipeline.detector.detect(raw_frame, conf=0.28, min_size=20)
+        # 1. Face Detection đa tầng độ nhạy cao cho ESP32-CAM trên masked_frame
+        # Tầng 1: Dò trên ảnh masked với conf=0.28, min_size=20
+        faces = pipeline.detector.detect(masked_frame, conf=0.28, min_size=20)
         if not faces:
-            # Tầng 2: Dò trên ảnh tiền xử lý (CLAHE + Sharpness)
-            faces = pipeline.detector.detect(proc_frame, conf=0.22, min_size=20)
+            # Tầng 2: Dò trên ảnh tiền xử lý (CLAHE + Sharpness) được mask
+            proc_masked = get_oval_masked_frame(proc_frame, oval_center, oval_axes, blur_ksize=45, dim_factor=0.35)
+            faces = pipeline.detector.detect(proc_masked, conf=0.22, min_size=20)
         if not faces:
             # Tầng 3: Dò với conf nhạy hơn 0.18
-            faces = pipeline.detector.detect(raw_frame, conf=0.18, min_size=18)
+            faces = pipeline.detector.detect(masked_frame, conf=0.18, min_size=18)
 
-        # Lọc bỏ các mặt ngoài oval nếu có ít nhất 1 mặt trong oval
+        # Lọc bỏ hoàn toàn các mặt ngoài oval, chỉ giữ các mặt trong oval (tolerance=1.0)
         if faces:
-            faces = filter_faces_in_oval(faces, oval_center=oval_center, oval_axes=oval_axes)
+            faces = filter_faces_in_oval(faces, oval_center=oval_center, oval_axes=oval_axes, tolerance=1.0)
 
         # Tầng 4 (MediaPipe BlazeFace Fallback):
         # Nếu YOLO bỏ sót do góc nghiêng hoặc ánh sáng, tận dụng MediaPipe Landmark Detector
         landmarks = None
         if not faces:
             landmarks = extract_landmarks_with_fallback(
-                pipeline.landmark_detector, raw_frame, proc_frame,
+                pipeline.landmark_detector, masked_frame, proc_frame,
                 oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
             )
+            if not landmarks:
+                landmarks = extract_landmarks_with_fallback(
+                    pipeline.landmark_detector, raw_frame, proc_frame,
+                    oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+                )
             if landmarks and len(landmarks) >= 468:
                 xs = [p[0] for p in landmarks]
                 ys = [p[1] for p in landmarks]
@@ -438,9 +447,9 @@ class ESP32ChallengeManager:
                 "approved": False,
                 "verdict": "NO_FACE",
                 "is_real": False,
-                "message": "Không tìm thấy khuôn mặt trong ảnh. Hãy nhìn thẳng và đứng gần camera hơn.",
-                "reasons": ["NO_FACE_DETECTED"],
-                "hint": "Chỉnh lại góc camera hoặc tiến lại gần 35-50cm.",
+                "message": "Không tìm thấy khuôn mặt trong khung oval. Hãy nhìn thẳng và đưa mặt vào giữa khung oval.",
+                "reasons": ["NO_FACE_IN_OVAL"],
+                "hint": "Căn chỉnh khuôn mặt vào đúng vị trí khung oval.",
                 "captured_image_base64": captured_b64
             }
 
@@ -700,8 +709,12 @@ class ESP32ChallengeManager:
 
         if hasattr(pipeline, "identity_verifier") and pipeline.identity_verifier is not None:
             session.base_descriptor = pipeline.identity_verifier.extract_descriptor(
-                raw_frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+                masked_frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
             )
+            if session.base_descriptor is None:
+                session.base_descriptor = pipeline.identity_verifier.extract_descriptor(
+                    raw_frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+                )
 
         self.sessions[session_id] = session
 
@@ -772,11 +785,17 @@ class ESP32ChallengeManager:
         else:
             step_oval_axes = oval_axes
 
-        # Trích xuất Landmarks trên frame (ưu tiên khuôn mặt trong oval)
+        # Trích xuất Landmarks trên frame (áp dụng masked_frame để triệt tiêu người thứ 2)
+        masked_frame = get_oval_masked_frame(raw_frame, oval_center, step_oval_axes, blur_ksize=45, dim_factor=0.35)
         landmarks = extract_landmarks_with_fallback(
-            pipeline.landmark_detector, raw_frame, proc_frame,
+            pipeline.landmark_detector, masked_frame, proc_frame,
             oval_center=oval_center, oval_axes=step_oval_axes, filter_oval=True
         )
+        if not landmarks:
+            landmarks = extract_landmarks_with_fallback(
+                pipeline.landmark_detector, raw_frame, proc_frame,
+                oval_center=oval_center, oval_axes=step_oval_axes, filter_oval=True
+            )
 
         if not landmarks or len(landmarks) < 468:
             return {
@@ -789,11 +808,11 @@ class ESP32ChallengeManager:
             }
 
         # Kiểm tra nhiều người trong khung hình & kiểm tra tráo đổi người (Face Continuity Defense)
-        # Chỉ nhận mặt trong oval, bỏ qua các mặt ngoài oval
+        # Quét trên masked_frame để triệt tiêu người ngoài oval
         if hasattr(pipeline, "identity_verifier") and pipeline.identity_verifier is not None:
             num_faces, is_single = pipeline.identity_verifier.count_faces(
-                raw_frame, pipeline.detector,
-                oval_center=oval_center, oval_axes=step_oval_axes, filter_oval=True
+                masked_frame, pipeline.detector,
+                oval_center=oval_center, oval_axes=step_oval_axes, filter_oval=True, oval_tolerance=1.0
             )
             if num_faces > 1:
                 return {
@@ -807,9 +826,14 @@ class ESP32ChallengeManager:
                 }
             if getattr(session, "base_descriptor", None) is not None:
                 cand_desc = pipeline.identity_verifier.extract_descriptor(
-                    raw_frame,
+                    masked_frame,
                     oval_center=oval_center, oval_axes=step_oval_axes, filter_oval=True
                 )
+                if cand_desc is None:
+                    cand_desc = pipeline.identity_verifier.extract_descriptor(
+                        raw_frame,
+                        oval_center=oval_center, oval_axes=step_oval_axes, filter_oval=True
+                    )
                 if cand_desc is not None:
                     is_same, score, details = pipeline.identity_verifier.verify_identity(session.base_descriptor, cand_desc)
                     if not is_same:

@@ -389,11 +389,11 @@ private:
         }
 
         // Bước 1: Tạm thời nâng lên VGA 640x480 sắc nét cho Anti-spoofing
-        m_camera.setResolution(FRAMESIZE_VGA, 10);
+        m_camera.setResolution(FRAMESIZE_VGA, 12);
         fb = m_camera.capturePhotoSafe();
 
-        // Duy trì độ phân giải VGA 640x480 với Quality 20 theo chuẩn hệ thống
-        m_camera.setResolution(FRAMESIZE_VGA, 20);
+        // Duy trì độ phân giải VGA 640x480 với Quality 12 theo chuẩn hệ thống
+        m_camera.setResolution(FRAMESIZE_VGA, 12);
 
         if (!fb) {
             xSemaphoreGive(m_cameraMutex);

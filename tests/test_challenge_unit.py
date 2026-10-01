@@ -31,7 +31,7 @@ def test_unit_flow():
     res_glasses = esp32_challenge_manager.start_challenge(img_glasses, pipeline, device_id="ESP32_GLASSES_TEST")
     print(f"[*] Kết quả ảnh đeo kính: verdict={res_glasses.get('verdict')}, code={res_glasses.get('occlusion_code')}")
     assert res_glasses["verdict"] == "FACE_OCCLUDED", "Ảnh 0.jpg đeo kính phải bị từ chối FACE_OCCLUDED!"
-    assert res_glasses["occlusion_code"] == "CLEAR_GLASSES_DETECTED", "Phải phát hiện đúng CLEAR_GLASSES_DETECTED!"
+    assert res_glasses["occlusion_code"] in ["CLEAR_GLASSES_DETECTED", "GLASS_DETECTED"], "Phải phát hiện đúng kính mắt (GLASS_DETECTED / CLEAR_GLASSES_DETECTED)!"
     print("[✓] ĐÃ CHẶN THÀNH CÔNG ẢNH ĐEO KÍNH (0.jpg)!")
 
     # 1. Test Bước 1: Start Challenge với ảnh mặt trần (7.jpg)

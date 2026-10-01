@@ -7,7 +7,8 @@ Verifies that:
 2. When 2 faces are both inside the oval:
    - num_faces >= 2, MULTI_FACES warning is correctly triggered.
 3. When 0 faces are inside the oval (face is outside):
-   - num_faces == 1, face_in_oval == False, guiding user to move into oval.
+   - num_faces == 0, has_face == False, outside faces are completely discarded.
+   - User is guided to position face into the oval frame.
 """
 
 import os
@@ -94,8 +95,8 @@ def test_geometric_oval_filtering():
     # Test filter_faces_in_oval with 0 inside (2 outside)
     none_in = [face_out_1, face_out_2]
     filtered_none = filter_faces_in_oval(none_in, oval_center, oval_axes)
-    assert len(filtered_none) == 2, "Expected to retain all faces when 0 faces in oval (so prompt works)"
-    print(" -> filter_faces_in_oval (0 in, 2 out) -> correctly kept original faces for guidance prompt.")
+    assert len(filtered_none) == 0, f"Expected 0 faces inside oval, got {len(filtered_none)}"
+    print(" -> filter_faces_in_oval (0 in, 2 out) -> correctly discarded outside faces (0 in oval).")
 
     # Test is_landmarks_in_oval
     landmarks_inside = [(cx - 20, cy - 20), (cx + 20, cy + 20), (cx, cy)]
@@ -215,15 +216,83 @@ def test_server_with_composite_image():
 
     corner_pose_res = server.validate_pose(corner_b64)
     print(f"validate_pose (face outside oval): num_faces={corner_pose_res.get('num_faces')}, face_in_oval={corner_pose_res.get('face_in_oval')}, guide={corner_pose_res.get('guide')}")
-    # When face is outside oval, face_in_oval must be False, guiding user
-    assert corner_pose_res.get("face_in_oval") is False, "face_in_oval should be False when face is outside oval"
+    # When face is outside oval, it is discarded: num_faces must be 0, has_face must be False
+    assert corner_pose_res.get("num_faces") == 0, f"Expected num_faces == 0 when face is outside oval, got {corner_pose_res.get('num_faces')}"
+    assert corner_pose_res.get("has_face") is False, "has_face should be False when face is outside oval"
     assert "OVAL" in (corner_pose_res.get("message", "") + corner_pose_res.get("guide", "")).upper(), "Message or guide should prompt user to move into oval"
 
+
+def test_person2_in_blur_zone():
     print("\n" + "=" * 60)
-    print(" ALL TESTS PASSED SUCCESSFULLY! ")
+    print(" [TEST 5] Critical User Scenario: Person 2 in Blurred Region Outside Oval")
+    print("=" * 60)
+
+    server = EKYCPipelineServer()
+    test_img_path = os.path.join(PROJECT_ROOT, "data_raw", "0.jpg")
+    base_img = load_image(test_img_path)
+    h, w = base_img.shape[:2]
+    oval_center, oval_axes = get_default_oval_params(w, h)
+    cx, cy = oval_center
+    ax, ay = oval_axes
+
+    # Create composite image where Person 2 stands in the blurred zone (x=410, y=170)
+    blur_zone_img = base_img.copy()
+
+    # Extract crop of face to paste
+    faces_base = server.detector.detect(base_img)
+    bx = faces_base[0]["bbox"]
+    pad = 20
+    fc = base_img[max(0, bx[1]-pad):min(h, bx[3]+pad), max(0, bx[0]-pad):min(w, bx[2]+pad)].copy()
+    fc_resized = cv2.resize(fc, (140, 160))
+    p2_y, p2_x = 170, 420
+    blur_zone_img[p2_y:p2_y+160, p2_x:p2_x+140] = fc_resized
+
+    # Check raw detections: raw frame has 2 faces!
+    raw_dets = server.detector.detect(blur_zone_img)
+    print(f"Raw frame detections: {len(raw_dets)} faces")
+    assert len(raw_dets) >= 2, "Raw frame must detect 2 faces"
+
+    # 1. Identity verifier count_faces on blur_zone_img with oval filter (must be 1 face)
+    num_faces_c, is_single_c = server.identity_verifier.count_faces(
+        blur_zone_img, server.detector, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+    )
+    print(f"identity_verifier count_faces: num_faces={num_faces_c}, is_single={is_single_c}")
+    assert num_faces_c == 1, f"Expected 1 face inside oval, got {num_faces_c}"
+    assert is_single_c is True, "Expected is_single == True"
+
+    # 2. validate_pose on blur_zone_img (must NOT be MULTI_FACES)
+    b64_blur = image_to_base64(blur_zone_img)
+    pose_res = server.validate_pose(b64_blur)
+    print(f"validate_pose: num_faces={pose_res.get('num_faces')}, face_in_oval={pose_res.get('face_in_oval')}, warning={pose_res.get('warning')}")
+    assert pose_res.get("num_faces") == 1, f"validate_pose must report num_faces=1, got {pose_res.get('num_faces')}"
+    assert pose_res.get("face_in_oval") is True, "validate_pose must report face_in_oval=True"
+    assert pose_res.get("warning") != "MULTI_FACES", "validate_pose must NOT trigger MULTI_FACES"
+
+    # 3. init_liveness_session on blur_zone_img (must succeed without MULTI_FACES)
+    init_res = server.init_liveness_session(b64_blur)
+    print(f"init_liveness_session: error={init_res.get('error')}, message={init_res.get('message')}")
+    assert init_res.get("error") != "MULTI_FACES", f"init_liveness_session must NOT fail with MULTI_FACES! Got: {init_res.get('error')}"
+
+    # 4. full_verify on blur_zone_img (must succeed, single_face=True)
+    verify_res = server.full_verify(blur_zone_img)
+    fd = verify_res.get("face_detection", {})
+    print(f"full_verify: verdict={verify_res.get('verdict')}, num_faces={fd.get('num_faces')}, single_face={fd.get('single_face')}")
+    assert fd.get("num_faces") == 1, f"full_verify must detect 1 face, got {fd.get('num_faces')}"
+    assert fd.get("single_face") is True, "full_verify must report single_face=True"
+    assert verify_res.get("verdict") != "MULTI_FACES", "full_verify must NOT report MULTI_FACES"
+
+    # 5. ESP32 Challenge Manager on blur_zone_img (must NOT report MULTI_FACES)
+    esp32_mgr = ESP32ChallengeManager()
+    esp32_res = esp32_mgr.start_challenge(blur_zone_img, server)
+    print(f"esp32 start_challenge verdict: {esp32_res.get('verdict')}, num_faces={esp32_res.get('num_faces')}")
+    assert esp32_res.get("verdict") != "MULTI_FACES", f"ESP32 start_challenge must NOT report MULTI_FACES! Got: {esp32_res.get('verdict')}"
+
+    print("\n" + "=" * 60)
+    print(" ALL TESTS INCLUDING PERSON 2 IN BLUR ZONE PASSED! ")
     print("=" * 60)
 
 
 if __name__ == "__main__":
     test_geometric_oval_filtering()
     test_server_with_composite_image()
+    test_person2_in_blur_zone()

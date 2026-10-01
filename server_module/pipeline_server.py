@@ -68,6 +68,7 @@ try:
         get_default_oval_params,
         is_point_in_oval,
         is_face_in_oval,
+        filter_faces_in_oval,
         get_oval_masked_frame,
         draw_oval_face_guide
     )
@@ -123,6 +124,7 @@ except (ImportError, ValueError):
         get_default_oval_params,
         is_point_in_oval,
         is_face_in_oval,
+        filter_faces_in_oval,
         get_oval_masked_frame,
         draw_oval_face_guide
     )
@@ -235,37 +237,31 @@ class EKYCPipelineServer:
 
         frame = load_image(base_frame_input)
 
-        # Tự động tăng sáng và làm nét nếu ảnh từ ESP32 bị tối hoặc ngược sáng
+        # Tự động tăng sáng nếu ảnh bị tối (giữ nguyên hướng và tọa độ ảnh chuẩn)
         try:
-            from .esp32_challenge import preprocess_esp32_image
-            frame_proc = preprocess_esp32_image(frame)
+            from src.illumination import enhance_low_light
+            frame_proc = enhance_low_light(frame)
         except Exception:
-            try:
-                from esp32_challenge import preprocess_esp32_image
-                frame_proc = preprocess_esp32_image(frame)
-            except Exception:
-                frame_proc = frame
+            frame_proc = frame
 
         h_f, w_f = frame_proc.shape[:2]
         oval_center, oval_axes = get_default_oval_params(w_f, h_f)
 
+        masked_frame = get_oval_masked_frame(frame_proc, oval_center, oval_axes, blur_ksize=45, dim_factor=0.35)
         num_faces, is_single = self.identity_verifier.count_faces(
-            frame_proc, self.detector, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+            masked_frame, self.detector, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
         )
         if num_faces == 0:
             # Thử lại với conf=0.35 để bắt được mặt chuyển động nhẹ lúc bấm chụp
-            raw_faces = self.detector.detect(frame_proc, conf=0.35)
-            faces_in_oval = [f for f in raw_faces if is_face_in_oval(f["bbox"], oval_center, oval_axes)]
-            if faces_in_oval:
-                num_faces = len(faces_in_oval)
-            else:
-                num_faces = len(raw_faces)
+            raw_faces = self.detector.detect(masked_frame, conf=0.35)
+            faces_in_oval = filter_faces_in_oval(raw_faces, oval_center, oval_axes, img_w=w_f, img_h=h_f, tolerance=1.0)
+            num_faces = len(faces_in_oval)
 
         if num_faces == 0:
             return {
                 "success": False,
                 "error": "NO_FACE",
-                "message": "Không tìm thấy khuôn mặt trong ảnh chụp chuẩn Bước 1."
+                "message": "Không tìm thấy khuôn mặt trong khung oval. Vui lòng căn chỉnh mặt vào khung oval."
             }
         if num_faces > 1:
             return {
@@ -277,11 +273,11 @@ class EKYCPipelineServer:
 
         # Kiểm tra che mặt nghiêm ngặt ngay tại ảnh chụp Bước 1 (Anti-Occlusion Defense)
         landmarks = self.landmark_detector.detect(
-            frame_proc, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+            masked_frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
         )
         if not landmarks:
             landmarks = self.landmark_detector.detect(
-                frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+                frame_proc, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
             )
 
         is_occ, occ_code, occ_msg = self.occlusion_detector.check_occlusion(
@@ -368,10 +364,15 @@ class EKYCPipelineServer:
         oval_ax, oval_ay = oval_axes
 
         # 0. Kiểm tra khuôn mặt & đếm số người bằng Single-Pass MediaPipe (~15ms)
-        # Chỉ nhận mặt trong khung oval và bỏ đi các mặt ngoài oval
+        # Quét trên masked_frame để triệt tiêu người thứ 2 ngoài oval
+        masked_frame = get_oval_masked_frame(frame, oval_center, oval_axes, blur_ksize=45, dim_factor=0.35)
         landmarks, num_faces = self.landmark_detector.detect_with_count(
-            frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+            masked_frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
         )
+        if not landmarks and num_faces == 0:
+            landmarks, num_faces = self.landmark_detector.detect_with_count(
+                frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
+            )
         if num_faces > 1:
             return {
                 "has_face": True,
@@ -401,8 +402,12 @@ class EKYCPipelineServer:
                 "face_size_h": 0,
                 "is_too_far": True,
                 "pose": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0},
-                "message": "Không tìm thấy khuôn mặt trong khung hình",
-                "guide": "Vui lòng đưa khuôn mặt vào giữa khung hình"
+                "oval_guide": {
+                    "center": [oval_cx, oval_cy],
+                    "axes": [oval_ax, oval_ay]
+                },
+                "message": "Không tìm thấy khuôn mặt trong khung oval",
+                "guide": "Vui lòng đưa khuôn mặt vào trong khung oval"
             }
 
         # Đánh giá kích thước và tọa độ khuôn mặt theo chuẩn test_pipeline_ensemble_full.py
@@ -412,7 +417,7 @@ class EKYCPipelineServer:
         f_cy = (min(ys) + max(ys)) / 2.0
         face_size_h = max(ys) - min(ys)
 
-        face_in_oval = is_point_in_oval((f_cx, f_cy), oval_center, oval_axes, tolerance=1.05)
+        face_in_oval = is_point_in_oval((f_cx, f_cy), oval_center, oval_axes, tolerance=1.0)
         ideal_h = oval_ay * 1.55
         is_too_far = (face_size_h < ideal_h * 0.62) or (face_size_h < MIN_FACE_HEIGHT)
         is_too_close = (face_size_h > ideal_h * 1.35)
@@ -547,15 +552,12 @@ class EKYCPipelineServer:
         h_f, w_f = frame.shape[:2]
         oval_center, oval_axes = get_default_oval_params(w_f, h_f)
 
-        # 1. Phát hiện khuôn mặt (chỉ nhận mặt trong oval, bỏ đi các mặt ngoài oval)
-        raw_faces = self.detector.detect(frame, conf=CONF_THRESHOLD_FACE)
-        faces_in_oval = [f for f in raw_faces if is_face_in_oval(f["bbox"], oval_center, oval_axes)]
-        if faces_in_oval:
-            faces = faces_in_oval
-            num_faces = len(faces_in_oval)
-        else:
-            faces = raw_faces
-            num_faces = len(raw_faces)
+        # 1. Phát hiện khuôn mặt (làm mờ ngoại vi để triệt tiêu người thứ 2 ngoài oval, dung sai 1.0)
+        masked_frame = get_oval_masked_frame(frame, oval_center, oval_axes, blur_ksize=45, dim_factor=0.35)
+        raw_faces = self.detector.detect(masked_frame, conf=CONF_THRESHOLD_FACE)
+        faces_in_oval = filter_faces_in_oval(raw_faces, oval_center, oval_axes, img_w=w_f, img_h=h_f, tolerance=1.0)
+        faces = faces_in_oval
+        num_faces = len(faces_in_oval)
 
         if not faces:
             return {
@@ -582,8 +584,12 @@ class EKYCPipelineServer:
 
         # 2. Căn chỉnh và crop 224x224
         landmarks = self.landmark_detector.detect(
-            frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+            masked_frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
         )
+        if not landmarks:
+            landmarks = self.landmark_detector.detect(
+                frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
+            )
         aligned_img = None
         face_crop_224 = None
 
@@ -609,23 +615,27 @@ class EKYCPipelineServer:
             frame, conf_threshold=conf_threshold
         )
 
+        # Lọc chỉ lấy detections trong oval
+        spoofs_in_oval = [sd for sd in all_ensemble_dets if is_face_in_oval(sd["bbox"], oval_center, oval_axes, tolerance=1.0)]
+        target_spoofs = spoofs_in_oval
+
         # Tìm detection khớp nhất với Primary Face
         best_spoof = None
         primary_spoof_iou = 0.0
-        if primary_face and all_ensemble_dets:
+        if primary_face and target_spoofs:
             matching_spoofs = [
-                sd for sd in all_ensemble_dets
+                sd for sd in target_spoofs
                 if calculate_iou(primary_face["bbox"], sd["bbox"]) > 0.15
             ]
             if matching_spoofs:
                 best_spoof = max(matching_spoofs, key=lambda x: x["confidence"])
                 primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
             else:
-                best_spoof = max(all_ensemble_dets, key=lambda x: x["confidence"])
+                best_spoof = max(target_spoofs, key=lambda x: x["confidence"])
                 primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
 
-        if best_spoof is None and all_ensemble_dets:
-            best_spoof = all_ensemble_dets[0]
+        if best_spoof is None and target_spoofs:
+            best_spoof = target_spoofs[0]
 
         is_real = bool(best_spoof["is_real"]) if best_spoof else False
         label = best_spoof["label"] if best_spoof else "UNKNOWN"
@@ -1070,32 +1080,21 @@ class EKYCPipelineServer:
         else:
             processed_frame = frame
 
-        # 1. Face Detection (chạy trên frame tự nhiên với Deduplication)
-        raw_faces = self.detector.detect(frame, conf=CONF_THRESHOLD_FACE)
+        # 1. Face Detection (chạy trên processed_frame đã làm mờ ngoại vi để triệt tiêu người thứ 2 ngoài oval)
+        detection_input = processed_frame if apply_oval_mask else frame
+        raw_faces = self.detector.detect(detection_input, conf=CONF_THRESHOLD_FACE)
 
-        # Ưu tiên các khuôn mặt nằm trong oval và loại bỏ hoàn toàn các mặt ngoài oval
-        faces_in_oval = [f for f in raw_faces if is_face_in_oval(f["bbox"], oval_center, oval_axes)]
-        if faces_in_oval:
-            faces = faces_in_oval
-            # Chỉ đếm số mặt trong oval, bỏ đi các mặt ngoài oval
-            significant_faces = []
-            for f in faces_in_oval:
-                bx1, by1, bx2, by2 = f["bbox"]
-                bw = bx2 - bx1
-                bh = by2 - by1
-                if bh >= 40 and bw >= 40:
-                    significant_faces.append(f)
-            num_faces = len(significant_faces) if significant_faces else len(faces_in_oval)
-        else:
-            faces = raw_faces
-            significant_faces = []
-            for f in raw_faces:
-                bx1, by1, bx2, by2 = f["bbox"]
-                bw = bx2 - bx1
-                bh = by2 - by1
-                if bh >= 60 and bw >= 60:
-                    significant_faces.append(f)
-            num_faces = len(significant_faces) if significant_faces else len(raw_faces)
+        # Chỉ nhận các khuôn mặt nằm trong oval và loại bỏ hoàn toàn các mặt ngoài oval (tolerance=1.0)
+        faces_in_oval = filter_faces_in_oval(raw_faces, oval_center, oval_axes, img_w=w_f, img_h=h_f, tolerance=1.0)
+        faces = faces_in_oval
+        significant_faces = []
+        for f in faces_in_oval:
+            bx1, by1, bx2, by2 = f["bbox"]
+            bw = bx2 - bx1
+            bh = by2 - by1
+            if bh >= 40 and bw >= 40:
+                significant_faces.append(f)
+        num_faces = len(significant_faces) if significant_faces else len(faces_in_oval)
 
         # Chọn Primary Face
         primary_face = None
@@ -1110,12 +1109,16 @@ class EKYCPipelineServer:
             primary_face = max(faces, key=get_face_priority)
 
         # Kiểm tra mặt có trong oval
-        face_in_oval = bool(primary_face and is_face_in_oval(primary_face["bbox"], oval_center, oval_axes))
+        face_in_oval = bool(primary_face and is_face_in_oval(primary_face["bbox"], oval_center, oval_axes, tolerance=1.0))
 
-        # 2. Landmarks (chạy trên frame tự nhiên, ưu tiên mặt trong oval)
+        # 2. Landmarks (chạy trên detection_input để triệt tiêu người thứ 2, fallback frame tự nhiên)
         landmarks = self.landmark_detector.detect(
-            frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+            detection_input, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
         )
+        if not landmarks and detection_input is not frame:
+            landmarks = self.landmark_detector.detect(
+                frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
+            )
 
         # 3. 3D Pose
         pose_valid = False
@@ -1172,9 +1175,9 @@ class EKYCPipelineServer:
         )
         ens_latency_ms = (time.time() - t_ens) * 1000
 
-        # Lọc spoof detections trong oval
+        # Lọc spoof detections trong oval (lược bỏ hoàn toàn detections ngoài oval)
         spoofs_in_oval = [sd for sd in all_ensemble_dets if is_face_in_oval(sd["bbox"], oval_center, oval_axes)]
-        target_spoofs = spoofs_in_oval if spoofs_in_oval else all_ensemble_dets
+        target_spoofs = spoofs_in_oval
 
         # Tìm detection khớp nhất với Primary Face
         best_spoof = None
@@ -1331,6 +1334,7 @@ class EKYCPipelineServer:
             },
             "face_detection": {
                 "num_faces": num_faces,
+                "single_face": bool(num_faces == 1),
                 "primary_face": {
                     "bbox": primary_face["bbox"] if primary_face else None,
                     "confidence": round(float(primary_face["confidence"]), 4) if primary_face else 0.0

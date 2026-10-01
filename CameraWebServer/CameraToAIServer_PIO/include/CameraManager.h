@@ -37,13 +37,13 @@ public:
         config.pin_sccb_scl = SIOC_GPIO_NUM;
         config.pin_pwdn     = PWDN_GPIO_NUM;
         config.pin_reset    = RESET_GPIO_NUM;
-        config.xclk_freq_hz = 20000000;
+        config.xclk_freq_hz = 24000000;
         config.pixel_format = PIXFORMAT_JPEG;
         config.grab_mode    = CAMERA_GRAB_LATEST;
 
         if (psramFound()) {
             config.frame_size   = FRAMESIZE_UXGA;     // CameraWebServer1: UXGA khi có PSRAM
-            config.jpeg_quality = 10;                 // CameraWebServer1: quality 10 khi có PSRAM
+            config.jpeg_quality = 12;                 // Quality 12 theo chuẩn hệ thống
             config.fb_count     = 2;
             config.fb_location  = CAMERA_FB_IN_PSRAM;
             config.grab_mode    = CAMERA_GRAB_LATEST;
@@ -81,8 +81,9 @@ public:
                 s->set_saturation(s, -2);  // OV3660 bắt buộc -2
             }
 
-            // 2. Hạ frame size xuống VGA cho eKYC (CameraWebServer1 dùng QVGA, ta dùng VGA để AI nhận diện tốt hơn)
+            // 2. Hạ frame size xuống VGA cho eKYC và đặt JPEG quality 12
             s->set_framesize(s, FRAMESIZE_VGA);
+            s->set_quality(s, 12);
 
             // 3. ESP32S3_EYE set vflip (CameraWebServer.ino L100-102)
         #if defined(CAMERA_MODEL_ESP32S3_EYE)
