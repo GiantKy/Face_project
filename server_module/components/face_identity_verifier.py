@@ -335,12 +335,18 @@ class FaceIdentityVerifier:
         # Căn giữa tọa độ 3D về trọng tâm (zero-mean) để phân tích Procrustes
         centered_anchors = anchors_mat - np.mean(anchors_mat, axis=0)
 
-        # Trích xuất vector hình học chuẩn hóa IOD (bất biến khoảng cách & kích thước)
+        # Tính tỷ lệ bán kính 3D đẳng hướng quanh trọng tâm (3D Centroid Scale)
+        # Bất biến tuyệt đối đối với phép xoay 3D (X, Y, Z và kết hợp 2 trục)
+        centroid_scale = float(np.sqrt(np.mean(np.sum(centered_anchors ** 2, axis=1))))
+        if centroid_scale < 1e-4:
+            centroid_scale = 1.0
+
+        # Trích xuất vector hình học chuẩn hóa bằng 3D Centroid Scale
         dists = []
         for i in range(len(anchors_mat)):
             for j in range(i + 1, min(i + 6, len(anchors_mat))):
                 d = np.linalg.norm(anchors_mat[i] - anchors_mat[j])
-                dists.append(float(d / iod))
+                dists.append(float(d / centroid_scale))
         geo_vector = np.array(dists, dtype=np.float32)
 
         # Trích xuất sắc thái màu da trên không gian màu LAB (kênh A và B)
@@ -366,6 +372,7 @@ class FaceIdentityVerifier:
             "geo_vector": geo_vector,
             "lab_hist": lab_hist,
             "iod": iod,
+            "centroid_scale": centroid_scale,
             "timestamp": time.time()
         }
 
@@ -373,25 +380,48 @@ class FaceIdentityVerifier:
         self,
         base_desc: Dict[str, Any],
         cand_desc: Dict[str, Any],
-        max_disparity_thresh: float = 0.018,
-        min_cosine_thresh: float = 0.950
+        max_disparity_thresh: float = 0.024,
+        min_cosine_thresh: float = 0.930,
+        pose_angles: Optional[Tuple[float, float, float]] = None,
+        is_head_challenge: bool = False
     ) -> Tuple[bool, float, Dict[str, Any]]:
         """
-        So sánh danh tính giữa 2 khuôn mặt bằng Procrustes 3D Shape Analysis + Vector hình học.
-        
+        So sánh danh tính giữa 2 khuôn mặt bằng Procrustes 3D Shape Analysis + Vector hình học 3D + Phân bố màu da LAB.
+        Hỗ trợ ngưỡng động thích ứng khi quay đầu đồng thời 2 trục X và Y (Yaw + Pitch).
+
         Args:
             base_desc: Descriptor từ ảnh chuẩn Bước 1.
             cand_desc: Descriptor từ frame thử thách (Blink / Head Movement / Verify).
-            max_disparity_thresh: Ngưỡng sai số hình thái 3D tối đa cho phép (càng nhỏ càng nghiêm ngặt).
+            max_disparity_thresh: Ngưỡng sai số hình thái 3D tối đa cho phép.
             min_cosine_thresh: Ngưỡng tương đồng cosine vector tối thiểu.
-            
+            pose_angles: Tuple (yaw, pitch, roll) ước lượng góc quay hiện tại.
+            is_head_challenge: Cờ đánh dấu đang trong giai đoạn thử thách quay đầu.
+
         Returns:
             Tuple[is_same_person, match_score, detail_dict]
         """
         if not base_desc or not cand_desc:
             return False, 0.0, {"reason": "EMPTY_DESCRIPTOR"}
 
-        # 1. Phân tích hình thái sai biệt 3D (Procrustes 3D Shape Disparity)
+        # 1. Tính toán độ lớn góc quay kết hợp 2 trục (theta = sqrt(yaw^2 + pitch^2))
+        theta = 0.0
+        if pose_angles is not None and len(pose_angles) >= 2:
+            yaw_val = float(pose_angles[0])
+            pitch_val = float(pose_angles[1])
+            theta = math.sqrt(yaw_val ** 2 + pitch_val ** 2)
+
+        # 2. Xác định ngưỡng thích ứng góc quay (Pose-Adaptive Thresholds)
+        eff_max_disparity = max_disparity_thresh
+        eff_min_cosine = min_cosine_thresh
+
+        if is_head_challenge or theta > 8.0:
+            delta = max(0.0, theta - 8.0)
+            # Khi quay 2 trục, disparity tăng do ước lượng độ sâu Z của MediaPipe biến thiên theo góc nhìn; mở rộng tương ứng
+            eff_max_disparity = min(0.062, max(max_disparity_thresh, 0.028 + 0.0016 * delta))
+            # Cosine similarity của vector hình thái được nới lỏng nhẹ nhàng theo góc quay
+            eff_min_cosine = max(0.80, min(min_cosine_thresh, 0.920 - 0.0055 * delta))
+
+        # 3. Phân tích hình thái sai biệt 3D (Procrustes 3D Shape Disparity)
         # Thuật toán Procrustes tự động tối ưu dịch chuyển, xoay 3D và tỉ lệ để triệt tiêu góc quay đầu
         try:
             _, _, disparity = scipy.spatial.procrustes(
@@ -399,10 +429,10 @@ class FaceIdentityVerifier:
                 cand_desc["anchors_3d"]
             )
             disparity = float(disparity)
-        except Exception as e:
+        except Exception:
             disparity = 1.0
 
-        # 2. Độ tương đồng Cosine giữa 2 vector khoảng cách hình học chuẩn hóa
+        # 4. Độ tương đồng Cosine giữa 2 vector khoảng cách hình học chuẩn hóa 3D
         v1, v2 = base_desc["geo_vector"], cand_desc["geo_vector"]
         norm1 = np.linalg.norm(v1)
         norm2 = np.linalg.norm(v2)
@@ -411,7 +441,7 @@ class FaceIdentityVerifier:
         else:
             cos_sim = 0.0
 
-        # 3. Tương quan phân bố màu sắc da LAB
+        # 5. Tương quan phân bố màu sắc da LAB (bất biến với góc quay đầu)
         color_corr = 0.85  # Mặc định trung tính
         if base_desc.get("lab_hist") is not None and cand_desc.get("lab_hist") is not None:
             try:
@@ -424,30 +454,35 @@ class FaceIdentityVerifier:
             except Exception:
                 color_corr = 0.85
 
-        # 4. Tính toán điểm tin cậy tổng hợp (Match Score từ 0.0 đến 1.0)
-        # Disparity người thật xoay đầu/chớp mắt thường <= 0.0035, người khác >= 0.020
-        shape_score = max(0.0, min(1.0, 1.0 - (disparity / 0.015)))
-        match_score = (0.55 * shape_score) + (0.35 * max(0.0, cos_sim)) + (0.10 * max(0.0, color_corr))
+        # 6. Tính toán điểm tin cậy tổng hợp (Match Score từ 0.0 đến 1.0)
+        shape_score = max(0.0, min(1.0, 1.0 - (disparity / 0.025)))
+        match_score = (0.50 * shape_score) + (0.35 * max(0.0, cos_sim)) + (0.15 * max(0.0, color_corr))
 
-        # 5. Quyết định (Decision Logic)
-        # Chấp nhận CÙNG 1 NGƯỜI nếu hình thái 3D khớp và vector khoảng cách khuôn mặt trùng khớp
+        # 7. Quyết định (Decision Logic)
+        # a) Điều kiện chuẩn: Cả Procrustes 3D và Cosine đạt chuẩn thích ứng
         is_same = (
-            (disparity <= max_disparity_thresh) and
-            (cos_sim >= min_cosine_thresh)
+            (disparity <= eff_max_disparity) and
+            (cos_sim >= eff_min_cosine)
         )
 
-        # Dung sai thích ứng: nếu sai số hình thái cực kỳ thấp (<0.006) thì nới lỏng cos_sim nhẹ
-        if not is_same and disparity <= 0.006 and cos_sim >= 0.950:
+        # b) Dung sai bảo vệ khi quay 2 trục: Màu da trùng khớp cao (color_corr >= 0.72) và disparity Procrustes < 0.058
+        if not is_same and (is_head_challenge or theta > 8.0):
+            if disparity <= 0.058 and color_corr >= 0.72 and cos_sim >= 0.78:
+                is_same = True
+
+        # c) Dung sai thích ứng cho góc quay nhỏ có disparity cực thấp
+        if not is_same and disparity <= 0.010 and cos_sim >= 0.900:
             is_same = True
 
         details = {
             "is_same_person": bool(is_same),
             "match_score": round(float(match_score), 4),
             "procrustes_disparity": round(disparity, 6),
-            "disparity_threshold": max_disparity_thresh,
+            "disparity_threshold": round(eff_max_disparity, 6),
             "cosine_similarity": round(cos_sim, 5),
-            "cosine_threshold": min_cosine_thresh,
+            "cosine_threshold": round(eff_min_cosine, 5),
             "color_correlation": round(color_corr, 4),
+            "theta_angle": round(theta, 2),
             "verdict": "MATCH" if is_same else "MISMATCH"
         }
 

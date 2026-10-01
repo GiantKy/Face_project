@@ -549,6 +549,7 @@ class ESP32ChallengeManager:
             }
         if fit_info["is_too_close"]:
             captured_b64 = image_to_base64(raw_frame, quality=75)
+            pct = int(round(fit_info["ratio_to_oval"] * 100))
             return {
                 "success": False,
                 "step": "face_detect",
@@ -556,7 +557,9 @@ class ESP32ChallengeManager:
                 "approved": False,
                 "verdict": "TOO_CLOSE",
                 "is_real": False,
-                "message": "Khuôn mặt quá gần camera! Vui lòng lùi lại một chút.",
+                "face_size_h": fit_info["face_size_h"],
+                "ratio_to_oval": fit_info["ratio_to_oval"],
+                "message": f"Khuôn mặt quá gần camera (chiếm {pct}% oval, giới hạn tối đa {int(round(OVAL_FIT_MAX_RATIO * 100))}%)! Vui lòng lùi lại một chút.",
                 "reasons": ["FACE_TOO_CLOSE"],
                 "hint": "Lùi lại một chút cho vừa vặn khung oval.",
                 "captured_image_base64": captured_b64
@@ -910,17 +913,35 @@ class ESP32ChallengeManager:
                         oval_center=oval_center, oval_axes=step_oval_axes, filter_oval=True
                     )
                 if cand_desc is not None:
-                    is_same, score, details = pipeline.identity_verifier.verify_identity(session.base_descriptor, cand_desc)
+                    is_head = target_step in ["turn_left", "turn_right", "nod_up", "nod_down"]
+                    is_same, score, details = pipeline.identity_verifier.verify_identity(
+                        session.base_descriptor, cand_desc,
+                        is_head_challenge=is_head
+                    )
                     if not is_same:
-                        return {
-                            "success": False,
-                            "session_id": session_id,
-                            "step": target_step,
-                            "passed": False,
-                            "error": "FACE_MISMATCH",
-                            "message": "CẢNH BÁO: Phát hiện đổi người! Yêu cầu đúng người chụp ảnh ban đầu thực hiện thử thách.",
-                            "reasons": ["FACE_IDENTITY_MISMATCH"]
-                        }
+                        session.mismatch_count = getattr(session, "mismatch_count", 0) + 1
+                        if session.mismatch_count >= 3:
+                            return {
+                                "success": False,
+                                "session_id": session_id,
+                                "step": target_step,
+                                "passed": False,
+                                "error": "FACE_MISMATCH",
+                                "message": "CẢNH BÁO: Phát hiện đổi người! Yêu cầu đúng người chụp ảnh ban đầu thực hiện thử thách.",
+                                "reasons": ["FACE_IDENTITY_MISMATCH"]
+                            }
+                        else:
+                            return {
+                                "success": False,
+                                "session_id": session_id,
+                                "step": target_step,
+                                "passed": False,
+                                "error": "FACE_TRACKING_WARNING",
+                                "message": "Vui lòng giữ khuôn mặt rõ nét trong khung oval.",
+                                "reasons": ["FACE_TRACKING_JITTER"]
+                            }
+                    else:
+                        session.mismatch_count = 0
 
         # Kiểm tra che mặt (Face Occlusion Defense) trong lúc đang thực hiện thử thách
         # Nếu phát hiện che mặt: Dừng ngay lập tức, TUYỆT ĐỐI KHÔNG THAY ĐỔI EAR HOẶC HEAD YAW!

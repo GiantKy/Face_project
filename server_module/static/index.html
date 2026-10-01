@@ -2899,17 +2899,21 @@
           const errMsg = errData.detail || 'Không thể khởi tạo phiên xác thực!';
           console.error('Liveness init-session error:', errMsg);
           cancelActiveChallenge();
-          renderResults({
-            approved: false,
-            confidence: 0.0,
-            reasons: [errMsg]
-          });
-          alert('CẢNH BÁO: ' + errMsg + '\nVui lòng tháo kính/khẩu trang ra và thử lại!');
+          try {
+            renderResults({
+              approved: false,
+              confidence: 0.0,
+              reasons: [errMsg]
+            });
+          } catch (rErr) {
+            console.warn('renderResults safe fallback:', rErr);
+          }
+          alert('CẢNH BÁO KHỞI TẠO:\n' + errMsg);
           return;
         }
       } catch (err) {
-        console.warn('Liveness init-session network error:', err);
-        alert('Lỗi kết nối AI Server khi khởi tạo phiên Liveness. Vui lòng kiểm tra server!');
+        console.warn('Liveness init-session error:', err);
+        alert('Lỗi khởi tạo phiên Liveness: ' + (err.message || err));
         cancelActiveChallenge();
         return;
       }
@@ -3687,32 +3691,49 @@
 
       // Metrics
       const ens = data.ensemble_anti_spoof;
-      const spoofPill = document.getElementById('metricSpoofConf');
-      spoofPill.textContent = `${(ens.confidence * 100).toFixed(1)}%`;
-      spoofPill.style.color = ens.is_real ? 'var(--emerald)' : 'var(--rose)';
-      document.getElementById('metricSpoofSource').textContent = `${ens.label} (${ens.source})`;
+      if (ens) {
+        const spoofPill = document.getElementById('metricSpoofConf');
+        if (spoofPill) {
+          spoofPill.textContent = `${(ens.confidence * 100).toFixed(1)}%`;
+          spoofPill.style.color = ens.is_real ? 'var(--emerald)' : 'var(--rose)';
+        }
+        const srcEl = document.getElementById('metricSpoofSource');
+        if (srcEl) srcEl.textContent = `${ens.label} (${ens.source})`;
 
-      const agreeVal = document.getElementById('metricAgreement');
-      agreeVal.textContent = ens.both_detected ? (ens.agreement ? 'ĐỒNG THUẬN' : 'BẤT ĐỒNG') : 'THIẾU MODEL';
-      agreeVal.style.color = (ens.both_detected && ens.agreement) ? 'var(--emerald)' : 'var(--amber)';
-      document.getElementById('metricAgreementDetail').textContent = `YOLO: ${ens.yolo_detail} | RF: ${ens.rfdetr_detail}`;
+        const agreeVal = document.getElementById('metricAgreement');
+        if (agreeVal) {
+          agreeVal.textContent = ens.both_detected ? (ens.agreement ? 'ĐỒNG THUẬN' : 'BẤT ĐỒNG') : 'THIẾU MODEL';
+          agreeVal.style.color = (ens.both_detected && ens.agreement) ? 'var(--emerald)' : 'var(--amber)';
+        }
+        const detailEl = document.getElementById('metricAgreementDetail');
+        if (detailEl) detailEl.textContent = `YOLO: ${ens.yolo_detail} | RF: ${ens.rfdetr_detail}`;
+      }
 
       const pose = data.pose_3d;
-      document.getElementById('metricPoseVal').textContent = `${pose.yaw.toFixed(1)}° / ${pose.pitch.toFixed(1)}°`;
-      document.getElementById('metricPoseMsg').textContent = pose.is_valid ? 'ĐẠT CHUẨN' : pose.message;
+      if (pose) {
+        const pVal = document.getElementById('metricPoseVal');
+        if (pVal) pVal.textContent = `${(pose.yaw || 0).toFixed(1)}° / ${(pose.pitch || 0).toFixed(1)}°`;
+        const pMsg = document.getElementById('metricPoseMsg');
+        if (pMsg) pMsg.textContent = pose.is_valid ? 'ĐẠT CHUẨN' : (pose.message || 'LỆCH');
+      }
 
-      document.getElementById('metricNumFaces').textContent = data.face_detection.num_faces;
+      if (data.face_detection) {
+        const nFaces = document.getElementById('metricNumFaces');
+        if (nFaces) nFaces.textContent = data.face_detection.num_faces;
+      }
 
       // 8 Criteria Checklist
       const c = data.criteria;
-      setPill('critFace', c.face_detected);
-      setPill('critSingle', c.single_face);
-      setPill('critPose', c.pose_valid);
-      setPill('critSpoof', c.anti_spoof_real);
-      setPill('critBoth', c.both_models_detected);
-      setPill('critBlink', c.blink_passed);
-      setPill('critHead', c.head_movement_passed);
-      setPill('critSamePerson', c.same_person_verified !== undefined ? c.same_person_verified : true);
+      if (c) {
+        setPill('critFace', c.face_detected);
+        setPill('critSingle', c.single_face);
+        setPill('critPose', c.pose_valid);
+        setPill('critSpoof', c.anti_spoof_real);
+        setPill('critBoth', c.both_models_detected);
+        setPill('critBlink', c.blink_passed);
+        setPill('critHead', c.head_movement_passed);
+        setPill('critSamePerson', c.same_person_verified !== undefined ? c.same_person_verified : true);
+      }
 
       // JSON Box
       document.getElementById('jsonBox').textContent = JSON.stringify(data, null, 2);

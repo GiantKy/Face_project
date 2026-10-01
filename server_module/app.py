@@ -649,9 +649,12 @@ async def init_liveness_session_endpoint(
 
     res = pipeline.init_liveness_session(image_input, session_id=session_id)
     if not res.get("success", False):
+        err_msg = res.get("message", "Không thể khởi tạo phiên Liveness")
+        err_code = res.get("error", "INIT_FAILED")
+        print(f"[INIT LIVENESS SESSION FAILED] Error: {err_code} | Detail: {err_msg}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=res.get("message", "Không thể khởi tạo phiên Liveness")
+            detail=err_msg
         )
 
     return res

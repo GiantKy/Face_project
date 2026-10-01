@@ -261,17 +261,16 @@ class EKYCPipelineServer:
             masked_frame, self.detector, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
         )
         if num_faces == 0:
-            # Thử lại với conf=0.35 để bắt được mặt chuyển động nhẹ lúc bấm chụp
+            # Thử lại với conf=0.35 trên masked_frame
             raw_faces = self.detector.detect(masked_frame, conf=0.35)
             faces_in_oval = filter_faces_in_oval(raw_faces, oval_center, oval_axes, img_w=w_f, img_h=h_f, tolerance=1.0)
             num_faces = len(faces_in_oval)
 
         if num_faces == 0:
-            return {
-                "success": False,
-                "error": "NO_FACE",
-                "message": "Không tìm thấy khuôn mặt trong khung oval. Vui lòng căn chỉnh mặt vào khung oval."
-            }
+            # Fallback dò trên frame_proc gốc phòng khi masked_frame làm mờ viền mặt
+            raw_faces = self.detector.detect(frame_proc, conf=0.35)
+            faces_in_oval = filter_faces_in_oval(raw_faces, oval_center, oval_axes, img_w=w_f, img_h=h_f, tolerance=1.05)
+            num_faces = len(faces_in_oval)
         if num_faces > 1:
             return {
                 "success": False,
@@ -296,6 +295,10 @@ class EKYCPipelineServer:
                 "message": "Không tìm thấy các mốc điểm khuôn mặt trong khung oval. Vui lòng căn chỉnh mặt vào khung oval."
             }
 
+        # Nếu landmark tìm thấy nhưng detector hụt do viền tối oval mask -> đảm bảo num_faces = 1
+        if num_faces == 0 and landmarks:
+            num_faces = 1
+
         # KIỂM TRA MẶT KHỚP CHUẨN KHUNG OVAL (OVAL FIT STANDARD) - BƯỚC 1
         fit_info = check_face_oval_fit(
             landmarks, w_f, h_f, oval_center, oval_axes,
@@ -317,10 +320,13 @@ class EKYCPipelineServer:
                 "message": f"Khuôn mặt quá xa (chiếm {pct_oval}% oval, yêu cầu tối thiểu {int(round(OVAL_FIT_MIN_RATIO * 100))}%)! Vui lòng tiến lại gần cho khớp khung oval."
             }
         if fit_info["is_too_close"]:
+            pct_oval = int(round(fit_info["ratio_to_oval"] * 100))
             return {
                 "success": False,
                 "error": "FACE_TOO_CLOSE",
-                "message": "Khuôn mặt quá gần camera! Vui lòng lùi lại một chút cho vừa khung oval."
+                "face_size_h": fit_info["face_size_h"],
+                "ratio_to_oval": fit_info["ratio_to_oval"],
+                "message": f"Khuôn mặt quá gần camera (chiếm {pct_oval}% oval, giới hạn tối đa {int(round(OVAL_FIT_MAX_RATIO * 100))}%)! Vui lòng lùi lại một chút cho vừa khung oval."
             }
         if fit_info["is_off_center"]:
             return {
@@ -1162,6 +1168,20 @@ class EKYCPipelineServer:
             except Exception:
                 base_desc = None
 
+        # 1. Ước lượng tư thế 3D Pose trước để hỗ trợ bù trừ góc quay khi thẩm định danh tính
+        pose_dict = None
+        if landmarks and len(landmarks) >= 468:
+            _, _, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point, img_w=w, img_h=h)
+
+        pose_angles = None
+        if pose_dict:
+            pose_angles = (
+                float(pose_dict.get("yaw", 0.0)),
+                float(pose_dict.get("pitch", 0.0)),
+                float(pose_dict.get("roll", 0.0))
+            )
+
+        # 1.1 Kiểm tra nhận dạng khuôn mặt (Face Identity Consistency Check) với bù trừ góc quay 2 trục
         same_person = True
         identity_details = None
         if base_desc is not None and landmarks and len(landmarks) >= 468:
@@ -1169,28 +1189,64 @@ class EKYCPipelineServer:
                 frame, oval_center=oval_center, oval_axes=head_oval_axes, filter_oval=True
             )
             if cand_desc is not None:
-                same_person, match_score, identity_details = self.identity_verifier.verify_identity(base_desc, cand_desc)
+                same_person, match_score, identity_details = self.identity_verifier.verify_identity(
+                    base_desc, cand_desc,
+                    pose_angles=pose_angles,
+                    is_head_challenge=True
+                )
                 if not same_person:
-                    return {
-                        "state": "FAILED",
-                        "action": "",
-                        "passed": False,
-                        "num_faces": 1,
-                        "same_person": False,
-                        "prompt": "⚠️ CẢNH BÁO: PHÁT HIỆN ĐỔI NGƯỜI!",
-                        "error": "CẢNH BÁO: Phát hiện đổi người! Yêu cầu đúng người chụp ảnh ban đầu thực hiện thử thách.",
-                        "identity_details": identity_details,
-                        "time_left": 0.0,
-                        "progress": 0.0,
-                        "current_angle": 0.0,
-                        "target_threshold": 0.0,
-                        "is_matched": False,
-                        "pose": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
-                    }
+                    # Tích lũy đếm mismatch liên tiếp để chống rớt frame do chuyển động nhanh hoặc góc quét phức tạp
+                    mismatch_count = 1
+                    if sess is not None:
+                        sess["head_mismatch_count"] = sess.get("head_mismatch_count", 0) + 1
+                        mismatch_count = sess["head_mismatch_count"]
 
-        pose_dict = None
-        if landmarks and len(landmarks) >= 468:
-            _, _, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point, img_w=w, img_h=h)
+                    action_name = self.head_movement_detector.current_action.value if self.head_movement_detector.current_action else "TURN_HEAD"
+                    pose_out = {
+                        "yaw": round(pose_dict.get("yaw", 0.0), 1),
+                        "pitch": round(pose_dict.get("pitch", 0.0), 1),
+                        "roll": round(pose_dict.get("roll", 0.0), 1)
+                    } if pose_dict else {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+
+                    # Nếu mới lệch 1-2 frame: Giữ ở trạng thái WARNING và nhắc nhở, không vội hủy phiên
+                    if mismatch_count < 3:
+                        return {
+                            "state": "WARNING",
+                            "action": action_name,
+                            "passed": False,
+                            "num_faces": 1,
+                            "same_person": False,
+                            "prompt": "⚠️ VUI LÒNG GIỮ KHUÔN MẶT RÕ RÀNG TRONG OVAL",
+                            "error": "Hình ảnh khuôn mặt biến đổi nhanh. Vui lòng căn chỉnh mặt trong khung oval.",
+                            "identity_details": identity_details,
+                            "time_left": 10.0,
+                            "progress": 0.0,
+                            "current_angle": round(pose_out.get("yaw", 0.0), 1),
+                            "target_threshold": 3.0,
+                            "is_matched": False,
+                            "pose": pose_out
+                        }
+                    else:
+                        # Mismatch liên tiếp >= 3 frame: Xác nhận đổi người và hủy phiên
+                        return {
+                            "state": "FAILED",
+                            "action": "",
+                            "passed": False,
+                            "num_faces": 1,
+                            "same_person": False,
+                            "prompt": "⚠️ CẢNH BÁO: PHÁT HIỆN ĐỔI NGƯỜI!",
+                            "error": "CẢNH BÁO: Phát hiện đổi người! Yêu cầu đúng người chụp ảnh ban đầu thực hiện thử thách.",
+                            "identity_details": identity_details,
+                            "time_left": 0.0,
+                            "progress": 0.0,
+                            "current_angle": 0.0,
+                            "target_threshold": 0.0,
+                            "is_matched": False,
+                            "pose": pose_out
+                        }
+                else:
+                    if sess is not None:
+                        sess["head_mismatch_count"] = 0
 
         # 1.5 Kiểm tra che mặt (Face Occlusion Defense)
         # Nếu phát hiện che mặt: TUYỆT ĐỐI KHÔNG ĐƯỢC TÍNH GÓC QUAY HEAD YAW HAY TĂNG TIẾN TRÌNH!
