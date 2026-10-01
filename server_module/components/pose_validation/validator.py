@@ -4,8 +4,11 @@ from ..landmark_detection.utils import get_landmark_point
 
 class PoseValidator:
 
-    def __init__(self):
+    def __init__(self, max_yaw: float = 32.0, max_pitch: float = 24.0, max_roll: float = 18.0):
         self.estimator = HeadPoseEstimator()
+        self.max_yaw = max_yaw
+        self.max_pitch = max_pitch
+        self.max_roll = max_roll
 
     def validate(self, landmarks, get_point=get_landmark_point, img_w=None, img_h=None):
         if get_point is None:
@@ -23,25 +26,25 @@ class PoseValidator:
         # =========================
         # TURN LEFT / RIGHT
         # =========================
-        if yaw > 25:
+        if yaw > self.max_yaw:
             return False, "Turn Right", pose
 
-        if yaw < -25:
+        if yaw < -self.max_yaw:
             return False, "Turn Left", pose
 
         # =========================
         # UP / DOWN
         # =========================
-        if pitch > 20:
+        if pitch > self.max_pitch:
             return False, "Head Down", pose
 
-        if pitch < -20:
+        if pitch < -self.max_pitch:
             return False, "Head Up", pose
 
         # =========================
         # TILT
         # =========================
-        if abs(roll) > 15:
+        if abs(roll) > self.max_roll:
             return False, "Head Tilt", pose
 
         return True, "Valid Pose", pose

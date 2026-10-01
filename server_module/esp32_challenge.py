@@ -23,12 +23,14 @@ PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
 
 try:
+    from server_module.config import MIN_FACE_HEIGHT, OVAL_FIT_MIN_RATIO, OVAL_FIT_MAX_RATIO, POSE_MAX_YAW, POSE_MAX_PITCH
     from server_module.utils import (
         load_image,
         image_to_base64,
         calculate_iou,
         get_default_oval_params,
         is_face_in_oval,
+        check_face_oval_fit,
         filter_faces_in_oval,
         compute_eye_aspect_ratio,
         create_pipeline_result_dashboard,
@@ -38,12 +40,14 @@ try:
     )
     from server_module.components.pose_validation.utils import get_landmark_point
 except ImportError:
+    from config import MIN_FACE_HEIGHT, OVAL_FIT_MIN_RATIO, OVAL_FIT_MAX_RATIO, POSE_MAX_YAW, POSE_MAX_PITCH
     from utils import (
         load_image,
         image_to_base64,
         calculate_iou,
         get_default_oval_params,
         is_face_in_oval,
+        check_face_oval_fit,
         filter_faces_in_oval,
         compute_eye_aspect_ratio,
         create_pipeline_result_dashboard,
@@ -507,6 +511,57 @@ class ESP32ChallengeManager:
                 "captured_image_base64": captured_b64
             }
 
+        # KIỂM TRA MẶT KHỚP CHUẨN KHUNG OVAL (OVAL FIT STANDARD) - ESP32
+        fit_info = check_face_oval_fit(
+            landmarks, w, h, oval_center, oval_axes,
+            min_ratio=OVAL_FIT_MIN_RATIO, max_ratio=OVAL_FIT_MAX_RATIO, min_face_height=min(MIN_FACE_HEIGHT, int(h * 0.42))
+        )
+        if not fit_info["face_in_oval"]:
+            captured_b64 = image_to_base64(raw_frame, quality=75)
+            return {
+                "success": False,
+                "step": "face_detect",
+                "passed": False,
+                "approved": False,
+                "verdict": "NOT_IN_OVAL",
+                "is_real": False,
+                "message": "Khuôn mặt không nằm trong khung oval! Vui lòng căn chỉnh mặt vào khung oval.",
+                "reasons": ["FACE_NOT_IN_OVAL"],
+                "hint": "Căn chỉnh cho khuôn mặt vào giữa khung oval.",
+                "captured_image_base64": captured_b64
+            }
+        if fit_info["is_too_far"]:
+            captured_b64 = image_to_base64(raw_frame, quality=75)
+            pct = int(round(fit_info["ratio_to_oval"] * 100))
+            return {
+                "success": False,
+                "step": "face_detect",
+                "passed": False,
+                "approved": False,
+                "verdict": "TOO_FAR",
+                "is_real": False,
+                "face_size_h": fit_info["face_size_h"],
+                "ratio_to_oval": fit_info["ratio_to_oval"],
+                "message": f"Khuôn mặt quá xa (chiếm {pct}% oval, tối thiểu {int(round(OVAL_FIT_MIN_RATIO * 100))}%). Hãy tiến lại gần camera hơn.",
+                "reasons": ["FACE_TOO_FAR"],
+                "hint": "Đứng cách camera vừa vặn khung oval.",
+                "captured_image_base64": captured_b64
+            }
+        if fit_info["is_too_close"]:
+            captured_b64 = image_to_base64(raw_frame, quality=75)
+            return {
+                "success": False,
+                "step": "face_detect",
+                "passed": False,
+                "approved": False,
+                "verdict": "TOO_CLOSE",
+                "is_real": False,
+                "message": "Khuôn mặt quá gần camera! Vui lòng lùi lại một chút.",
+                "reasons": ["FACE_TOO_CLOSE"],
+                "hint": "Lùi lại một chút cho vừa vặn khung oval.",
+                "captured_image_base64": captured_b64
+            }
+
         # Kiểm tra che mặt & mắt kính theo Chính sách A (Face Occlusion & Glasses Defense)
         if hasattr(pipeline, "occlusion_detector") and pipeline.occlusion_detector is not None:
             is_occ, occ_code, occ_msg = pipeline.occlusion_detector.check_occlusion(
@@ -546,11 +601,12 @@ class ESP32ChallengeManager:
         base_roll = float(pose_dict.get("roll", 0.0)) if pose_dict else 0.0
 
         # Kiểm tra người dùng có đang nhìn thẳng không (dung sai linh hoạt theo góc đặt camera)
-        if abs(base_yaw) > 25.0 or abs(base_pitch) > 22.0:
+        if abs(base_yaw) > POSE_MAX_YAW or abs(base_pitch) > POSE_MAX_PITCH:
             annotated = raw_frame.copy()
             cv2.putText(annotated, f"GOC: Y:{base_yaw:+.0f} P:{base_pitch:+.0f}", (bx1, max(18, by1 - 6)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 200, 255), 1, cv2.LINE_AA)
             captured_b64 = image_to_base64(annotated, quality=75)
+            hint_dir = "đầu đang lệch trái" if base_yaw < 0 else "đầu đang lệch phải"
             return {
                 "success": False,
                 "step": "face_detect",
@@ -558,7 +614,7 @@ class ESP32ChallengeManager:
                 "approved": False,
                 "verdict": "NOT_FRONTAL",
                 "is_real": False,
-                "message": f"Vui lòng nhìn thẳng vào camera để bắt đầu ({text_status}).",
+                "message": f"Vui lòng nhìn thẳng vào camera để bắt đầu ({hint_dir}).",
                 "reasons": ["POSE_NOT_FRONTAL"],
                 "pose": {"yaw": round(base_yaw, 1), "pitch": round(base_pitch, 1)},
                 "captured_image_base64": captured_b64
@@ -824,6 +880,25 @@ class ESP32ChallengeManager:
                     "message": f"Phát hiện {num_faces} người trong khung hình! Vui lòng chỉ 1 người thực hiện.",
                     "reasons": ["MULTI_FACES_DETECTED"]
                 }
+
+            # Kiểm tra độ khớp oval của frame hiện tại
+            fit_step = check_face_oval_fit(
+                landmarks, w, h, oval_center, step_oval_axes,
+                min_ratio=OVAL_FIT_MIN_RATIO * 0.85,
+                max_ratio=OVAL_FIT_MAX_RATIO * 1.15,
+                min_face_height=min(int(MIN_FACE_HEIGHT * 0.85), int(h * 0.38))
+            )
+            if not fit_step["fit_oval"] and fit_step["is_too_far"]:
+                return {
+                    "success": False,
+                    "session_id": session_id,
+                    "step": target_step,
+                    "passed": False,
+                    "error": "FACE_TOO_FAR",
+                    "message": "Khuôn mặt ở quá xa! Vui lòng tiến lại gần khung oval để tiếp tục.",
+                    "reasons": ["FACE_TOO_FAR"]
+                }
+
             if getattr(session, "base_descriptor", None) is not None:
                 cand_desc = pipeline.identity_verifier.extract_descriptor(
                     masked_frame,
@@ -1021,16 +1096,16 @@ class ESP32ChallengeManager:
             action = session.target_head_action
 
             if action == "TURN_LEFT":
-                # Quay TRÁI của người dùng: delta_yaw DƯƠNG (>= 3.0°)
-                head_matched = (delta_yaw >= 3.0) or (curr_yaw >= 3.5)
+                # Quay TRÁI của người dùng: delta_yaw DƯƠNG (>= 2.5° hoặc curr_yaw >= 3.0°)
+                head_matched = (delta_yaw >= 2.5) or (curr_yaw >= 3.0)
             elif action == "TURN_RIGHT":
-                # Quay PHẢI của người dùng: delta_yaw ÂM (<= -3.0°)
-                head_matched = (delta_yaw <= -3.0) or (curr_yaw <= -3.5)
+                # Quay PHẢI của người dùng: delta_yaw ÂM (<= -2.5° hoặc curr_yaw <= -3.0°)
+                head_matched = (delta_yaw <= -2.5) or (curr_yaw <= -3.0)
 
             if head_matched:
-                # Nếu quay góc rõ rệt (|delta_yaw| >= 3.5 hoặc |curr_yaw| >= 4.5): cho pass ngay sau 1 frame rõ
-                if (action == "TURN_LEFT" and (delta_yaw >= 3.5 or curr_yaw >= 4.5)) or \
-                   (action == "TURN_RIGHT" and (delta_yaw <= -3.5 or curr_yaw <= -4.5)):
+                # Nếu quay góc rõ rệt (|delta_yaw| >= 3.0 hoặc |curr_yaw| >= 3.8): cho pass ngay sau 1 frame rõ
+                if (action == "TURN_LEFT" and (delta_yaw >= 3.0 or curr_yaw >= 3.8)) or \
+                   (action == "TURN_RIGHT" and (delta_yaw <= -3.0 or curr_yaw <= -3.8)):
                     session.consecutive_turn_frames += 2
                 else:
                     session.consecutive_turn_frames += 1

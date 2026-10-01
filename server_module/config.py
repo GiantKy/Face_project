@@ -51,10 +51,12 @@ CONF_THRESHOLD_FACE = 0.5
 CONF_THRESHOLD_ANTI_SPOOF = 0.25
 
 # Ngưỡng tư thế 3D Pose (Euler Angles: Yaw, Pitch, Roll)
-POSE_MAX_YAW = 25.0       # Độ xoay ngang tối đa cho phép
-POSE_MAX_PITCH = 20.0     # Độ ngước lên/cúi xuống tối đa cho phép
-POSE_MAX_ROLL = 15.0      # Độ nghiêng đầu tối đa cho phép
-MIN_FACE_HEIGHT = 170     # Chiều cao khuôn mặt tối thiểu trong khung hình (tránh ngồi quá xa)
+POSE_MAX_YAW = 32.0       # Độ xoay ngang tối đa cho phép (nới lỏng từ 25.0 -> 32.0 tránh báo nhầm lệch khi đầu thẳng)
+POSE_MAX_PITCH = 24.0     # Độ ngước lên/cúi xuống tối đa cho phép (nới lỏng từ 20.0 -> 24.0)
+POSE_MAX_ROLL = 18.0      # Độ nghiêng đầu tối đa cho phép (nới lỏng từ 15.0 -> 18.0)
+MIN_FACE_HEIGHT = 145     # Chiều cao khuôn mặt tối thiểu trong khung hình (tránh ngồi quá xa, ~40% Oval 480p)
+OVAL_FIT_MIN_RATIO = 0.40  # Tỷ lệ tối thiểu của chiều cao mặt so với chiều cao khung Oval (40%)
+OVAL_FIT_MAX_RATIO = 0.60  # Tỷ lệ tối đa của chiều cao mặt so với chiều cao khung Oval (60%)
 
 # Ngưỡng Liveness Blink (Eye Aspect Ratio - EAR)
 EAR_EYE_CLOSED_THRESHOLD = 0.20   # Dưới ngưỡng này coi như mắt nhắm (bắt trọn chớp mắt tự nhiên)
@@ -64,7 +66,7 @@ MIN_BLINKS_REQUIRED = 1
 # Ngưỡng thử thách chuyển động đầu (Head Movement Challenge)
 HEAD_YAW_THRESHOLD = 16.0
 HEAD_PITCH_THRESHOLD = 12.0
-HEAD_DELTA_YAW_THRESHOLD = 3.5     # Ngưỡng nhích nhẹ đầu tối thiểu (3.5 độ nhẹ nhàng từ mốc ban đầu)
+HEAD_DELTA_YAW_THRESHOLD = 3.0     # Ngưỡng nhích nhẹ đầu tối thiểu (giảm từ 3.5 -> 3.0 độ giúp dễ hoàn thành hơn)
 HEAD_DELTA_PITCH_THRESHOLD = 4.0   # Ngưỡng nhích nhẹ gật đầu tối thiểu
 CHALLENGE_TIMEOUT_SECONDS = 10.0
 

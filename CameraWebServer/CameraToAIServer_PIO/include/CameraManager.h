@@ -74,24 +74,19 @@ public:
             // chính là nguyên nhân gây sập tối hình.
             // ============================================================
 
-            // 1. OV3660 cần chỉnh đặc biệt (CameraWebServer.ino L85-89)
+            // 1. Lật ảnh: Bật V-Flip (lật dọc khung hình) và H-Mirror (lật ngang theo chuẩn gương eKYC)
+            s->set_vflip(s, 0);
+            s->set_hmirror(s, 0);
+
+            // 2. OV3660 cần bù màu đặc biệt (CameraWebServer.ino L85-89)
             if (s->id.PID == OV3660_PID) {
-                s->set_vflip(s, 1);
                 s->set_brightness(s, 1);   // OV3660 bắt buộc +1
                 s->set_saturation(s, -2);  // OV3660 bắt buộc -2
             }
 
-            // 2. Hạ frame size xuống VGA cho eKYC và đặt JPEG quality 12
+            // 3. Hạ frame size xuống VGA cho eKYC và đặt JPEG quality 12
             s->set_framesize(s, FRAMESIZE_VGA);
             s->set_quality(s, 12);
-
-            // 3. ESP32S3_EYE set vflip (CameraWebServer.ino L100-102)
-        #if defined(CAMERA_MODEL_ESP32S3_EYE)
-            s->set_vflip(s, 1);
-        #endif
-
-            // 4. H-Mirror bổ sung cho eKYC (quay đầu đúng hướng trên UI)
-            s->set_hmirror(s, 1);
         }
 
         // Xả 10 frame khởi động để AEC & DMA ổn định độ sáng (tránh lúc đầu bị tối)
@@ -192,6 +187,22 @@ public:
     void setDenoise(int val) {
         sensor_t *s = esp_camera_sensor_get();
         if (s != nullptr) s->set_denoise(s, val ? 1 : 0);
+    }
+
+    /**
+     * @brief Điều chỉnh lật dọc khung hình V-Flip (0: Tắt, 1: Bật lật dọc)
+     */
+    void setVFlip(int val) {
+        sensor_t *s = esp_camera_sensor_get();
+        if (s != nullptr) s->set_vflip(s, val ? 1 : 0);
+    }
+
+    /**
+     * @brief Điều chỉnh lật ngang khung hình H-Mirror (0: Tắt, 1: Bật lật gương)
+     */
+    void setHMirror(int val) {
+        sensor_t *s = esp_camera_sensor_get();
+        if (s != nullptr) s->set_hmirror(s, val ? 1 : 0);
     }
 
     /**

@@ -2795,10 +2795,36 @@
         return;
       }
 
-      // KIỂM TRA MẮT KÍNH & VẬT CHE MẶT TRƯỚC KHI CHỤP (Pre-Capture Check)
-      if (latestPoseData && latestPoseData.is_occluded) {
-        alert(latestPoseData.message || 'CẢNH BÁO: Phát hiện đang đeo kính hoặc che mặt! Vui lòng tháo kính/khẩu trang ra trước khi chụp ảnh.');
-        return;
+      // KIỂM TRA ĐỘ KHỚP KHUNG OVAL & VẬT CHE MẶT TRƯỚC KHI CHỤP (Pre-Capture Check)
+      if (latestPoseData) {
+        if (latestPoseData.num_faces !== undefined && latestPoseData.num_faces > 1) {
+          alert(`Phát hiện ${latestPoseData.num_faces} người trong khung hình! Vui lòng chỉ 1 người duy nhất thực hiện eKYC.`);
+          return;
+        }
+        if (latestPoseData.is_occluded) {
+          alert(latestPoseData.message || 'CẢNH BÁO: Phát hiện đang đeo kính hoặc che mặt! Vui lòng tháo kính/khẩu trang ra trước khi chụp ảnh.');
+          return;
+        }
+        if (!latestPoseData.has_face || !latestPoseData.face_in_oval) {
+          alert('Vui lòng đưa khuôn mặt vào trong khung oval trước khi bắt đầu thử thách!');
+          return;
+        }
+        if (latestPoseData.is_off_center) {
+          alert((latestPoseData.off_center_hint || 'Vui lòng căn chỉnh khuôn mặt vào giữa khung oval') + ' trước khi bắt đầu.');
+          return;
+        }
+        if (latestPoseData.is_too_far) {
+          alert('Khuôn mặt quá xa camera! Vui lòng tiến lại gần để khuôn mặt vừa vặn với khung oval trước khi bắt đầu.');
+          return;
+        }
+        if (latestPoseData.is_too_close) {
+          alert('Khuôn mặt quá gần camera! Vui lòng lùi xa một chút cho vừa khung oval.');
+          return;
+        }
+        if (!latestPoseData.is_aligned_good) {
+          alert('Vui lòng nhìn thẳng và căn chỉnh khuôn mặt vừa vặn khung oval trước khi bắt đầu!');
+          return;
+        }
       }
 
       stopPoseCheckLoop();
@@ -2816,7 +2842,15 @@
           fetch(`${API_BASE_URL}/api/v1/liveness/reset-session`, { method: 'POST', body: resetForm }).catch(() => {});
         } catch (_) {}
       }
-      livenessSessionId = null;
+
+      // Tạo UUID v4 chuẩn RFC4122 cho phiên xác thực Liveness mới
+      const newSessionId = 'sess_' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : (
+        'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        })
+      ));
+      livenessSessionId = newSessionId;
       baseFrameBlob = null;
       blinkSuccessBlob = null;
       headSuccessBlob = null;
@@ -2824,17 +2858,71 @@
       // Bước 1: Chụp ngay ảnh khuôn mặt chuẩn khi mặt đang thẳng trong Oval
       triggerScreenFlash();
 
-      // CHUYỂN BƯỚC 2 NGAY TỨC THÌ (0ms Delay) - Trải nghiệm mượt mà, không giật khựng
+      showChallengeHUD();
+      updateChallengeHUD({
+        stageText: 'BƯỚC 1/3: CHỤP ẢNH CHUẨN ĐỊNH DANH',
+        icon: '📸',
+        prompt: 'ĐANG KHỞI TẠO ĐỊNH DANH SINH TRẮC HỌC...',
+        hint: 'Giữ nguyên khuôn mặt trong khung oval',
+        timerText: '10.0s',
+        isTimerUrgent: false,
+        telemetry: `UUID: ${newSessionId.slice(0, 20)}...`,
+        percent: '0%',
+        fillWidth: '0%'
+      });
+
+      const blob = await captureFullFrameBlob();
+      if (!blob) {
+        alert('Không thể chụp hình ảnh từ camera. Vui lòng thử lại!');
+        cancelActiveChallenge();
+        return;
+      }
+      baseFrameBlob = blob;
+
+      // Khởi tạo phiên sinh trắc học Bước 1 trên Server với UUID đã tạo
+      // Trích xuất Base Descriptor để đối chiếu liên tục trong suốt Giai đoạn 2 và 3
+      try {
+        const initForm = new FormData();
+        initForm.append('file', blob, 'base_frame.jpg');
+        initForm.append('session_id', newSessionId);
+        const initRes = await fetch(`${API_BASE_URL}/api/v1/liveness/init-session`, {
+          method: 'POST',
+          body: initForm
+        });
+        if (initRes.ok) {
+          const initData = await initRes.json();
+          livenessSessionId = initData.session_id || newSessionId;
+          blinkSuccessBlob = null;
+          headSuccessBlob = null;
+        } else {
+          const errData = await initRes.json().catch(() => ({}));
+          const errMsg = errData.detail || 'Không thể khởi tạo phiên xác thực!';
+          console.error('Liveness init-session error:', errMsg);
+          cancelActiveChallenge();
+          renderResults({
+            approved: false,
+            confidence: 0.0,
+            reasons: [errMsg]
+          });
+          alert('CẢNH BÁO: ' + errMsg + '\nVui lòng tháo kính/khẩu trang ra và thử lại!');
+          return;
+        }
+      } catch (err) {
+        console.warn('Liveness init-session network error:', err);
+        alert('Lỗi kết nối AI Server khi khởi tạo phiên Liveness. Vui lòng kiểm tra server!');
+        cancelActiveChallenge();
+        return;
+      }
+
+      // CHUYỂN BƯỚC 2: Phiên sinh trắc học và Base Descriptor đã sẵn sàng trên Server!
       setStepStatus(1, 'completed');
       setStepStatus(2, 'active');
 
-      // Bước 2: Bắt đầu Thử Thách Chớp Mắt (Blink Challenge)
       currentState = APP_STATE.CHALLENGE_BLINK;
       blinkCounter = 0;
       blinkState = false;
       blinkPassed = false;
 
-      showChallengeHUD();
       updateChallengeHUD({
         stageText: 'BƯỚC 2/3: THỬ THÁCH CHỚP MẮT',
         icon: '👁️',
@@ -2842,7 +2930,7 @@
         hint: 'Nhìn vào camera và chớp mắt 1 lần tự nhiên',
         timerText: '10.0s',
         isTimerUrgent: false,
-        telemetry: 'Đang khởi tạo định danh & đo lường EAR...',
+        telemetry: `UUID: ${livenessSessionId.slice(0, 18)}... | Đang đo EAR & đối chiếu danh tính...`,
         percent: '0%',
         fillWidth: '0%'
       });
@@ -2851,42 +2939,6 @@
       oval.className = 'face-guide-oval state-challenge';
 
       startBlinkChallengeLoop();
-
-      // Khởi tạo phiên sinh trắc học Bước 1 trong nền song song (Non-blocking Asynchronous)
-      // KIỂM TRA MẮT KÍNH & VẬT CHE MẶT NGAY SAU KHI CHỤP (Post-Capture Check)
-      captureFullFrameBlob().then(async (blob) => {
-        if (!blob) return;
-        baseFrameBlob = blob;
-        try {
-          const initForm = new FormData();
-          initForm.append('file', blob, 'base_frame.jpg');
-          const initRes = await fetch(`${API_BASE_URL}/api/v1/liveness/init-session`, {
-            method: 'POST',
-            body: initForm
-          });
-          if (initRes.ok) {
-            const initData = await initRes.json();
-            livenessSessionId = initData.session_id;
-            blinkSuccessBlob = null;
-            headSuccessBlob = null;
-          } else {
-            const errData = await initRes.json().catch(() => ({}));
-            const errMsg = errData.detail || 'Không thể khởi tạo phiên xác thực!';
-            console.error('Liveness init-session error:', errMsg);
-            // Dừng ngay lập tức nếu phát hiện đeo kính hoặc che mặt tại ảnh chụp Bước 1
-            cancelActiveChallenge();
-            renderResults({
-              approved: false,
-              confidence: 0.0,
-              reasons: [errMsg]
-            });
-            alert('CẢNH BÁO: ' + errMsg + '\nVui lòng tháo kính/khẩu trang ra và thử lại!');
-            return;
-          }
-        } catch (err) {
-          console.warn('Liveness init-session network error:', err);
-        }
-      });
     }
 
     function startBlinkChallengeLoop() {
@@ -2986,14 +3038,33 @@
               return;
             }
 
+            // Kiểm tra mặt có khớp khung oval không trong lúc chớp mắt
+            if (data.fit_oval === false) {
+              const oval = document.getElementById('faceGuideOval');
+              if (oval) oval.className = 'face-guide-oval state-warning';
+              const displayTime = (data.time_left !== undefined) ? data.time_left : localTimeLeft;
+              updateChallengeHUD({
+                stageText: '⚠️ CĂN CHỈNH KHUNG OVAL',
+                icon: data.is_too_far ? '🔍' : '🎯',
+                prompt: (data.error || data.label || 'VUI LÒNG TIẾN LẠI GẦN CHO KHỚP KHUNG OVAL').toUpperCase(),
+                hint: data.is_too_far ? 'Tiến lại gần camera hơn để mặt vừa vặn khung oval' : 'Đưa khuôn mặt vào giữa khung oval',
+                timerText: `${displayTime.toFixed(1)}s`,
+                isTimerUrgent: displayTime < 3.0,
+                telemetry: `Trạng thái: ${data.label || 'MẶT CHƯA KHỚP OVAL'}`
+              });
+              return;
+            }
+
             if (data.same_person === false) {
+              const oval = document.getElementById('faceGuideOval');
+              if (oval) oval.className = 'face-guide-oval state-warning';
               updateChallengeHUD({
                 stageText: '🚨 CẢNH BÁO TRÁO ĐỔI NGƯỜI!',
                 icon: '⛔',
-                prompt: 'PHÁT HIỆN ĐỔI NGƯỜI (FACE MISMATCH)',
-                hint: 'Người đang chớp mắt KHÔNG PHẢI người đã chụp ở Bước 1!',
+                prompt: (data.error || 'PHÁT HIỆN ĐỔI NGƯỜI (FACE MISMATCH)').toUpperCase(),
+                hint: 'Người đang đứng trước camera KHÔNG PHẢI người đã chụp ở Bước 1!',
                 isTimerUrgent: true,
-                telemetry: 'Định danh không khớp'
+                telemetry: `Trạng thái: ${data.label || 'ĐỊNH DANH KHÔNG KHỚP'}`
               });
               return;
             }
@@ -3162,6 +3233,22 @@
                 hint: 'Yêu cầu chỉ 1 người duy nhất trong khung camera',
                 isTimerUrgent: true,
                 telemetry: `Số người phát hiện: ${data.num_faces}`
+              });
+              return;
+            }
+
+            // Kiểm tra mặt có khớp khung oval không trong lúc quay đầu
+            if (data.fit_oval === false && data.is_too_far) {
+              const oval = document.getElementById('faceGuideOval');
+              if (oval) oval.className = 'face-guide-oval state-warning stage-turn';
+              updateChallengeHUD({
+                stageText: '⚠️ CĂN CHỈNH KHUNG OVAL',
+                icon: '🔍',
+                prompt: (data.prompt || data.error || 'VUI LÒNG TIẾN LẠI GẦN CHO KHỚP KHUNG OVAL').toUpperCase(),
+                hint: 'Tiến lại gần camera hơn để mặt vừa vặn khung oval',
+                timerText: `${(data.time_left !== undefined ? data.time_left : localTimeLeft).toFixed(1)}s`,
+                isTimerUrgent: false,
+                telemetry: 'Trạng thái: MẶT Ở QUÁ XA OVAL'
               });
               return;
             }

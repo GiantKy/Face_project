@@ -45,6 +45,8 @@ try:
         POSE_MAX_PITCH,
         POSE_MAX_ROLL,
         MIN_FACE_HEIGHT,
+        OVAL_FIT_MIN_RATIO,
+        OVAL_FIT_MAX_RATIO,
         EAR_EYE_CLOSED_THRESHOLD,
         EAR_EYE_OPEN_THRESHOLD,
         MIN_BLINKS_REQUIRED,
@@ -68,6 +70,7 @@ try:
         get_default_oval_params,
         is_point_in_oval,
         is_face_in_oval,
+        check_face_oval_fit,
         filter_faces_in_oval,
         get_oval_masked_frame,
         draw_oval_face_guide
@@ -101,6 +104,8 @@ except (ImportError, ValueError):
         POSE_MAX_PITCH,
         POSE_MAX_ROLL,
         MIN_FACE_HEIGHT,
+        OVAL_FIT_MIN_RATIO,
+        OVAL_FIT_MAX_RATIO,
         EAR_EYE_CLOSED_THRESHOLD,
         EAR_EYE_OPEN_THRESHOLD,
         MIN_BLINKS_REQUIRED,
@@ -124,6 +129,7 @@ except (ImportError, ValueError):
         get_default_oval_params,
         is_point_in_oval,
         is_face_in_oval,
+        check_face_oval_fit,
         filter_faces_in_oval,
         get_oval_masked_frame,
         draw_oval_face_guide
@@ -188,10 +194,13 @@ class EKYCPipelineServer:
 
     def load_models(self):
         """Khởi tạo và tải trước toàn bộ mô hình AI vào bộ nhớ."""
-        print("[EKYCPipelineServer] Đang khởi tạo các mô hình AI (Ensemble Edition)...")
         self.detector = FaceDetector(model_path=self.face_model_path, conf_thresh=CONF_THRESHOLD_FACE, iou_thresh=0.40)
         self.landmark_detector = LandmarkDetector()
-        self.pose_validator = PoseValidator()
+        self.pose_validator = PoseValidator(
+            max_yaw=POSE_MAX_YAW,
+            max_pitch=POSE_MAX_PITCH,
+            max_roll=POSE_MAX_ROLL
+        )
         self.aligner = FaceAligner()
         self.ensemble_anti_spoof = EnsembleAntiSpoofDetector(
             yolo_model_path=self.yolo_antispoof_path,
@@ -280,6 +289,46 @@ class EKYCPipelineServer:
                 frame_proc, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True, oval_tolerance=1.0
             )
 
+        if not landmarks:
+            return {
+                "success": False,
+                "error": "NO_FACE",
+                "message": "Không tìm thấy các mốc điểm khuôn mặt trong khung oval. Vui lòng căn chỉnh mặt vào khung oval."
+            }
+
+        # KIỂM TRA MẶT KHỚP CHUẨN KHUNG OVAL (OVAL FIT STANDARD) - BƯỚC 1
+        fit_info = check_face_oval_fit(
+            landmarks, w_f, h_f, oval_center, oval_axes,
+            min_ratio=OVAL_FIT_MIN_RATIO, max_ratio=OVAL_FIT_MAX_RATIO, min_face_height=MIN_FACE_HEIGHT
+        )
+        if not fit_info["face_in_oval"]:
+            return {
+                "success": False,
+                "error": "FACE_NOT_IN_OVAL",
+                "message": "Khuôn mặt không nằm trong khung oval! Vui lòng căn chỉnh mặt vào khung oval."
+            }
+        if fit_info["is_too_far"]:
+            pct_oval = int(round(fit_info["ratio_to_oval"] * 100))
+            return {
+                "success": False,
+                "error": "FACE_TOO_FAR",
+                "face_size_h": fit_info["face_size_h"],
+                "ratio_to_oval": fit_info["ratio_to_oval"],
+                "message": f"Khuôn mặt quá xa (chiếm {pct_oval}% oval, yêu cầu tối thiểu {int(round(OVAL_FIT_MIN_RATIO * 100))}%)! Vui lòng tiến lại gần cho khớp khung oval."
+            }
+        if fit_info["is_too_close"]:
+            return {
+                "success": False,
+                "error": "FACE_TOO_CLOSE",
+                "message": "Khuôn mặt quá gần camera! Vui lòng lùi lại một chút cho vừa khung oval."
+            }
+        if fit_info["is_off_center"]:
+            return {
+                "success": False,
+                "error": "FACE_OFF_CENTER",
+                "message": fit_info["off_center_hint"] or "Khuôn mặt bị lệch tâm! Vui lòng căn chỉnh vào giữa khung oval."
+            }
+
         is_occ, occ_code, occ_msg = self.occlusion_detector.check_occlusion(
             frame=frame,
             landmarks=landmarks,
@@ -319,6 +368,9 @@ class EKYCPipelineServer:
             "base_desc": desc,
             "base_frame": frame.copy(),
             "num_faces": 1,
+            "fit_oval": True,
+            "base_face_size_h": fit_info["face_size_h"],
+            "base_ratio_to_oval": fit_info["ratio_to_oval"],
             "blink_passed": False,
             "head_passed": False,
             "blink_frame": None,
@@ -330,6 +382,9 @@ class EKYCPipelineServer:
             "success": True,
             "session_id": sid,
             "num_faces": 1,
+            "fit_oval": True,
+            "face_size_h": fit_info["face_size_h"],
+            "ratio_to_oval": fit_info["ratio_to_oval"],
             "message": "Đã khởi tạo phiên xác thực thành công. Bắt đầu thử thách sinh trắc học liên tục."
         }
 
@@ -410,34 +465,19 @@ class EKYCPipelineServer:
                 "guide": "Vui lòng đưa khuôn mặt vào trong khung oval"
             }
 
-        # Đánh giá kích thước và tọa độ khuôn mặt theo chuẩn test_pipeline_ensemble_full.py
-        xs = [p[0] for p in landmarks]
-        ys = [p[1] for p in landmarks]
-        f_cx = (min(xs) + max(xs)) / 2.0
-        f_cy = (min(ys) + max(ys)) / 2.0
-        face_size_h = max(ys) - min(ys)
-
-        face_in_oval = is_point_in_oval((f_cx, f_cy), oval_center, oval_axes, tolerance=1.0)
-        ideal_h = oval_ay * 1.55
-        is_too_far = (face_size_h < ideal_h * 0.62) or (face_size_h < MIN_FACE_HEIGHT)
-        is_too_close = (face_size_h > ideal_h * 1.35)
-
-        dx = f_cx - oval_cx
-        dy = f_cy - oval_cy
-        is_off_center = False
-        off_center_hint = ""
-        if abs(dx) > oval_ax * 0.35 or abs(dy) > oval_ay * 0.35:
-            is_off_center = True
-            hints = []
-            if dx > oval_ax * 0.35:
-                hints.append("Qua Trai")
-            elif dx < -oval_ax * 0.35:
-                hints.append("Qua Phai")
-            if dy > oval_ay * 0.35:
-                hints.append("Len Tren")
-            elif dy < -oval_ay * 0.35:
-                hints.append("Xuong Duoi")
-            off_center_hint = f"Dich mat {' + '.join(hints)} vao tam oval"
+        # Đánh giá kích thước và độ khớp Oval bằng check_face_oval_fit
+        fit_info = check_face_oval_fit(
+            landmarks, w, h, oval_center, oval_axes,
+            min_ratio=OVAL_FIT_MIN_RATIO, max_ratio=OVAL_FIT_MAX_RATIO, min_face_height=MIN_FACE_HEIGHT
+        )
+        face_in_oval = fit_info["face_in_oval"]
+        face_size_h = fit_info["face_size_h"]
+        is_too_far = fit_info["is_too_far"]
+        is_too_close = fit_info["is_too_close"]
+        is_off_center = fit_info["is_off_center"]
+        off_center_hint = fit_info["off_center_hint"]
+        fit_oval = fit_info["fit_oval"]
+        ratio_to_oval = fit_info["ratio_to_oval"]
 
         # Đánh giá góc nghiêng 3D Pose
         pose_valid, text_status, pose_dict = self.pose_validator.validate(landmarks, get_landmark_point, img_w=w, img_h=h)
@@ -459,14 +499,16 @@ class EKYCPipelineServer:
                 "num_faces": num_faces,
                 "is_valid": False,
                 "is_aligned_good": False,
+                "fit_oval": bool(fit_oval),
+                "ratio_to_oval": float(ratio_to_oval),
                 "is_occluded": True,
                 "occlusion_reason": occ_reason,
                 "face_in_oval": bool(face_in_oval),
                 "face_size_h": int(face_size_h),
-                "is_too_far": False,
-                "is_too_close": False,
-                "is_off_center": False,
-                "off_center_hint": "",
+                "is_too_far": bool(is_too_far),
+                "is_too_close": bool(is_too_close),
+                "is_off_center": bool(is_off_center),
+                "off_center_hint": off_center_hint,
                 "oval_guide": {
                     "center": [oval_cx, oval_cy],
                     "axes": [oval_ax, oval_ay]
@@ -482,23 +524,30 @@ class EKYCPipelineServer:
             }
 
         is_valid_overall = (
-            face_in_oval and
+            fit_oval and
             pose_valid and
-            not is_too_far and
-            not is_too_close and
-            not is_off_center
+            not is_occluded
         )
 
         if not face_in_oval:
             guide_msg = "Vui lòng đưa khuôn mặt vào trong khung oval"
         elif is_off_center:
-            guide_msg = off_center_hint
+            guide_msg = off_center_hint or "Vui lòng căn chỉnh khuôn mặt vào giữa khung oval"
         elif is_too_far:
-            guide_msg = "Vui lòng tiến lại gần camera hơn"
+            guide_msg = "Vui lòng tiến lại gần camera hơn để vừa vặn khung oval"
         elif is_too_close:
             guide_msg = "Vui lòng lùi xa camera một chút"
         elif not pose_valid:
-            guide_msg = f"Vui lòng nhìn thẳng vào camera ({text_status})"
+            if text_status == "Turn Left":
+                guide_msg = "Đầu đang lệch trái, vui lòng nhìn thẳng"
+            elif text_status == "Turn Right":
+                guide_msg = "Đầu đang lệch phải, vui lòng nhìn thẳng"
+            elif text_status in ("Head Up", "Head Down"):
+                guide_msg = "Vui lòng nhìn thẳng ngang tầm mắt"
+            elif text_status == "Head Tilt":
+                guide_msg = "Vui lòng giữ thẳng đầu, không nghiêng"
+            else:
+                guide_msg = f"Vui lòng nhìn thẳng vào camera ({text_status})"
         else:
             guide_msg = "Khuôn mặt chuẩn trong khung Oval!"
 
@@ -507,6 +556,8 @@ class EKYCPipelineServer:
             "num_faces": num_faces,
             "is_valid": bool(is_valid_overall),
             "face_in_oval": bool(face_in_oval),
+            "fit_oval": bool(fit_oval),
+            "ratio_to_oval": float(ratio_to_oval),
             "is_aligned_good": bool(is_valid_overall),
             "is_occluded": False,
             "occlusion_reason": "",
@@ -525,7 +576,7 @@ class EKYCPipelineServer:
                 "roll": round(float(pose_data.get("roll", 0.0)), 2),
                 "status_text": text_status
             },
-            "message": text_status if not is_valid_overall else "OK",
+            "message": guide_msg if not is_valid_overall else "OK",
             "guide": guide_msg
         }
 
@@ -802,11 +853,139 @@ class EKYCPipelineServer:
                 "progress": 0.0
             }
 
+        # 2.3 KIỂM TRA ĐỘ KHỚP KHUNG OVAL (OVAL FIT CHECK TRÊN FRAME HIỆN TẠI)
+        fit_info = check_face_oval_fit(
+            landmarks, w, h, oval_center, oval_axes,
+            min_ratio=OVAL_FIT_MIN_RATIO * 0.90,  # 0.36: Dung sai nhẹ nhàng khi người dùng chớp mắt
+            max_ratio=OVAL_FIT_MAX_RATIO * 1.10,  # 0.66
+            min_face_height=int(MIN_FACE_HEIGHT * 0.90)  # ~130px
+        )
+        if not fit_info["fit_oval"]:
+            # Nếu mặt bị lùi ra quá xa, lệch tâm hoặc ngoài oval:
+            # QUAN TRỌNG: Trả về same_person = True, fit_oval = False để KHÔNG báo nhầm là đổi người!
+            if fit_info["is_too_far"]:
+                label_msg = "⚠️ TIẾN LẠI GẦN CHO KHỚP OVAL"
+                err_msg = "Khuôn mặt ở quá xa! Vui lòng tiến lại gần khung oval để tiếp tục."
+            elif fit_info["is_off_center"]:
+                label_msg = "⚠️ ĐƯA MẶT VÀO GIỮA OVAL"
+                err_msg = fit_info["off_center_hint"] or "Vui lòng giữ khuôn mặt ở giữa khung oval."
+            elif fit_info["is_too_close"]:
+                label_msg = "⚠️ LÙI RA XA MỘT CHÚT"
+                err_msg = "Khuôn mặt quá gần! Vui lòng lùi lại một chút cho vừa khung oval."
+            else:
+                label_msg = "⚠️ ĐƯA MẶT VÀO KHUNG OVAL"
+                err_msg = "Vui lòng giữ khuôn mặt trong khung oval."
+
+            return {
+                "has_face": bool(has_face),
+                "num_faces": num_faces,
+                "fit_oval": False,
+                "is_too_far": bool(fit_info["is_too_far"]),
+                "is_too_close": bool(fit_info["is_too_close"]),
+                "is_off_center": bool(fit_info["is_off_center"]),
+                "same_person": True,
+                "passed": False,
+                "timed_out": False,
+                "time_left": round(blink_time_left, 1),
+                "timeout_seconds": CHALLENGE_TIMEOUT_SECONDS,
+                "error": err_msg,
+                "label": label_msg,
+                "ear_left": round(ear_l, 4),
+                "ear_right": round(ear_r, 4),
+                "ear_avg": round(ear_avg, 4),
+                "baseline_ear": round(baseline_ear, 4),
+                "closed_thresh": 0.18,
+                "open_thresh": 0.21,
+                "blink_counter": current_blink_counter,
+                "blink_state": current_blink_state,
+                "progress": 0.0
+            }
+
+        # 2.5 Kiểm tra nhận dạng khuôn mặt liên tục (Continuous Face Identity Consistency Check)
+        # Bất kỳ frame nào trong Giai đoạn 2 có mặt người khác -> Báo động đổi người ngay lập tức!
+        base_desc = None
+        if session_id:
+            if session_id in self.liveness_sessions:
+                sess = self.liveness_sessions[session_id]
+                base_desc = sess.get("base_desc")
+                sess["last_activity"] = time.time()
+            elif base_frame_input is not None:
+                try:
+                    base_img = load_image(base_frame_input)
+                    base_desc = self.identity_verifier.extract_descriptor(
+                        base_img, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+                    )
+                except Exception:
+                    base_desc = None
+            else:
+                return {
+                    "has_face": True,
+                    "num_faces": 1,
+                    "same_person": False,
+                    "passed": False,
+                    "timed_out": False,
+                    "time_left": round(blink_time_left, 1),
+                    "timeout_seconds": CHALLENGE_TIMEOUT_SECONDS,
+                    "error": "Phiên xác thực không tồn tại hoặc đã hết hạn! Vui lòng làm lại từ Bước 1.",
+                    "label": "⚠️ PHIÊN HẾT HẠN (EXPIRED SESSION)",
+                    "ear_left": round(ear_l, 4),
+                    "ear_right": round(ear_r, 4),
+                    "ear_avg": round(ear_avg, 4),
+                    "baseline_ear": round(baseline_ear, 4),
+                    "closed_thresh": 0.18,
+                    "open_thresh": 0.21,
+                    "blink_counter": current_blink_counter,
+                    "blink_state": False,
+                    "progress": 0.0
+                }
+        elif base_frame_input is not None:
+            try:
+                base_img = load_image(base_frame_input)
+                base_desc = self.identity_verifier.extract_descriptor(
+                    base_img, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+                )
+            except Exception:
+                base_desc = None
+
+        same_person = True
+        identity_details = None
+        if base_desc is not None and has_face:
+            cand_desc = self.identity_verifier.extract_descriptor(
+                frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+            )
+            if cand_desc is not None:
+                same_person, match_score, identity_details = self.identity_verifier.verify_identity(
+                    base_desc, cand_desc, max_disparity_thresh=0.025, min_cosine_thresh=0.920
+                )
+                if not same_person:
+                    return {
+                        "has_face": True,
+                        "num_faces": 1,
+                        "fit_oval": True,
+                        "same_person": False,
+                        "passed": False,
+                        "timed_out": False,
+                        "time_left": round(blink_time_left, 1),
+                        "timeout_seconds": CHALLENGE_TIMEOUT_SECONDS,
+                        "error": "CẢNH BÁO: Phát hiện đổi người! Yêu cầu đúng người chụp ảnh ban đầu thực hiện thử thách.",
+                        "label": "⚠️ PHÁT HIỆN ĐỔI NGƯỜI (MISMATCH)",
+                        "identity_details": identity_details,
+                        "ear_left": round(ear_l, 4),
+                        "ear_right": round(ear_r, 4),
+                        "ear_avg": round(ear_avg, 4),
+                        "baseline_ear": round(baseline_ear, 4),
+                        "closed_thresh": 0.18,
+                        "open_thresh": 0.21,
+                        "blink_counter": current_blink_counter,
+                        "blink_state": False,
+                        "progress": 0.0
+                    }
+
         new_counter = current_blink_counter
         new_state = current_blink_state
         updated_baseline = baseline_ear
 
-        # 2. Cập nhật Baseline EAR thích ứng khi mắt mở
+        # 3. Cập nhật Baseline EAR thích ứng khi mắt mở
         if not new_state and ear_avg >= 0.18:
             if updated_baseline <= 0.05:
                 updated_baseline = ear_avg
@@ -816,7 +995,7 @@ class EKYCPipelineServer:
         elif updated_baseline <= 0.05 and ear_avg > 0.14:
             updated_baseline = ear_avg
 
-        # 3. Ngưỡng chớp mắt chuẩn xác theo test_pipeline_ensemble_full.py:
+        # 4. Ngưỡng chớp mắt chuẩn xác theo test_pipeline_ensemble_full.py:
         #    - Nhắm mắt: 0.04 < ear_avg < 0.18 (hoặc sụt giảm > 18% so với baseline)
         #    - Mở lại: ear_avg >= 0.21 (hoặc phục hồi >= 88% baseline)
         closed_thresh = 0.18
@@ -825,7 +1004,7 @@ class EKYCPipelineServer:
         is_closed = (0.04 < ear_avg < closed_thresh) or (updated_baseline > 0.18 and ear_avg <= updated_baseline * 0.82)
         is_open = (ear_avg >= open_thresh) or (updated_baseline > 0.18 and ear_avg >= updated_baseline * 0.88 and ear_avg >= 0.18)
 
-        # 4. State Machine: MẮT MỞ -> MẮT NHẮM (new_state = True) -> MẮT MỞ LẠI (new_counter += 1)
+        # 5. State Machine: MẮT MỞ -> MẮT NHẮM (new_state = True) -> MẮT MỞ LẠI (new_counter += 1)
         if is_closed:
             if not new_state:
                 new_state = True
@@ -835,39 +1014,8 @@ class EKYCPipelineServer:
 
         passed = (new_counter >= MIN_BLINKS_REQUIRED)
 
-        # 5. Thẩm định nhận dạng khuôn mặt (Identity Verification)
-        # Khi đã hoàn tất chớp mắt (mắt đã mở lại), đối chiếu với ảnh chuẩn Bước 1 để chống tráo đổi người
+        # 6. Ghi nhận hoàn tất chớp mắt vào session
         if passed and session_id and session_id in self.liveness_sessions:
-            base_desc = self.liveness_sessions[session_id].get("base_desc")
-            self.liveness_sessions[session_id]["last_activity"] = time.time()
-            if base_desc is not None and has_face:
-                cand_desc = self.identity_verifier.extract_descriptor(
-                    frame, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
-                )
-                if cand_desc is not None:
-                    same_person, match_score, identity_details = self.identity_verifier.verify_identity(
-                        base_desc, cand_desc, max_disparity_thresh=0.035, min_cosine_thresh=0.880
-                    )
-                    if not same_person:
-                        return {
-                            "has_face": True,
-                            "num_faces": 1,
-                            "same_person": False,
-                            "passed": False,
-                            "error": "CẢNH BÁO: Phát hiện đổi người! Yêu cầu đúng người chụp ảnh ban đầu thực hiện thử thách.",
-                            "label": "⚠️ PHÁT HIỆN ĐỔI NGƯỜI (MISMATCH)",
-                            "identity_details": identity_details,
-                            "ear_left": round(ear_l, 4),
-                            "ear_right": round(ear_r, 4),
-                            "ear_avg": round(ear_avg, 4),
-                            "baseline_ear": round(updated_baseline, 4),
-                            "closed_thresh": round(closed_thresh, 4),
-                            "open_thresh": round(open_thresh, 4),
-                            "blink_counter": current_blink_counter,
-                            "blink_state": False,
-                            "progress": 0.0
-                        }
-
             self.liveness_sessions[session_id]["blink_passed"] = True
             self.liveness_sessions[session_id]["blink_frame"] = frame.copy()
 
@@ -881,6 +1029,8 @@ class EKYCPipelineServer:
         return {
             "has_face": has_face,
             "num_faces": num_faces,
+            "fit_oval": True,
+            "ratio_to_oval": fit_info["ratio_to_oval"],
             "same_person": True,
             "timed_out": False,
             "time_left": round(blink_time_left, 1),
@@ -945,11 +1095,72 @@ class EKYCPipelineServer:
                 "pose": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
             }
 
+        # 0.5 Kiểm tra độ khớp khung Oval (Oval Fit Check cho Head Challenge)
+        fit_info = check_face_oval_fit(
+            landmarks, w, h, oval_center, head_oval_axes,
+            min_ratio=OVAL_FIT_MIN_RATIO * 0.85,  # 0.34: dung sai góc quay đầu
+            max_ratio=OVAL_FIT_MAX_RATIO * 1.15,  # 0.69
+            min_face_height=int(MIN_FACE_HEIGHT * 0.85)
+        )
+        if not fit_info["fit_oval"] and fit_info["is_too_far"]:
+            action_name = self.head_movement_detector.current_action.value if self.head_movement_detector.current_action else "TURN_HEAD"
+            return {
+                "state": "WARNING",
+                "action": action_name,
+                "passed": False,
+                "num_faces": num_faces,
+                "fit_oval": False,
+                "is_too_far": True,
+                "same_person": True,
+                "prompt": "⚠️ TIẾN LẠI GẦN CHO KHỚP OVAL",
+                "error": "Khuôn mặt ở quá xa! Vui lòng tiến lại gần khung oval để tiếp tục.",
+                "time_left": 10.0,
+                "progress": 0.0,
+                "current_angle": 0.0,
+                "target_threshold": 3.5,
+                "is_matched": False,
+                "pose": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+            }
+
         # 1. Kiểm tra nhận dạng khuôn mặt (Face Identity Consistency Check) - CHỈ trong cùng 1 phiên
         base_desc = None
-        if session_id and session_id in self.liveness_sessions:
-            base_desc = self.liveness_sessions[session_id].get("base_desc")
-            self.liveness_sessions[session_id]["last_activity"] = time.time()
+        if session_id:
+            if session_id in self.liveness_sessions:
+                sess = self.liveness_sessions[session_id]
+                base_desc = sess.get("base_desc")
+                sess["last_activity"] = time.time()
+            elif base_frame_input is not None:
+                try:
+                    base_img = load_image(base_frame_input)
+                    base_desc = self.identity_verifier.extract_descriptor(
+                        base_img, oval_center=oval_center, oval_axes=head_oval_axes, filter_oval=True
+                    )
+                except Exception:
+                    base_desc = None
+            else:
+                return {
+                    "state": "FAILED",
+                    "action": "",
+                    "passed": False,
+                    "num_faces": 1,
+                    "same_person": False,
+                    "prompt": "⚠️ CẢNH BÁO: PHIÊN HẾT HẠN!",
+                    "error": "Phiên xác thực không tồn tại hoặc đã hết hạn! Vui lòng làm lại từ Bước 1.",
+                    "time_left": 0.0,
+                    "progress": 0.0,
+                    "current_angle": 0.0,
+                    "target_threshold": 0.0,
+                    "is_matched": False,
+                    "pose": {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+                }
+        elif base_frame_input is not None:
+            try:
+                base_img = load_image(base_frame_input)
+                base_desc = self.identity_verifier.extract_descriptor(
+                    base_img, oval_center=oval_center, oval_axes=head_oval_axes, filter_oval=True
+                )
+            except Exception:
+                base_desc = None
 
         same_person = True
         identity_details = None

@@ -172,6 +172,8 @@ class PoseValidateResponse(BaseModel):
     num_faces: Optional[int] = 1
     is_valid: bool
     face_in_oval: bool = False
+    fit_oval: Optional[bool] = False
+    ratio_to_oval: Optional[float] = 0.0
     is_aligned_good: bool = False
     is_occluded: bool = False
     occlusion_reason: Optional[str] = ""

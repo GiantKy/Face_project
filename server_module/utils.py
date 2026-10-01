@@ -203,6 +203,143 @@ def is_landmarks_in_oval(
     return is_point_in_oval((face_cx, face_cy), center, axes, tolerance=tolerance)
 
 
+def check_face_oval_fit(
+    landmarks: Union[List[Tuple[int, int]], List[Any]],
+    img_w: int,
+    img_h: int,
+    oval_center: Optional[Tuple[int, int]] = None,
+    oval_axes: Optional[Tuple[int, int]] = None,
+    tolerance: float = 1.0,
+    min_ratio: float = 0.40,
+    max_ratio: float = 0.60,
+    min_face_height: int = 145
+) -> Dict[str, Any]:
+    """
+    Kiểm tra độ vừa vặn và căn chỉnh của khuôn mặt đối với khung Oval tiêu chuẩn (Oval Fit Standard):
+    - Tỷ lệ chiều cao khuôn mặt (face_size_h / oval_h) phải nằm trong khoảng [min_ratio, max_ratio].
+    - Chiều cao khuôn mặt tối thiểu phải >= min_face_height.
+    - Tâm khuôn mặt không được lệch quá 35% bán trục oval (|dx| <= 0.35*ax, |dy| <= 0.35*ay).
+
+    Returns:
+        Dict chứa trạng thái khớp oval:
+        - fit_oval (bool): True khi mặt thỏa mãn toàn bộ tiêu chí (trong oval, không lệch tâm, vừa vặn).
+        - face_in_oval (bool): Tâm mặt nằm trong oval.
+        - is_too_far (bool): Mặt ở quá xa (quá nhỏ so với oval).
+        - is_too_close (bool): Mặt ở quá gần (tràn ra khỏi oval).
+        - is_off_center (bool): Mặt bị lệch tâm oval.
+        - off_center_hint (str): Hướng dẫn dịch chuyển mặt vào tâm.
+        - face_size_h (int): Chiều cao khuôn mặt (px).
+        - face_size_w (int): Chiều rộng khuôn mặt (px).
+        - ratio_to_oval (float): Tỷ lệ chiều cao mặt / chiều cao oval.
+        - guide_msg (str): Thông điệp hướng dẫn trực quan.
+    """
+    if not landmarks:
+        return {
+            "fit_oval": False,
+            "face_in_oval": False,
+            "is_too_far": True,
+            "is_too_close": False,
+            "is_off_center": False,
+            "off_center_hint": "",
+            "face_size_h": 0,
+            "face_size_w": 0,
+            "ratio_to_oval": 0.0,
+            "guide_msg": "Không tìm thấy khuôn mặt"
+        }
+
+    if oval_center is None or oval_axes is None:
+        oval_center, oval_axes = get_default_oval_params(img_w, img_h)
+
+    cx, cy = oval_center
+    ax, ay = oval_axes
+    oval_h = 2 * ay
+
+    xs = []
+    ys = []
+    for lm in landmarks:
+        if hasattr(lm, "x") and hasattr(lm, "y"):
+            xs.append(lm.x * img_w)
+            ys.append(lm.y * img_h)
+        elif isinstance(lm, (tuple, list)) and len(lm) >= 2:
+            if 0.0 <= lm[0] <= 1.0 and 0.0 <= lm[1] <= 1.0 and img_w > 1 and img_h > 1:
+                xs.append(lm[0] * img_w)
+                ys.append(lm[1] * img_h)
+            else:
+                xs.append(float(lm[0]))
+                ys.append(float(lm[1]))
+
+    if not xs or not ys:
+        return {
+            "fit_oval": False,
+            "face_in_oval": False,
+            "is_too_far": True,
+            "is_too_close": False,
+            "is_off_center": False,
+            "off_center_hint": "",
+            "face_size_h": 0,
+            "face_size_w": 0,
+            "ratio_to_oval": 0.0,
+            "guide_msg": "Không có tọa độ landmarks"
+        }
+
+    f_min_x, f_max_x = min(xs), max(xs)
+    f_min_y, f_max_y = min(ys), max(ys)
+    face_cx = (f_min_x + f_max_x) / 2.0
+    face_cy = (f_min_y + f_max_y) / 2.0
+    face_size_h = int(round(f_max_y - f_min_y))
+    face_size_w = int(round(f_max_x - f_min_x))
+
+    face_in_oval = is_point_in_oval((face_cx, face_cy), oval_center, oval_axes, tolerance=tolerance)
+    ratio_to_oval = (face_size_h / float(oval_h)) if oval_h > 0 else 0.0
+
+    # Ngưỡng kích thước: vừa theo tỷ lệ oval vừa theo pixel tối thiểu
+    is_too_far = (ratio_to_oval < min_ratio) or (face_size_h < min_face_height)
+    is_too_close = (ratio_to_oval > max_ratio)
+
+    dx = face_cx - cx
+    dy = face_cy - cy
+    is_off_center = False
+    off_center_hint = ""
+    if abs(dx) > ax * 0.35 or abs(dy) > ay * 0.35:
+        is_off_center = True
+        hints = []
+        if dx > ax * 0.35:
+            hints.append("Qua Trai")
+        elif dx < -ax * 0.35:
+            hints.append("Qua Phai")
+        if dy > ay * 0.35:
+            hints.append("Len Tren")
+        elif dy < -ay * 0.35:
+            hints.append("Xuong Duoi")
+        off_center_hint = f"Dich mat {' + '.join(hints)} vao tam oval"
+
+    fit_oval = bool(face_in_oval and (not is_off_center) and (not is_too_far) and (not is_too_close))
+
+    if not face_in_oval:
+        guide_msg = "Vui lòng đưa khuôn mặt vào trong khung oval"
+    elif is_off_center:
+        guide_msg = off_center_hint or "Vui lòng căn chỉnh khuôn mặt vào giữa khung oval"
+    elif is_too_far:
+        guide_msg = "Vui lòng tiến lại gần camera hơn để vừa vặn khung oval"
+    elif is_too_close:
+        guide_msg = "Vui lòng lùi xa camera một chút"
+    else:
+        guide_msg = "Khuôn mặt đã khớp chuẩn khung oval!"
+
+    return {
+        "fit_oval": fit_oval,
+        "face_in_oval": bool(face_in_oval),
+        "is_too_far": bool(is_too_far),
+        "is_too_close": bool(is_too_close),
+        "is_off_center": bool(is_off_center),
+        "off_center_hint": off_center_hint,
+        "face_size_h": face_size_h,
+        "face_size_w": face_size_w,
+        "ratio_to_oval": round(ratio_to_oval, 4),
+        "guide_msg": guide_msg
+    }
+
+
 def filter_faces_in_oval(
     faces: List[Dict[str, Any]],
     center: Optional[Tuple[int, int]] = None,
