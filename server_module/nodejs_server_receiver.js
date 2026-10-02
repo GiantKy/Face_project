@@ -33,6 +33,21 @@ let latestFrame = null;            // Buffer JPEG của frame mới nhất
 let latestFrameTime = 0;           // Thời điểm nhận frame gần nhất (ms)
 let esp32DeviceIp = '';            // IP của thiết bị ESP32-CAM
 const streamClients = new Set();   // Danh sách client đang kết nối luồng MJPEG GET /stream
+const STREAM_TIMEOUT_MS = 5000;    // 5 giây không có frame mới coi như mất kết nối ESP32 (tránh ngắt nhầm khi WiFi chập chờn 1-2s)
+
+// Watchdog kiểm tra ngắt kết nối ESP32 định kỳ mỗi 1000ms
+setInterval(() => {
+  if (latestFrame && latestFrameTime > 0 && (Date.now() - latestFrameTime > STREAM_TIMEOUT_MS)) {
+    console.log(`${Colors.yellow}[STREAM MONITOR] ESP32-CAM đã ngắt kết nối (> ${STREAM_TIMEOUT_MS}ms). Xóa frame đệm và ngắt kết nối stream client.${Colors.reset}`);
+    latestFrame = null;
+    for (const client of streamClients) {
+      try {
+        client.end();
+      } catch (e) {}
+    }
+    streamClients.clear();
+  }
+}, 1000);
 
 // Lưu trữ 25 kết quả gần nhất trong RAM
 let recentVerifications = [];
@@ -181,9 +196,10 @@ const server = http.createServer((req, res) => {
   //    Dành cho AI Server chụp snapshot với độ trễ 0ms qua localhost
   // --------------------------------------------------------------------------
   if (req.method === 'GET' && pathname === '/api/stream/latest') {
-    if (!latestFrame) {
-      res.writeHead(503, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Chưa nhận được frame nào từ ESP32-CAM' }));
+    const isFrameFresh = latestFrame && (Date.now() - latestFrameTime <= STREAM_TIMEOUT_MS);
+    if (!isFrameFresh) {
+      res.writeHead(503, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'ESP32_DISCONNECTED', message: 'ESP32-CAM đã ngắt kết nối hoặc chưa nhận được frame mới' }));
       return;
     }
     res.writeHead(200, {
@@ -200,12 +216,12 @@ const server = http.createServer((req, res) => {
   // 4. DEVICE INFO ROUTE: GET /api/device/info (Trạng thái kết nối ESP32)
   // --------------------------------------------------------------------------
   if (req.method === 'GET' && pathname === '/api/device/info') {
-    const isLive = latestFrame !== null && (latestFrameTime > 0) && ((Date.now() - latestFrameTime) < 15000);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const isLive = latestFrame !== null && (latestFrameTime > 0) && ((Date.now() - latestFrameTime) <= STREAM_TIMEOUT_MS);
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({
       is_live: isLive,
-      has_frame: latestFrame !== null,
-      esp32_ip: esp32DeviceIp || '192.168.137.1',
+      has_frame: isLive,
+      esp32_ip: isLive ? (esp32DeviceIp || '192.168.137.1') : '',
       last_frame_ago_ms: latestFrameTime > 0 ? (Date.now() - latestFrameTime) : -1,
       active_viewers: streamClients.size
     }));
@@ -309,6 +325,56 @@ const server = http.createServer((req, res) => {
         status: 'FALLBACK_SENT',
         esp32_ip: esp32DeviceIp,
         note: err.message
+      }));
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // 6.3. ROUTE CAMERA LED CONTROL: GET /api/camera/led (Đổi màu LED RGB WS2812 theo stage)
+  // --------------------------------------------------------------------------
+  if (req.method === 'GET' && pathname === '/api/camera/led') {
+    const params = parsedUrl.searchParams;
+    const status = params.get('status') || 'idle';
+    const overrideIp = params.get('ip') || '';
+    const targetIp = overrideIp || esp32DeviceIp;
+
+    console.log(`${Colors.cyan}[CAMERA LED] Nhận yêu cầu đổi stage LED -> [${status}] (Target ESP32: ${targetIp || 'Chưa có IP'})${Colors.reset}`);
+
+    if (!targetIp) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'OK',
+        mode: 'PENDING_IP',
+        stage: status,
+        message: 'ESP32 chua cap nhat IP truc tiep, se ap dung khi co luong stream.'
+      }));
+      return;
+    }
+
+    const targetUrl = `http://${targetIp}/set-led?status=${encodeURIComponent(status)}`;
+
+    const espReq = http.get(targetUrl, { timeout: 3000 }, (espRes) => {
+      let data = '';
+      espRes.on('data', chunk => data += chunk);
+      espRes.on('end', () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          status: 'SUCCESS',
+          stage: status,
+          esp32_ip: targetIp,
+          response: data || 'OK'
+        }));
+      });
+    });
+
+    espReq.on('error', (err) => {
+      console.warn(`${Colors.yellow}[CAMERA LED] Không thể kết nối tới ESP32 (${targetIp}): ${err.message}${Colors.reset}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'OFFLINE',
+        stage: status,
+        esp32_ip: targetIp,
+        error: err.message
       }));
     });
     return;

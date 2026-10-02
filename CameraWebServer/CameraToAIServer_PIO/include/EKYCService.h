@@ -61,6 +61,7 @@ public:
         Serial.printf("[EKYCService] Khoi dong Web Server tren cong: %d\n", config.server_port);
         if (httpd_start(&m_cameraHttpd, &config) == ESP_OK) {
             registerUri(m_cameraHttpd, "/",                HTTP_GET, rootHandler);
+            registerUri(m_cameraHttpd, "/ui",              HTTP_GET, standaloneUiHandler);
             registerUri(m_cameraHttpd, "/stream",          HTTP_GET, streamHandler);
             registerUri(m_cameraHttpd, "/capture",         HTTP_GET, captureHandler);
             registerUri(m_cameraHttpd, "/challenge-start", HTTP_GET, challengeStartHandler);
@@ -131,6 +132,9 @@ private:
     // =========================================================================
     static esp_err_t rootHandler(httpd_req_t *req) {
         return ((EKYCService *)req->user_ctx)->handleRoot(req);
+    }
+    static esp_err_t standaloneUiHandler(httpd_req_t *req) {
+        return ((EKYCService *)req->user_ctx)->handleStandaloneUi(req);
     }
     static esp_err_t captureHandler(httpd_req_t *req) {
         return ((EKYCService *)req->user_ctx)->handleCapture(req);
@@ -326,16 +330,25 @@ private:
 
     esp_err_t handleRoot(httpd_req_t *req) {
         String redirectHtml = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">"
-            "<meta http-equiv=\"refresh\" content=\"1; url=http://" + m_aiServerIp + ":" + String(m_nodePort) + "/\">"
+            "<meta http-equiv=\"refresh\" content=\"2; url=http://" + m_aiServerIp + ":" + String(m_nodePort) + "/\">"
             "<title>ESP32 eKYC Node</title>"
             "<style>body{background:#0b0f19;color:#38bdf8;font-family:sans-serif;text-align:center;padding:50px;}</style></head>"
             "<body><h2>📷 ESP32-CAM eKYC Node</h2>"
             "<p>Đang chuyển hướng tới Node.js Web Dashboard...</p>"
             "<p><a href=\"http://" + m_aiServerIp + ":" + String(m_nodePort) + "/\" style=\"color:#fff;background:#2563eb;padding:10px 20px;border-radius:8px;text-decoration:none;\">Vào Web Dashboard (:3000)</a></p>"
+            "<p style=\"margin-top:16px;\"><a href=\"/ui\" style=\"color:#94a3b8;font-size:13px;text-decoration:underline;\">Hoặc mở giao diện ESP32 trực tiếp (/ui)</a></p>"
             "</body></html>";
         httpd_resp_set_type(req, "text/html");
         httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
         return httpd_resp_send(req, redirectHtml.c_str(), redirectHtml.length());
+    }
+
+    esp_err_t handleStandaloneUi(httpd_req_t *req) {
+        httpd_resp_set_type(req, "text/html");
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+        String html = INDEX_HTML;
+        html.replace("%AI_SERVER_IP%", m_aiServerIp);
+        return httpd_resp_send(req, html.c_str(), html.length());
     }
 
     esp_err_t handleCapture(httpd_req_t *req) {

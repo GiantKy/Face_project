@@ -271,6 +271,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         // =====================================================================
         // BƯỚC 1/3: CHỤP ẢNH TĨNH -> FACE DETECT & ENSEMBLE ANTI-SPOOFING
         // =====================================================================
+        fetch('/set-led?status=stage1').catch(()=>{}); // Bật LED Tím (Bước 1)
         box.innerHTML = '⏳ <b>BƯỚC 1/3:</b> Đang chụp ảnh & duyệt Anti-Spoofing AI (YOLO + RF-DETR)...';
         hudTitle.innerText = 'BƯỚC 1/3: DUYỆT ANTI-SPOOFING';
         hudBadge.innerText = '1/3';
@@ -304,6 +305,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         // Nếu giả mạo (SPOOF) hoặc không phát hiện mặt -> FAIL-FAST ngay
         if (!data.success || !data.passed || !data.is_real) {
           btn.disabled = false;
+          fetch('/set-led?status=rejected').catch(()=>{}); // Bật LED Đỏ báo hiệu thất bại
           box.className = 'fail';
           box.innerHTML = '❌ <b>TỪ CHỐI XÁC THỰC:</b> ' + (data.message || 'Phát hiện giả mạo (SPOOF) hoặc góc mặt không hợp lệ!');
           streamBox.style.borderColor = '#ef4444';
@@ -317,6 +319,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         // =====================================================================
         // BƯỚC 1/3 ĐÃ ĐẠT (REAL): Chuyển sang BƯỚC 2/3: THỬ THÁCH CHỚP MẮT
         // =====================================================================
+        fetch('/set-led?status=stage2_blink').catch(()=>{}); // Bật LED Vàng/Cam (Bước 2 Chớp Mắt)
         currentSessionId = data.session_id;
         const promptText = data.action_prompt || 'Hãy quay đầu';
         const challengeAction = data.challenge_action || 'TURN_LEFT';
@@ -379,6 +382,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         // =====================================================================
         // BƯỚC 2/3 ĐÃ ĐẠT: Chuyển sang BƯỚC 3/3: THỬ THÁCH QUAY ĐẦU (head_movement)
         // =====================================================================
+        fetch('/set-led?status=stage3_turn').catch(()=>{}); // Bật LED Xanh Cyan (Bước 3 Quay Đầu)
         const headPrompt = (blinkRes && blinkRes.head_prompt) || promptText;
         const headAction = (blinkRes && blinkRes.target_head_action) || challengeAction;
         const actionIcon = (headAction === 'TURN_LEFT') ? '⬅️' : '➡️';
@@ -424,6 +428,7 @@ static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         btn.disabled = false;
 
         if (headApproved && headRes && headRes.approved) {
+          fetch('/set-led?status=approved').catch(()=>{}); // Bật LED Xanh Lá (Thành công - Mở cửa)
           if (stBadge) stBadge.innerText = 'APPROVED (REAL)';
           box.className = 'pass';
           box.innerHTML = '🎉 <b>XÁC THỰC TOÀN DIỆN THÀNH CÔNG (REAL)!</b><br>' +

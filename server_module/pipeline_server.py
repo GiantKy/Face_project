@@ -1419,117 +1419,24 @@ class EKYCPipelineServer:
         if aligned_img is None:
             aligned_img = frame.copy()
 
-        # 5. ENSEMBLE Anti-Spoofing (YOLO_4 + RF-DETR Small)
-        # QUAN TRỌNG: Chạy trên ảnh tự nhiên (frame gốc hoặc qua CLAHE nếu thiếu sáng),
-        # KHÔNG chạy trên processed_frame vì hiệu ứng mờ nhân tạo (Oval Blur) sẽ làm RF-DETR hiểu nhầm là giả mạo (SPOOF).
-        if check_illumination_quality is not None and primary_face:
-            captured_light = check_illumination_quality(frame, bbox=primary_face["bbox"])
-            if captured_light.get("mean_luminance", 100.0) < 75.0 and enhance_low_light is not None:
-                input_spoof = enhance_low_light(frame)
-            else:
-                input_spoof = frame
-        else:
-            input_spoof = frame
-
-        t_ens = time.time()
-        all_ensemble_dets, yolo_dets, rfdetr_dets = self.ensemble_anti_spoof.predict_ensemble(
-            input_spoof,
-            conf_threshold=ENSEMBLE_CONF_THRESHOLD,
-            iou_thresh=ENSEMBLE_IOU_THRESHOLD,
-            w_yolo=ENSEMBLE_W_YOLO,
-            w_rfdetr=ENSEMBLE_W_RFDETR,
-            strict_spoof_veto=True,
-        )
-        ens_latency_ms = (time.time() - t_ens) * 1000
-
-        # Lọc spoof detections trong oval (lược bỏ hoàn toàn detections ngoài oval)
-        spoofs_in_oval = [sd for sd in all_ensemble_dets if is_face_in_oval(sd["bbox"], oval_center, oval_axes)]
-        target_spoofs = spoofs_in_oval
-
-        # Tìm detection khớp nhất với Primary Face
-        best_spoof = None
-        primary_spoof_iou = 0.0
-        if primary_face and target_spoofs:
-            matching_spoofs = [
-                sd for sd in target_spoofs
-                if calculate_iou(primary_face["bbox"], sd["bbox"]) > 0.15
-            ]
-            if matching_spoofs:
-                best_spoof = max(matching_spoofs, key=lambda x: x["confidence"])
-                primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
-            else:
-                best_spoof = max(target_spoofs, key=lambda x: x["confidence"])
-                primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
-
-        if best_spoof is None and target_spoofs:
-            best_spoof = target_spoofs[0]
-
-        has_any_spoof = any(not sd["is_real"] for sd in target_spoofs) if target_spoofs else False
-        is_primary_real = bool(best_spoof["is_real"]) if best_spoof else False
-
-        # 5.5 Kiểm tra tính liên tục danh tính khuôn mặt giữa các bước (Biometric Face Identity Continuity)
-        c_same_person = True
-        identity_details = {}
-
-        # CHỈ kiểm tra tính liên tục danh tính khuôn mặt trong cùng 1 phiên thử thách (Single-session isolated check)
-        if session_id and session_id in self.liveness_sessions:
-            sess = self.liveness_sessions[session_id]
-            base_desc = sess.get("base_desc")
-            if base_desc is not None:
-                # 1. Kiểm tra ảnh chụp chớp mắt nếu có trong cùng phiên
-                bf = sess.get("blink_frame")
-                if bf is None and blink_frame_input is not None:
-                    try:
-                        bf = load_image(blink_frame_input)
-                    except Exception:
-                        bf = None
-
-                if bf is not None:
-                    cand_b = self.identity_verifier.extract_descriptor(
-                        bf, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
-                    )
-                    if cand_b is not None:
-                        is_same_b, _, dt_b = self.identity_verifier.verify_identity(base_desc, cand_b)
-                        identity_details["blink_match"] = dt_b
-                        if not is_same_b:
-                            c_same_person = False
-
-                # 2. Kiểm tra ảnh chụp quay đầu nếu có trong cùng phiên
-                hf = sess.get("head_frame")
-                if hf is None and head_frame_input is not None:
-                    try:
-                        hf = load_image(head_frame_input)
-                    except Exception:
-                        hf = None
-
-                if hf is not None:
-                    head_oval_axes = (int(oval_axes[0] * 1.25), oval_axes[1])
-                    cand_h = self.identity_verifier.extract_descriptor(
-                        hf, oval_center=oval_center, oval_axes=head_oval_axes, filter_oval=True
-                    )
-                    if cand_h is not None:
-                        is_same_h, _, dt_h = self.identity_verifier.verify_identity(base_desc, cand_h)
-                        identity_details["head_match"] = dt_h
-                        if not is_same_h:
-                            c_same_person = False
-
-            # Kết thúc phiên: Xóa hoàn toàn phiên khỏi bộ nhớ để không bao giờ đối chiếu chéo sang phiên mới
-            del self.liveness_sessions[session_id]
-        else:
-            # Không có phiên hoạt động hoặc ngoài phiên: Không kiểm tra định danh
-            c_same_person = True
-
-        # 6. Đánh giá Final Decision — 8 tiêu chí chuẩn ngân hàng
+        # 4.5 Đánh giá Fail-Fast: Kiểm tra các tiêu chí cơ bản trước khi chạy Ensemble Anti-Spoofing nặng
         face_position_ok = face_in_oval if apply_oval_mask else True
         c_face = (primary_face is not None) and face_position_ok
         c_single = (num_faces == 1)
         c_pose = pose_valid
-        c_spoof = is_primary_real
-        # Tiêu chí: Cả 2 model phải đồng thuận
-        c_both_detected = bool(best_spoof.get("both_detected", False)) if best_spoof else False
-        c_blink = blink_passed
-        c_head = head_movement_passed
+        c_blink = bool(blink_passed)
+        c_head = bool(head_movement_passed)
 
+        # Kiểm tra che mặt sơ bộ
+        is_occluded_final, occ_reason_final, occ_msg_final = self.occlusion_detector.check_occlusion(
+            frame=frame,
+            landmarks=landmarks,
+            num_faces=num_faces,
+            pose_dict=pose_dict
+        )
+        c_occlusion_free = not is_occluded_final
+
+        # Tổng hợp lỗi tiền đề (Fail-Fast Gate: Sai 1 bước là REJECT ngay, không chạy tiếp model nặng)
         reasons = []
         if primary_face is None:
             reasons.append("Không tìm thấy khuôn mặt trong ảnh")
@@ -1541,33 +1448,135 @@ class EKYCPipelineServer:
         if not c_pose:
             reasons.append(f"Góc mặt ảnh chụp bị nghiêng/lệch ({pose_msg})")
 
-        if best_spoof is None:
-            reasons.append("Không phát hiện được đặc trưng chống giả mạo (Anti-Spoof None)")
-        elif not c_both_detected:
-            reasons.append(
-                f"Chỉ có 1 model nhận diện ({best_spoof.get('source')}) "
-                f"— Lược bỏ ảnh (Thiếu sự đồng thuận cả 2 model)"
-            )
-        elif not c_spoof:
-            reasons.append(f"Phát hiện giả mạo (SPOOF) với độ tin cậy {best_spoof['confidence']*100:.1f}%")
+        if is_occluded_final:
+            reasons.append(occ_msg_final or f"Khuôn mặt bị che khuất hoặc che một phần ({occ_reason_final})!")
 
         if not c_blink:
             reasons.append("Chưa hoàn thành chớp mắt (Blink)")
         if not c_head:
             reasons.append("Chưa hoàn thành cử động đầu (Head Movement)")
-        if not c_same_person:
-            reasons.append("Phát hiện tráo đổi người thực hiện thử thách (Face Identity Mismatch)!")
 
-        # 5.6 Kiểm tra che mặt trên ảnh thẩm định cuối (Anti-Occlusion Defense)
-        is_occluded_final, occ_reason_final, occ_msg_final = self.occlusion_detector.check_occlusion(
-            frame=frame,
-            landmarks=landmarks,
-            num_faces=num_faces,
-            pose_dict=pose_dict
-        )
-        c_occlusion_free = not is_occluded_final
-        if is_occluded_final:
-            reasons.append(occ_msg_final or f"Khuôn mặt bị che khuất hoặc che một phần ({occ_reason_final})!")
+        has_prior_failure = len(reasons) > 0
+
+        # Khởi tạo giá trị mặc định cho Anti-Spoofing & Identity
+        all_ensemble_dets, yolo_dets, rfdetr_dets = [], [], []
+        ens_latency_ms = 0.0
+        best_spoof = None
+        primary_spoof_iou = 0.0
+        has_any_spoof = False
+        is_primary_real = False
+        c_both_detected = False
+        c_spoof = False
+        c_same_person = True
+        identity_details = {}
+
+        if not has_prior_failure:
+            # 5. ENSEMBLE Anti-Spoofing (YOLO_4 + RF-DETR Small)
+            # CHỈ chạy suy luận mô hình nặng khi TẤT CẢ các bước tiền đề đều ĐẠT CHUẨN!
+            if check_illumination_quality is not None and primary_face:
+                captured_light = check_illumination_quality(frame, bbox=primary_face["bbox"])
+                if captured_light.get("mean_luminance", 100.0) < 75.0 and enhance_low_light is not None:
+                    input_spoof = enhance_low_light(frame)
+                else:
+                    input_spoof = frame
+            else:
+                input_spoof = frame
+
+            t_ens = time.time()
+            all_ensemble_dets, yolo_dets, rfdetr_dets = self.ensemble_anti_spoof.predict_ensemble(
+                input_spoof,
+                conf_threshold=ENSEMBLE_CONF_THRESHOLD,
+                iou_thresh=ENSEMBLE_IOU_THRESHOLD,
+                w_yolo=ENSEMBLE_W_YOLO,
+                w_rfdetr=ENSEMBLE_W_RFDETR,
+                strict_spoof_veto=True,
+            )
+            ens_latency_ms = (time.time() - t_ens) * 1000
+
+            # Lọc spoof detections trong oval (lược bỏ hoàn toàn detections ngoài oval)
+            spoofs_in_oval = [sd for sd in all_ensemble_dets if is_face_in_oval(sd["bbox"], oval_center, oval_axes)]
+            target_spoofs = spoofs_in_oval
+
+            # Tìm detection khớp nhất với Primary Face
+            if primary_face and target_spoofs:
+                matching_spoofs = [
+                    sd for sd in target_spoofs
+                    if calculate_iou(primary_face["bbox"], sd["bbox"]) > 0.15
+                ]
+                if matching_spoofs:
+                    best_spoof = max(matching_spoofs, key=lambda x: x["confidence"])
+                    primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
+                else:
+                    best_spoof = max(target_spoofs, key=lambda x: x["confidence"])
+                    primary_spoof_iou = calculate_iou(primary_face["bbox"], best_spoof["bbox"])
+
+            if best_spoof is None and target_spoofs:
+                best_spoof = target_spoofs[0]
+
+            has_any_spoof = any(not sd["is_real"] for sd in target_spoofs) if target_spoofs else False
+            is_primary_real = bool(best_spoof["is_real"]) if best_spoof else False
+            c_both_detected = bool(best_spoof.get("both_detected", False)) if best_spoof else False
+            c_spoof = is_primary_real
+
+            if best_spoof is None:
+                reasons.append("Không phát hiện được đặc trưng chống giả mạo (Anti-Spoof None)")
+            elif not c_both_detected:
+                reasons.append(
+                    f"Chỉ có 1 model nhận diện ({best_spoof.get('source')}) "
+                    f"— Lược bỏ ảnh (Thiếu sự đồng thuận cả 2 model)"
+                )
+            elif not c_spoof:
+                reasons.append(f"Phát hiện giả mạo (SPOOF) với độ tin cậy {best_spoof['confidence']*100:.1f}%")
+
+            # 5.5 Kiểm tra tính liên tục danh tính khuôn mặt giữa các bước (Biometric Face Identity Continuity)
+            if session_id and session_id in self.liveness_sessions:
+                sess = self.liveness_sessions[session_id]
+                base_desc = sess.get("base_desc")
+                if base_desc is not None:
+                    # 1. Kiểm tra ảnh chụp chớp mắt nếu có trong cùng phiên
+                    bf = sess.get("blink_frame")
+                    if bf is None and blink_frame_input is not None:
+                        try:
+                            bf = load_image(blink_frame_input)
+                        except Exception:
+                            bf = None
+
+                    if bf is not None:
+                        cand_b = self.identity_verifier.extract_descriptor(
+                            bf, oval_center=oval_center, oval_axes=oval_axes, filter_oval=True
+                        )
+                        if cand_b is not None:
+                            is_same_b, _, dt_b = self.identity_verifier.verify_identity(base_desc, cand_b)
+                            identity_details["blink_match"] = dt_b
+                            if not is_same_b:
+                                c_same_person = False
+
+                    # 2. Kiểm tra ảnh chụp quay đầu nếu có trong cùng phiên
+                    hf = sess.get("head_frame")
+                    if hf is None and head_frame_input is not None:
+                        try:
+                            hf = load_image(head_frame_input)
+                        except Exception:
+                            hf = None
+
+                    if hf is not None:
+                        head_oval_axes = (int(oval_axes[0] * 1.25), oval_axes[1])
+                        cand_h = self.identity_verifier.extract_descriptor(
+                            hf, oval_center=oval_center, oval_axes=head_oval_axes, filter_oval=True
+                        )
+                        if cand_h is not None:
+                            is_same_h, _, dt_h = self.identity_verifier.verify_identity(base_desc, cand_h)
+                            identity_details["head_match"] = dt_h
+                            if not is_same_h:
+                                c_same_person = False
+
+                del self.liveness_sessions[session_id]
+                if not c_same_person:
+                    reasons.append("Phát hiện tráo đổi người thực hiện thử thách (Face Identity Mismatch)!")
+        else:
+            # Xóa session khỏi bộ nhớ nếu fail-fast
+            if session_id and session_id in self.liveness_sessions:
+                del self.liveness_sessions[session_id]
 
         final_pass = bool(
             c_face and c_single and c_pose and c_spoof
@@ -1615,14 +1624,14 @@ class EKYCPipelineServer:
                 "roll": round(float(pose_dict["roll"]), 2) if pose_dict else 0.0
             },
             "ensemble_anti_spoof": {
-                "label": best_spoof["label"] if best_spoof else "NO_DATA",
+                "label": best_spoof["label"] if best_spoof else ("SKIPPED (FAIL-FAST)" if has_prior_failure else "NO_DATA"),
                 "is_real": is_primary_real,
                 "confidence": round(float(best_spoof["confidence"]), 4) if best_spoof else 0.0,
                 "primary_iou": round(float(primary_spoof_iou), 4),
                 "has_any_spoof_in_frame": bool(has_any_spoof),
-                "source": best_spoof.get("source") if best_spoof else "NONE",
-                "yolo_detail": best_spoof.get("yolo_res") if best_spoof else "N/A",
-                "rfdetr_detail": best_spoof.get("rfdetr_res") if best_spoof else "N/A",
+                "source": best_spoof.get("source") if best_spoof else ("Fail-Fast Early Reject" if has_prior_failure else "NONE"),
+                "yolo_detail": best_spoof.get("yolo_res") if best_spoof else ("Skipped (Không thực hiện do bước trước lỗi)" if has_prior_failure else "N/A"),
+                "rfdetr_detail": best_spoof.get("rfdetr_res") if best_spoof else ("Skipped (Không thực hiện do bước trước lỗi)" if has_prior_failure else "N/A"),
                 "agreement": best_spoof.get("agreement") if best_spoof else False,
                 "both_detected": bool(c_both_detected),
                 "latency_ms": round(ens_latency_ms, 1),

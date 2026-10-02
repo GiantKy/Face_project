@@ -210,9 +210,9 @@ def check_face_oval_fit(
     oval_center: Optional[Tuple[int, int]] = None,
     oval_axes: Optional[Tuple[int, int]] = None,
     tolerance: float = 1.0,
-    min_ratio: float = 0.40,
+    min_ratio: float = 0.30,
     max_ratio: float = 0.90,
-    min_face_height: int = 145
+    min_face_height: int = 105
 ) -> Dict[str, Any]:
     """
     Kiểm tra độ vừa vặn và căn chỉnh của khuôn mặt đối với khung Oval tiêu chuẩn (Oval Fit Standard):
@@ -293,23 +293,28 @@ def check_face_oval_fit(
     ratio_to_oval = (face_size_h / float(oval_h)) if oval_h > 0 else 0.0
 
     # Ngưỡng kích thước: vừa theo tỷ lệ oval vừa theo pixel tối thiểu
-    is_too_far = (ratio_to_oval < min_ratio) or (face_size_h < min_face_height)
+    effective_min_h = min(min_face_height, int(round(oval_h * min_ratio)))
+    is_too_far = (ratio_to_oval < min_ratio) or (face_size_h < effective_min_h)
     is_too_close = (ratio_to_oval > max_ratio)
 
     dx = face_cx - cx
     dy = face_cy - cy
     is_off_center = False
     off_center_hint = ""
-    if abs(dx) > ax * 0.35 or abs(dy) > ay * 0.35:
+    # Ngưỡng lệch tâm: Cho phép dung sai tự nhiên (55% bán kính ngang, 50% bán kính dọc)
+    # tránh hiện tượng rung lắc vi mô khiến người dùng phải liên tục nhích đầu trái phải
+    thresh_x = ax * 0.55
+    thresh_y = ay * 0.50
+    if abs(dx) > thresh_x or abs(dy) > thresh_y:
         is_off_center = True
         hints = []
-        if dx > ax * 0.35:
+        if dx > thresh_x:
             hints.append("Qua Trai")
-        elif dx < -ax * 0.35:
+        elif dx < -thresh_x:
             hints.append("Qua Phai")
-        if dy > ay * 0.35:
+        if dy > thresh_y:
             hints.append("Len Tren")
-        elif dy < -ay * 0.35:
+        elif dy < -thresh_y:
             hints.append("Xuong Duoi")
         off_center_hint = f"Dich mat {' + '.join(hints)} vao tam oval"
 

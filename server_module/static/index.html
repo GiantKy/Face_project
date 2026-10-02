@@ -677,6 +677,317 @@
       box-shadow: 0 0 10px var(--amber);
     }
 
+    /* =========================================================================
+       REAL-TIME POSE & OVAL TELEMETRY HUD (Trước khi chụp)
+       ========================================================================= */
+    .pose-telemetry-hud {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      width: 236px;
+      background: rgba(8, 13, 24, 0.88);
+      border: 1px solid rgba(56, 189, 248, 0.32);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 12px;
+      padding: 0.65rem 0.8rem;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55), inset 0 0 15px rgba(6, 182, 212, 0.08);
+      z-index: 28;
+      pointer-events: auto;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      font-family: var(--font-body);
+      user-select: none;
+    }
+
+    .pose-telemetry-hud:hover {
+      border-color: rgba(56, 189, 248, 0.55);
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.65), 0 0 20px rgba(6, 182, 212, 0.18);
+    }
+
+    .telemetry-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 0.45rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      gap: 0.4rem;
+    }
+
+    .telemetry-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .telemetry-live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #64748b;
+      box-shadow: 0 0 6px rgba(100, 116, 139, 0.5);
+      transition: all 0.3s ease;
+    }
+
+    .telemetry-live-dot.pass {
+      background: var(--emerald);
+      box-shadow: 0 0 10px var(--emerald);
+    }
+
+    .telemetry-live-dot.warn {
+      background: var(--amber);
+      box-shadow: 0 0 10px var(--amber);
+    }
+
+    .telemetry-live-dot.fail {
+      background: var(--rose);
+      box-shadow: 0 0 10px var(--rose);
+    }
+
+    .telemetry-title {
+      font-family: var(--font-heading);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #94a3b8;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .telemetry-header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .telemetry-status-badge {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.15rem 0.45rem;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
+    .telemetry-status-badge.idle {
+      background: rgba(148, 163, 184, 0.15);
+      color: #94a3b8;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+
+    .telemetry-status-badge.pass {
+      background: rgba(16, 185, 129, 0.18);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.45);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.25);
+    }
+
+    .telemetry-status-badge.warn {
+      background: rgba(245, 158, 11, 0.18);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.45);
+    }
+
+    .telemetry-status-badge.fail {
+      background: rgba(244, 63, 94, 0.18);
+      color: #f87171;
+      border: 1px solid rgba(244, 63, 94, 0.45);
+    }
+
+    .telemetry-toggle-btn {
+      background: transparent;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      font-size: 0.95rem;
+      line-height: 1;
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    }
+
+    .telemetry-toggle-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .telemetry-body {
+      margin-top: 0.45rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .pose-telemetry-hud.collapsed .telemetry-body {
+      display: none;
+    }
+
+    .pose-telemetry-hud.collapsed {
+      width: auto;
+      padding: 0.4rem 0.75rem;
+    }
+
+    .telemetry-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .telemetry-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .telemetry-row-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.74rem;
+    }
+
+    .telemetry-label {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .telemetry-val-group {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .telemetry-val {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: #e2e8f0;
+    }
+
+    .telemetry-pill {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 700;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .telemetry-pill.idle {
+      background: rgba(255, 255, 255, 0.05);
+      color: #64748b;
+    }
+
+    .telemetry-pill.pass {
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.35);
+    }
+
+    .telemetry-pill.warn {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+    }
+
+    .telemetry-pill.fail {
+      background: rgba(244, 63, 94, 0.2);
+      color: #f87171;
+      border: 1px solid rgba(244, 63, 94, 0.35);
+    }
+
+    /* Mini Progress Bar for Oval Fit */
+    .telemetry-bar-wrap {
+      width: 100%;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Safe zone: 30% to 90% */
+    .telemetry-bar-safe-zone {
+      position: absolute;
+      left: 30%;
+      width: 60%;
+      top: 0;
+      bottom: 0;
+      background: rgba(16, 185, 129, 0.25);
+      border-left: 1px solid rgba(16, 185, 129, 0.5);
+      border-right: 1px solid rgba(16, 185, 129, 0.5);
+    }
+
+    .telemetry-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: #64748b;
+      border-radius: 999px;
+      transition: width 0.2s ease, background 0.2s ease;
+      position: relative;
+      z-index: 2;
+    }
+
+    .telemetry-bar-fill.pass {
+      background: linear-gradient(90deg, #06b6d4, #10b981);
+      box-shadow: 0 0 8px var(--emerald-glow);
+    }
+
+    .telemetry-bar-fill.warn {
+      background: linear-gradient(90deg, #f59e0b, #d97706);
+    }
+
+    .telemetry-bar-fill.fail {
+      background: linear-gradient(90deg, #f43f5e, #e11d48);
+    }
+
+    .telemetry-hint {
+      margin-top: 0.3rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 0.7rem;
+      color: #94a3b8;
+      line-height: 1.35;
+      text-align: center;
+      transition: all 0.25s ease;
+    }
+
+    .telemetry-hint.pass {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: #6ee7b7;
+      font-weight: 600;
+    }
+
+    .telemetry-hint.warn {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.3);
+      color: #fde68a;
+    }
+
+    @media (max-width: 560px) {
+      .pose-telemetry-hud {
+        top: 8px;
+        right: 8px;
+        width: 180px;
+        padding: 0.45rem 0.6rem;
+      }
+      .telemetry-title {
+        font-size: 0.65rem;
+      }
+      .telemetry-row-main {
+        font-size: 0.68rem;
+      }
+      .telemetry-val {
+        font-size: 0.7rem;
+      }
+      .telemetry-pill {
+        font-size: 0.58rem;
+        padding: 0.08rem 0.25rem;
+      }
+    }
+
     /* Auto-capture Countdown Badge */
     .countdown-badge {
       position: absolute;
@@ -1728,7 +2039,7 @@
           </div>
 
           <!-- Live ESP32-CAM MJPEG Stream -->
-          <img id="esp32StreamImg" alt="ESP32 Stream" crossorigin="anonymous">
+          <img id="esp32StreamImg" alt="ESP32 Stream" crossorigin="anonymous" onerror="handleEsp32StreamError()">
 
           <!-- Static Image Preview -->
           <img id="previewImg" alt="Xem trước ảnh">
@@ -1738,6 +2049,76 @@
 
           <!-- Scanner HUD Overlay with Dynamic Glowing Oval Guide -->
           <div class="scanner-overlay" id="scannerOverlay">
+            <!-- Real-time Pose & Oval Telemetry HUD (Trước khi chụp) -->
+            <div class="pose-telemetry-hud" id="poseTelemetryHud">
+              <div class="telemetry-header">
+                <div class="telemetry-title-wrap">
+                  <span class="telemetry-live-dot" id="telemetryDot"></span>
+                  <span class="telemetry-title">THÔNG SỐ TƯ THẾ</span>
+                </div>
+                <div class="telemetry-header-right">
+                  <span class="telemetry-status-badge idle" id="telemetryStatusBadge">CHỜ MẶT</span>
+                  <button class="telemetry-toggle-btn" id="telemetryToggleBtn" onclick="toggleTelemetryCollapse()" title="Thu nhỏ / Mở rộng" aria-label="Toggle telemetry">&#x2212;</button>
+                </div>
+              </div>
+
+              <div class="telemetry-body" id="telemetryBody">
+                <div class="telemetry-rows">
+                  <!-- Oval Fit -->
+                  <div class="telemetry-row" id="rowOvalFit">
+                    <div class="telemetry-row-main">
+                      <span class="telemetry-label">📐 Oval Fit:</span>
+                      <div class="telemetry-val-group">
+                        <span class="telemetry-val" id="valOvalFit">--%</span>
+                        <span class="telemetry-pill idle" id="pillOvalFit">--</span>
+                      </div>
+                    </div>
+                    <div class="telemetry-bar-wrap" title="Khoảng chuẩn: 30% - 90%">
+                      <div class="telemetry-bar-safe-zone"></div>
+                      <div class="telemetry-bar-fill" id="barOvalFit" style="width: 0%;"></div>
+                    </div>
+                  </div>
+
+                  <!-- Yaw -->
+                  <div class="telemetry-row" id="rowYaw">
+                    <div class="telemetry-row-main">
+                      <span class="telemetry-label">↔️ Yaw (Ngang):</span>
+                      <div class="telemetry-val-group">
+                        <span class="telemetry-val" id="valYaw">0.0°</span>
+                        <span class="telemetry-pill idle" id="pillYaw">--</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Pitch -->
+                  <div class="telemetry-row" id="rowPitch">
+                    <div class="telemetry-row-main">
+                      <span class="telemetry-label">↕️ Pitch (Dọc):</span>
+                      <div class="telemetry-val-group">
+                        <span class="telemetry-val" id="valPitch">0.0°</span>
+                        <span class="telemetry-pill idle" id="pillPitch">--</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Roll -->
+                  <div class="telemetry-row" id="rowRoll">
+                    <div class="telemetry-row-main">
+                      <span class="telemetry-label">🔄 Roll (Nghiêng):</span>
+                      <div class="telemetry-val-group">
+                        <span class="telemetry-val" id="valRoll">0.0°</span>
+                        <span class="telemetry-pill idle" id="pillRoll">--</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="telemetry-hint" id="telemetryHint">
+                  Đưa khuôn mặt vào trong khung oval
+                </div>
+              </div>
+            </div>
+
             <div class="face-guide-oval-wrapper">
               <div class="face-guide-oval" id="faceGuideOval">
                 <div class="radar-line"></div>
@@ -2036,14 +2417,43 @@
     let isEsp32Connected = false;
     let esp32PollTimer = null;
     let lastKnownEsp32Ip = '';
+    let esp32ConsecutiveOffline = 0;
+    let esp32StreamRetryCount = 0;
+    let esp32RetryTimeout = null;
 
     function setEsp32StreamSource(espImg, espIp) {
       if (!espImg) return;
       // Kết nối trực tiếp qua Node.js Relay (:3000/stream)
       // Cùng Same-Origin giúp Canvas capture 0ms mà không bao giờ bị lỗi CORS / Tainted Canvas
       const streamUrl = `${API_BASE_URL}/stream?t=${Date.now()}`;
+      espImg.onerror = handleEsp32StreamError;
+      espImg.onload = () => {
+        esp32StreamRetryCount = 0;
+        esp32ConsecutiveOffline = 0;
+      };
       if (espImg.src !== streamUrl) {
         espImg.src = streamUrl;
+      }
+    }
+
+    /**
+     * Đồng bộ đèn LED RGB WS2812 (chân GPIO 48) trên ESP32-S3 theo từng Stage:
+     * - 'idle':          Xanh dương dịu (R:0, G:15, B:60)
+     * - 'stage1':        Màu Tím (R:60, G:0, B:70)
+     * - 'stage2_blink':  Vàng cam (R:80, G:40, B:0)
+     * - 'stage3_turn':   Xanh ngọc Cyan (R:0, G:60, B:60)
+     * - 'approved':      Xanh lá mở cửa (R:0, G:80, B:0)
+     * - 'rejected':      Đỏ cảnh báo (R:90, G:0, B:0)
+     */
+    function syncEsp32Led(status) {
+      try {
+        const query = lastKnownEsp32Ip ? `&ip=${encodeURIComponent(lastKnownEsp32Ip)}` : '';
+        fetch(`${API_BASE_URL}/api/camera/led?status=${encodeURIComponent(status)}${query}`).catch(() => {});
+        if (lastKnownEsp32Ip) {
+          fetch(`http://${lastKnownEsp32Ip}/set-led?status=${encodeURIComponent(status)}`, { mode: 'no-cors' }).catch(() => {});
+        }
+      } catch (e) {
+        console.warn('syncEsp32Led error:', e);
       }
     }
 
@@ -2114,6 +2524,118 @@
     });
 
     // =========================================================================
+    // ESP32-CAM STREAM ERROR & DISCONNECT HANDLER
+    // =========================================================================
+    function handleEsp32StreamError() {
+      if (inputMode !== 'esp32') return;
+      console.warn('[Stream] Nhận cảnh báo gián đoạn luồng MJPEG từ trình duyệt');
+      esp32StreamRetryCount++;
+      if (esp32StreamRetryCount <= 2) {
+        // Tự động thử kết nối lại sau 800ms nếu chỉ là rớt mạng tạm thời
+        clearTimeout(esp32RetryTimeout);
+        esp32RetryTimeout = setTimeout(() => {
+          if (inputMode === 'esp32' && isEsp32Connected) {
+            const espImg = document.getElementById('esp32StreamImg');
+            if (espImg) {
+              console.log('[Stream] Đang thử kết nối lại luồng stream MJPEG...');
+              espImg.src = `${API_BASE_URL}/stream?t=${Date.now()}`;
+            }
+          }
+        }, 800);
+      } else {
+        esp32StreamRetryCount = 0;
+        handleEsp32Disconnected();
+      }
+    }
+
+    function handleEsp32Disconnected() {
+      console.warn('[Stream] Xử lý ngắt kết nối ESP32-CAM: Dọn sạch frame đệm và chuyển về màn hình chờ IDLE');
+      isEsp32Connected = false;
+
+      // 1. Dừng ngay lập tức toàn bộ vòng lặp kiểm tra và thử thách
+      stopPoseCheckLoop();
+      stopChallengeLoop();
+      cancelCountdown();
+      hideChallengeHUD();
+
+      // 2. Xóa sạch frame đang hiển thị và frame đệm trong bộ nhớ
+      const espImg = document.getElementById('esp32StreamImg');
+      if (espImg) {
+        espImg.onerror = null; // Tránh loop onerror khi gán rỗng
+        espImg.src = '';
+        try { espImg.removeAttribute('src'); } catch (_) {}
+        espImg.style.display = 'none';
+        setTimeout(() => {
+          if (espImg) espImg.onerror = handleEsp32StreamError;
+        }, 500);
+      }
+
+      // Xóa sạch canvas ẩn để không còn lưu frame cũ
+      const hiddenCanvas = document.getElementById('hiddenCanvas');
+      if (hiddenCanvas) {
+        const hCtx = hiddenCanvas.getContext('2d');
+        if (hCtx) hCtx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+      }
+
+      // 3. Reset các biến session, buffer & auto-capture
+      baseFrameBlob = null;
+      blinkSuccessBlob = null;
+      headSuccessBlob = null;
+      livenessSessionId = null;
+      latestPoseData = null;
+      consecutiveGoodFrames = 0;
+      autoTriggerBlocked = false;
+      isPoseChecking = false;
+      isBlinkProcessing = false;
+      isHeadProcessing = false;
+
+      // 4. Đưa trạng thái hệ thống về màn hình chờ ban đầu (IDLE)
+      currentState = APP_STATE.IDLE;
+
+      // 5. Hiển thị placeholder thông báo mất kết nối
+      const espPlaceholder = document.getElementById('esp32OffPlaceholder');
+      if (espPlaceholder) {
+        espPlaceholder.style.display = 'flex';
+        const title = document.getElementById('esp32PlaceholderTitle');
+        const desc = document.getElementById('esp32PlaceholderDesc');
+        if (title) title.textContent = 'Mất Kết Nối ESP32-CAM';
+        if (desc) desc.textContent = 'ESP32 đã bị ngắt kết nối hoặc mất nguồn. Vui lòng cắm lại để tiếp tục!';
+      }
+
+      // 6. Cập nhật Badge trạng thái Camera
+      const dot = document.getElementById('camSourceDot');
+      const title = document.getElementById('camSourceTitle');
+      const detail = document.getElementById('camSourceDetail');
+      if (dot) dot.className = 'cam-source-dot offline';
+      if (title) title.textContent = 'ESP32-CAM Stream';
+      if (detail) detail.textContent = '(Mất kết nối - Chờ camera...)';
+
+      // 7. Cập nhật Oval Guide và Feedback
+      const oval = document.getElementById('faceGuideOval');
+      const pill = document.getElementById('ovalFeedbackPill');
+      const text = document.getElementById('ovalFeedbackText');
+      if (oval) oval.className = 'face-guide-oval';
+      if (pill) pill.className = 'oval-feedback-pill';
+      if (text) text.textContent = 'CHỜ KẾT NỐI CAMERA ESP32...';
+
+      // Ẩn overlay scanner & bokeh khi mất kết nối để trở về màn hình chờ
+      const scannerOverlay = document.getElementById('scannerOverlay');
+      if (scannerOverlay) scannerOverlay.style.display = 'none';
+      const bokehOverlay = document.getElementById('bokehBlurOverlay');
+      if (bokehOverlay) bokehOverlay.style.display = 'none';
+
+      // 8. Reset UI các bước và telemetry
+      resetAllSteps();
+      updatePoseTelemetryUI(null);
+      updateMainActionButtonText();
+
+      const cancelBtn = document.getElementById('cancelChallengeBtn');
+      if (cancelBtn) cancelBtn.style.display = 'none';
+      const mainBtn = document.getElementById('mainActionBtn');
+      if (mainBtn) mainBtn.disabled = false;
+    }
+
+    // =========================================================================
     // ESP32-CAM STATUS & DEVICE INFO POLLER
     // =========================================================================
     async function checkEsp32Status(showAlertIfOffline = false) {
@@ -2121,42 +2643,75 @@
         const res = await fetch(`${API_BASE_URL}/api/device/info`);
         if (res.ok) {
           const info = await res.json();
-          isEsp32Connected = Boolean(info.is_live || info.has_frame);
+          const liveNow = Boolean(info.is_live || info.has_frame);
+          const wasConnected = isEsp32Connected;
           const title = document.getElementById('camSourceTitle');
           const detail = document.getElementById('camSourceDetail');
           const dot = document.getElementById('camSourceDot');
           const espImg = document.getElementById('esp32StreamImg');
           const espPlaceholder = document.getElementById('esp32OffPlaceholder');
 
-          if (info.esp32_ip) lastKnownEsp32Ip = info.esp32_ip;
-          if (inputMode === 'esp32') {
-            const isChallengeActive = (currentState !== APP_STATE.IDLE && currentState !== APP_STATE.PREVIEW_ALIGN);
+          if (info.esp32_ip) {
+            const isNewIp = !lastKnownEsp32Ip;
+            lastKnownEsp32Ip = info.esp32_ip;
+            if (isNewIp && (currentState === APP_STATE.IDLE || currentState === APP_STATE.PREVIEW_ALIGN)) {
+              syncEsp32Led('idle');
+            }
+          }
 
-            if (isEsp32Connected || isChallengeActive) {
+          if (inputMode === 'esp32') {
+            if (!liveNow) {
+              esp32ConsecutiveOffline++;
+              // Yêu cầu ít nhất 4 lần kiểm tra liên tiếp offline (~4-5 giây) mới ngắt kết nối
+              // Tránh giật lag WiFi 1-2 giây làm ngắt nhầm phiên của người dùng!
+              if (esp32ConsecutiveOffline >= 4) {
+                if (wasConnected || currentState !== APP_STATE.IDLE) {
+                  handleEsp32Disconnected();
+                }
+                if (showAlertIfOffline) {
+                  alert('ESP32-CAM hiện chưa truyền frame nào đến Node.js (:3000). Vui lòng đảm bảo camera ESP32 đã bật nguồn và kết nối WiFi!');
+                }
+              }
+            } else {
+              esp32ConsecutiveOffline = 0;
+              isEsp32Connected = true;
               if (dot) dot.className = 'cam-source-dot live';
               if (title) title.textContent = 'ESP32-CAM Stream';
               if (detail) detail.textContent = `(IP: ${info.esp32_ip || '192.168.137.x'})`;
               if (espPlaceholder) espPlaceholder.style.display = 'none';
+
+              document.getElementById('scannerOverlay').style.display = 'flex';
+              document.getElementById('bokehBlurOverlay').style.display = document.getElementById('chkOvalBokeh').checked ? 'block' : 'none';
+
               if (espImg) {
                 espImg.style.display = 'block';
-                if (!espImg.src || espImg.src.includes('about:blank') || espImg.src === '') {
+                if (!wasConnected || !espImg.src || espImg.src.includes('about:blank') || espImg.src === '') {
                   setEsp32StreamSource(espImg, info.esp32_ip);
                 }
               }
-            } else {
-              if (dot) dot.className = 'cam-source-dot offline';
-              if (title) title.textContent = 'ESP32-CAM Stream';
-              if (detail) detail.textContent = '(Chờ frame...)';
-              if (espPlaceholder) espPlaceholder.style.display = 'flex';
-              if (espImg) espImg.style.display = 'none';
-              if (showAlertIfOffline) {
-                alert('ESP32-CAM hiện chưa truyền frame nào đến Node.js (:3000). Vui lòng đảm bảo camera ESP32 đã bật nguồn và kết nối WiFi!');
+
+              // Nếu vừa mới kết nối lại từ IDLE -> chuyển sang PREVIEW_ALIGN
+              if (!wasConnected && currentState === APP_STATE.IDLE) {
+                currentState = APP_STATE.PREVIEW_ALIGN;
+                resetAllSteps();
+                startPoseCheckLoop();
+                updateMainActionButtonText();
               }
             }
+          } else {
+            isEsp32Connected = liveNow;
+          }
+        } else {
+          esp32ConsecutiveOffline++;
+          if (inputMode === 'esp32' && esp32ConsecutiveOffline >= 4 && (isEsp32Connected || currentState !== APP_STATE.IDLE)) {
+            handleEsp32Disconnected();
           }
         }
       } catch (e) {
-        // Bỏ qua lỗi kết nối tạm thời
+        esp32ConsecutiveOffline++;
+        if (inputMode === 'esp32' && esp32ConsecutiveOffline >= 4 && (isEsp32Connected || currentState !== APP_STATE.IDLE)) {
+          handleEsp32Disconnected();
+        }
       }
     }
 
@@ -2202,8 +2757,6 @@
       const espImg = document.getElementById('esp32StreamImg');
       setEsp32StreamSource(espImg, lastKnownEsp32Ip);
       checkEsp32Status(true);
-      currentState = APP_STATE.PREVIEW_ALIGN;
-      startPoseCheckLoop();
     }
 
     async function handleCameraToggleButton() {
@@ -2296,17 +2849,19 @@
         camToggleBtn.style.display = 'inline-flex';
         camToggleText.textContent = 'Làm Mới Luồng ESP32';
 
-        document.getElementById('scannerOverlay').style.display = 'flex';
-        document.getElementById('bokehBlurOverlay').style.display = document.getElementById('chkOvalBokeh').checked ? 'block' : 'none';
+        document.getElementById('scannerOverlay').style.display = isEsp32Connected ? 'flex' : 'none';
+        document.getElementById('bokehBlurOverlay').style.display = (isEsp32Connected && document.getElementById('chkOvalBokeh').checked) ? 'block' : 'none';
 
-        currentState = APP_STATE.PREVIEW_ALIGN;
+        currentState = isEsp32Connected ? APP_STATE.PREVIEW_ALIGN : APP_STATE.IDLE;
         resetAllSteps();
 
-        // Kiểm tra ngay và định kỳ trạng thái ESP32
+        // Kiểm tra ngay và định kỳ trạng thái ESP32 mỗi 1s
         checkEsp32Status();
-        esp32PollTimer = setInterval(checkEsp32Status, 3000);
+        esp32PollTimer = setInterval(checkEsp32Status, 1000);
 
-        startPoseCheckLoop();
+        if (isEsp32Connected) {
+          startPoseCheckLoop();
+        }
         updateMainActionButtonText();
       } else {
         // Chế độ Tải File Ảnh
@@ -2511,7 +3066,7 @@
     }
 
     function toggleBokehBlur(enabled) {
-      if (webcamStream || inputMode === 'esp32') {
+      if (webcamStream || (inputMode === 'esp32' && isEsp32Connected)) {
         document.getElementById('bokehBlurOverlay').style.display = enabled ? 'block' : 'none';
       }
     }
@@ -2604,7 +3159,7 @@
 
       poseCheckInterval = setInterval(async () => {
         const isCameraReady = (inputMode === 'webcam' && webcamStream && document.getElementById('webcamVideo').readyState >= 2) ||
-          (inputMode === 'esp32');
+          (inputMode === 'esp32' && isEsp32Connected);
         if (!isCameraReady || currentState !== APP_STATE.PREVIEW_ALIGN || autoTriggerBlocked || isPoseChecking) return;
 
         isPoseChecking = true;
@@ -2612,7 +3167,7 @@
 
         try {
           const blob = await captureThumbnailBlob(video, 480, 360);
-          if (!blob) return;
+          if (!blob || currentState !== APP_STATE.PREVIEW_ALIGN || (inputMode === 'esp32' && !isEsp32Connected)) return;
 
           // Cập nhật frame real-time lên màn hình nếu đang dùng ESP32
           syncEsp32FrameToView(blob);
@@ -2647,6 +3202,192 @@
         countdownTimer = null;
       }
       document.getElementById('countdownBadge').style.display = 'none';
+      updatePoseTelemetryUI(null);
+    }
+
+    function toggleTelemetryCollapse() {
+      const hud = document.getElementById('poseTelemetryHud');
+      const btn = document.getElementById('telemetryToggleBtn');
+      if (!hud) return;
+      hud.classList.toggle('collapsed');
+      const isCollapsed = hud.classList.contains('collapsed');
+      if (btn) btn.innerHTML = isCollapsed ? '&#x002B;' : '&#x2212;';
+    }
+
+    function updatePoseTelemetryUI(data) {
+      const hud = document.getElementById('poseTelemetryHud');
+      if (!hud) return;
+
+      const dot = document.getElementById('telemetryDot');
+      const badge = document.getElementById('telemetryStatusBadge');
+      const valOval = document.getElementById('valOvalFit');
+      const pillOval = document.getElementById('pillOvalFit');
+      const barOval = document.getElementById('barOvalFit');
+      const valYaw = document.getElementById('valYaw');
+      const pillYaw = document.getElementById('pillYaw');
+      const valPitch = document.getElementById('valPitch');
+      const pillPitch = document.getElementById('pillPitch');
+      const valRoll = document.getElementById('valRoll');
+      const pillRoll = document.getElementById('pillRoll');
+      const hint = document.getElementById('telemetryHint');
+
+      if (!data || !data.has_face) {
+        if (dot) dot.className = 'telemetry-live-dot';
+        if (badge) {
+          badge.className = 'telemetry-status-badge idle';
+          badge.textContent = 'CHỜ MẶT';
+        }
+        if (valOval) valOval.textContent = '--%';
+        if (pillOval) {
+          pillOval.className = 'telemetry-pill idle';
+          pillOval.textContent = '--';
+        }
+        if (barOval) {
+          barOval.style.width = '0%';
+          barOval.className = 'telemetry-bar-fill';
+        }
+        if (valYaw) valYaw.textContent = '0.0°';
+        if (pillYaw) {
+          pillYaw.className = 'telemetry-pill idle';
+          pillYaw.textContent = '--';
+        }
+        if (valPitch) valPitch.textContent = '0.0°';
+        if (pillPitch) {
+          pillPitch.className = 'telemetry-pill idle';
+          pillPitch.textContent = '--';
+        }
+        if (valRoll) valRoll.textContent = '0.0°';
+        if (pillRoll) {
+          pillRoll.className = 'telemetry-pill idle';
+          pillRoll.textContent = '--';
+        }
+        if (hint) {
+          hint.textContent = 'Đưa khuôn mặt vào trong khung oval';
+          hint.className = 'telemetry-hint';
+        }
+        return;
+      }
+
+      // 1. Tỷ lệ Oval (Oval Fit Ratio)
+      const ratio = (typeof data.ratio_to_oval === 'number') ? data.ratio_to_oval : 0;
+      const pct = Math.round(ratio * 100);
+      const faceH = data.face_size_h || 0;
+      if (valOval) {
+        valOval.textContent = `${pct}% (${faceH}px)`;
+      }
+      if (barOval) {
+        barOval.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+      }
+
+      if (pct >= 30 && pct <= 90) {
+        if (pillOval) {
+          pillOval.className = 'telemetry-pill pass';
+          pillOval.textContent = 'CHUẨN';
+        }
+        if (barOval) barOval.className = 'telemetry-bar-fill pass';
+      } else if (pct < 30) {
+        if (pillOval) {
+          pillOval.className = 'telemetry-pill warn';
+          pillOval.textContent = 'QUÁ XA';
+        }
+        if (barOval) barOval.className = 'telemetry-bar-fill warn';
+      } else {
+        if (pillOval) {
+          pillOval.className = 'telemetry-pill warn';
+          pillOval.textContent = 'QUÁ GẦN';
+        }
+        if (barOval) barOval.className = 'telemetry-bar-fill fail';
+      }
+
+      // 2. Góc tư thế 3D Pose (Yaw, Pitch, Roll)
+      const pose = data.pose || {};
+      const yaw = (typeof pose.yaw === 'number') ? pose.yaw : 0;
+      const pitch = (typeof pose.pitch === 'number') ? pose.pitch : 0;
+      const roll = (typeof pose.roll === 'number') ? pose.roll : 0;
+
+      if (valYaw) valYaw.textContent = `${yaw >= 0 ? '+' : ''}${yaw.toFixed(1)}°`;
+      const absYaw = Math.abs(yaw);
+      if (pillYaw) {
+        if (absYaw <= 12) {
+          pillYaw.className = 'telemetry-pill pass';
+          pillYaw.textContent = 'THẲNG';
+        } else if (absYaw <= 32) {
+          pillYaw.className = 'telemetry-pill warn';
+          pillYaw.textContent = yaw > 0 ? 'LỆCH PHẢI' : 'LỆCH TRÁI';
+        } else {
+          pillYaw.className = 'telemetry-pill fail';
+          pillYaw.textContent = 'QUÁ LỆCH';
+        }
+      }
+
+      if (valPitch) valPitch.textContent = `${pitch >= 0 ? '+' : ''}${pitch.toFixed(1)}°`;
+      const absPitch = Math.abs(pitch);
+      if (pillPitch) {
+        if (absPitch <= 10) {
+          pillPitch.className = 'telemetry-pill pass';
+          pillPitch.textContent = 'THẲNG';
+        } else if (absPitch <= 24) {
+          pillPitch.className = 'telemetry-pill warn';
+          pillPitch.textContent = pitch > 0 ? 'NGẨNG ĐẦU' : 'CÚI ĐẦU';
+        } else {
+          pillPitch.className = 'telemetry-pill fail';
+          pillPitch.textContent = 'QUÁ LỆCH';
+        }
+      }
+
+      if (valRoll) valRoll.textContent = `${roll >= 0 ? '+' : ''}${roll.toFixed(1)}°`;
+      const absRoll = Math.abs(roll);
+      if (pillRoll) {
+        if (absRoll <= 10) {
+          pillRoll.className = 'telemetry-pill pass';
+          pillRoll.textContent = 'THẲNG';
+        } else if (absRoll <= 18) {
+          pillRoll.className = 'telemetry-pill warn';
+          pillRoll.textContent = 'NGHIÊNG';
+        } else {
+          pillRoll.className = 'telemetry-pill fail';
+          pillRoll.textContent = 'QUÁ LỆCH';
+        }
+      }
+
+      // 3. Đánh giá tổng thể & Hướng dẫn căn chỉnh trực quan
+      if (data.is_aligned_good) {
+        if (dot) dot.className = 'telemetry-live-dot pass';
+        if (badge) {
+          badge.className = 'telemetry-status-badge pass';
+          badge.textContent = 'CHUẨN OVAL';
+        }
+        if (hint) {
+          hint.className = 'telemetry-hint pass';
+          hint.textContent = '✓ Mặt đã chuẩn trong Oval! Giữ nguyên...';
+        }
+      } else {
+        if (dot) dot.className = 'telemetry-live-dot warn';
+        if (badge) {
+          badge.className = 'telemetry-status-badge warn';
+          badge.textContent = 'CẦN CHỈNH';
+        }
+        if (hint) {
+          hint.className = 'telemetry-hint warn';
+          if (!data.face_in_oval) {
+            hint.textContent = 'Đưa khuôn mặt vào trong khung oval';
+          } else if (data.is_off_center && data.off_center_hint) {
+            hint.textContent = data.off_center_hint;
+          } else if (data.is_too_far) {
+            hint.textContent = `Tiến lại gần camera hơn (chiếm ${pct}%, cần ≥30%)`;
+          } else if (data.is_too_close) {
+            hint.textContent = `Lùi xa camera một chút (chiếm ${pct}%, cần ≤90%)`;
+          } else if (absYaw > 12) {
+            hint.textContent = yaw > 0 ? 'Quay mặt sang trái một chút' : 'Quay mặt sang phải một chút';
+          } else if (absPitch > 10) {
+            hint.textContent = pitch > 0 ? 'Hạ cằm xuống nhìn thẳng ngang tầm mắt' : 'Nâng cằm lên nhìn thẳng ngang tầm mắt';
+          } else if (absRoll > 10) {
+            hint.textContent = 'Giữ thẳng đầu, không nghiêng sang bên';
+          } else {
+            hint.textContent = data.guide || data.message || 'Nhìn thẳng vào giữa khung oval';
+          }
+        }
+      }
     }
 
     function updateOvalGuideUI(data) {
@@ -2655,6 +3396,9 @@
       const pill = document.getElementById('ovalFeedbackPill');
       const text = document.getElementById('ovalFeedbackText');
       const autoCaptureEnabled = document.getElementById('chkAutoCapture').checked;
+
+      // Cập nhật real-time Telemetry HUD thông số tư thế
+      updatePoseTelemetryUI(data);
 
       oval.classList.remove('state-aligned', 'state-warning', 'state-rejected', 'state-challenge');
       pill.classList.remove('state-aligned', 'state-warning', 'state-rejected');
@@ -2779,7 +3523,7 @@
     }
 
     function quickSnapshotBypass() {
-      const isReady = (inputMode === 'webcam' && webcamStream) || (inputMode === 'esp32');
+      const isReady = (inputMode === 'webcam' && webcamStream) || (inputMode === 'esp32' && isEsp32Connected);
       if (!isReady) {
         alert('Vui lòng bật Camera hoặc kết nối ESP32-CAM trước!');
         return;
@@ -2789,7 +3533,7 @@
     }
 
     async function startLivenessChallenge() {
-      const isReady = (inputMode === 'webcam' && webcamStream) || (inputMode === 'esp32');
+      const isReady = (inputMode === 'webcam' && webcamStream) || (inputMode === 'esp32' && isEsp32Connected);
       if (!isReady) {
         alert('Vui lòng bật camera để bắt đầu thử thách!');
         return;
@@ -2855,6 +3599,9 @@
       blinkSuccessBlob = null;
       headSuccessBlob = null;
 
+      // Bước 1: Đồng bộ LED RGB: Màu Tím (Bắt đầu Bước 1: Face Detect & Anti-Spoofing)
+      syncEsp32Led('stage1');
+
       // Bước 1: Chụp ngay ảnh khuôn mặt chuẩn khi mặt đang thẳng trong Oval
       triggerScreenFlash();
 
@@ -2898,23 +3645,40 @@
           const errData = await initRes.json().catch(() => ({}));
           const errMsg = errData.detail || 'Không thể khởi tạo phiên xác thực!';
           console.error('Liveness init-session error:', errMsg);
-          cancelActiveChallenge();
-          try {
-            renderResults({
-              approved: false,
-              confidence: 0.0,
-              reasons: [errMsg]
-            });
-          } catch (rErr) {
-            console.warn('renderResults safe fallback:', rErr);
-          }
-          alert('CẢNH BÁO KHỞI TẠO:\n' + errMsg);
+          rejectActiveChallenge({
+            stageText: 'THẤT BÀI KHỞI TẠO ĐỊNH DANH',
+            reasons: [errMsg],
+            criteria: {
+              face_detected: false,
+              single_face: true,
+              pose_valid: false,
+              anti_spoof_real: false,
+              both_models_detected: false,
+              blink_passed: false,
+              head_movement_passed: false,
+              same_person_verified: false
+            },
+            capturedBlob: blob
+          });
           return;
         }
       } catch (err) {
         console.warn('Liveness init-session error:', err);
-        alert('Lỗi khởi tạo phiên Liveness: ' + (err.message || err));
-        cancelActiveChallenge();
+        rejectActiveChallenge({
+          stageText: 'LỖI KẾT NỐI AI SERVER',
+          reasons: ['Không thể kết nối đến máy chủ AI: ' + (err.message || err)],
+          criteria: {
+            face_detected: false,
+            single_face: true,
+            pose_valid: false,
+            anti_spoof_real: false,
+            both_models_detected: false,
+            blink_passed: false,
+            head_movement_passed: false,
+            same_person_verified: false
+          },
+          capturedBlob: blob
+        });
         return;
       }
 
@@ -2926,6 +3690,9 @@
       blinkCounter = 0;
       blinkState = false;
       blinkPassed = false;
+
+      // Đồng bộ LED RGB: Màu Vàng cam (Bước 2: Thử thách chớp mắt)
+      syncEsp32Led('stage2_blink');
 
       updateChallengeHUD({
         stageText: 'BƯỚC 2/3: THỬ THÁCH CHỚP MẮT',
@@ -2945,6 +3712,140 @@
       startBlinkChallengeLoop();
     }
 
+    // =========================================================================
+    // FAIL-FAST EARLY REJECTION HANDLER (Từ chối ngay lập tức khi sai 1 bước)
+    // =========================================================================
+    function rejectActiveChallenge({ stageText, reasons, criteria, capturedBlob }) {
+      console.warn('[eKYC Challenge] Fail-fast early reject triggered:', reasons);
+
+      // 1. Dừng ngay lập tức toàn bộ vòng lặp thử thách và HUD
+      stopChallengeLoop();
+      cancelCountdown();
+      hideChallengeHUD();
+
+      // 2. Viền Oval chuyển sang đỏ báo lỗi (rejected)
+      const faceOval = document.getElementById('faceGuideOval');
+      if (faceOval) {
+        faceOval.className = 'face-guide-oval state-rejected';
+      }
+      document.getElementById('bokehBlurOverlay')?.classList.remove('stage-turn');
+
+      const ovalPill = document.getElementById('ovalFeedbackPill');
+      if (ovalPill) {
+        ovalPill.className = 'oval-feedback-pill state-rejected';
+      }
+      const ovalText = document.getElementById('ovalFeedbackText');
+      if (ovalText) {
+        ovalText.textContent = (stageText || 'THỬ THÁCH THẤT BÀI - TỪ CHỐI eKYC').toUpperCase();
+      }
+
+      // 3. Đổi LED RGB ESP32 sang ĐỎ cảnh báo (rejected)
+      syncEsp32Led('rejected');
+
+      // 4. Hủy phiên trên server backend để dọn dẹp bộ nhớ
+      if (livenessSessionId) {
+        try {
+          const resetForm = new FormData();
+          resetForm.append('session_id', livenessSessionId);
+          fetch(`${API_BASE_URL}/api/v1/liveness/reset-session`, { method: 'POST', body: resetForm }).catch(() => {});
+        } catch (_) {}
+      }
+
+      // 5. Cập nhật các bước quy trình
+      if (currentState === APP_STATE.CHALLENGE_BLINK) {
+        setStepStatus(2, 'idle');
+        setStepStatus(3, 'idle');
+        setStepStatus(4, 'idle');
+      } else if (currentState === APP_STATE.CHALLENGE_HEAD) {
+        setStepStatus(2, 'completed');
+        setStepStatus(3, 'idle');
+        setStepStatus(4, 'idle');
+      }
+
+      currentState = APP_STATE.IDLE;
+
+      // 6. Xây dựng kết quả REJECT ngay lập tức (không cần chạy full pipeline)
+      const resultData = {
+        approved: false,
+        confidence: 0.0,
+        reasons: reasons || ['Thử thách Active Liveness không đạt'],
+        stage_failed: stageText || 'Liveness Challenge Failed',
+        timestamp: new Date().toISOString(),
+        criteria: criteria || {
+          face_detected: true,
+          single_face: true,
+          pose_valid: true,
+          anti_spoof_real: false,
+          both_models_detected: false,
+          blink_passed: false,
+          head_movement_passed: false,
+          same_person_verified: false
+        },
+        ensemble_anti_spoof: {
+          is_real: false,
+          confidence: 0.0,
+          label: 'REJECTED (FAIL-FAST)',
+          source: 'Liveness Check',
+          both_detected: false,
+          agreement: false,
+          yolo_detail: 'Skipped (Đã từ chối ngay ở bước trước)',
+          rfdetr_detail: 'Skipped (Đã từ chối ngay ở bước trước)'
+        },
+        pose_3d: {
+          is_valid: true,
+          yaw: 0.0,
+          pitch: 0.0,
+          message: 'Hợp lệ'
+        },
+        face_detection: {
+          num_faces: 1,
+          primary_face_in_oval: true
+        }
+      };
+
+      // Hiển thị frame ảnh chụp thời điểm thất bại nếu có
+      const failBlob = capturedBlob || baseFrameBlob;
+      if (failBlob) {
+        const url = URL.createObjectURL(failBlob);
+        const resAnnotated = document.getElementById('resAnnotatedImg');
+        if (resAnnotated) {
+          resAnnotated.src = url;
+          resAnnotated.style.display = 'block';
+          document.getElementById('annotatedPlaceholder').style.display = 'none';
+        }
+      }
+
+      // Render bảng kết quả chi tiết
+      renderResults(resultData);
+
+      // Mở khóa nút hành động chính
+      const mainBtn = document.getElementById('mainActionBtn');
+      if (mainBtn) mainBtn.disabled = false;
+      const cancelBtn = document.getElementById('cancelChallengeBtn');
+      if (cancelBtn) cancelBtn.style.display = 'none';
+      updateMainActionButtonText();
+
+      // 7. Tự động phục hồi về Preview sau 3.5 giây để sẵn sàng cho lần thử tiếp theo
+      setTimeout(() => {
+        syncEsp32Led('idle');
+        if (webcamStream || (inputMode === 'esp32' && isEsp32Connected)) {
+          currentState = APP_STATE.PREVIEW_ALIGN;
+          autoTriggerBlocked = false;
+          consecutiveGoodFrames = 0;
+          resetAllSteps();
+          const fOval = document.getElementById('faceGuideOval');
+          if (fOval) fOval.className = 'face-guide-oval';
+          const fPill = document.getElementById('ovalFeedbackPill');
+          if (fPill) fPill.className = 'oval-feedback-pill';
+          const fText = document.getElementById('ovalFeedbackText');
+          if (fText) fText.textContent = 'CANH CHỈNH MẶT VÀO KHUNG OVAL...';
+          startPoseCheckLoop();
+        } else {
+          currentState = APP_STATE.IDLE;
+        }
+      }, 3500);
+    }
+
     function startBlinkChallengeLoop() {
       stopChallengeLoop();
       const blinkStartTime = Date.now();
@@ -2954,30 +3855,29 @@
         if (currentState !== APP_STATE.CHALLENGE_BLINK || isBlinkProcessing) return;
 
         const isReady = (inputMode === 'webcam' && webcamStream && document.getElementById('webcamVideo').readyState >= 2) ||
-          (inputMode === 'esp32');
+          (inputMode === 'esp32' && isEsp32Connected);
         if (!isReady) return;
 
         const elapsedSec = (Date.now() - blinkStartTime) / 1000;
         const localTimeLeft = Math.max(0.0, maxBlinkTimeoutSec - elapsedSec);
 
         if (localTimeLeft <= 0) {
-          // Timeout chớp mắt sau đúng 10s -> chuyển tiếp sang Bước 3 với blink_passed = false
+          // Timeout chớp mắt sau đúng 10s -> REJECT NGAY LẬP TỨC
           blinkPassed = false;
-          stopChallengeLoop();
-          updateChallengeHUD({
-            stageText: 'HẾT THỜI GIAN',
-            icon: '⚠️',
-            prompt: 'CHƯA HOÀN THÀNH CHỚP MẮT ĐÚNG HẠN',
-            hint: 'Đang chuyển sang Bước 3: Thử thách quay đầu...',
-            timerText: '0.0s',
-            isTimerUrgent: true,
-            telemetry: 'Quá thời hạn quy định (10s)',
-            percent: '0%',
-            fillWidth: '0%'
+          rejectActiveChallenge({
+            stageText: 'THẤT BÀI: CHỚP MẮT QUÁ HẠN',
+            reasons: ['Không hoàn thành thử thách chớp mắt trong thời gian quy định (10 giây)'],
+            criteria: {
+              face_detected: true,
+              single_face: true,
+              pose_valid: true,
+              anti_spoof_real: false,
+              both_models_detected: false,
+              blink_passed: false,
+              head_movement_passed: false,
+              same_person_verified: true
+            }
           });
-          setTimeout(() => {
-            proceedToHeadMovementChallenge();
-          }, 800);
           return;
         }
 
@@ -3008,28 +3908,27 @@
           if (res.ok) {
             const data = await res.json();
 
-            // Kiểm tra timeout từ backend
+            // Kiểm tra timeout từ backend -> REJECT NGAY LẬP TỨC
             if (data.timed_out) {
               blinkPassed = false;
-              stopChallengeLoop();
-              updateChallengeHUD({
-                stageText: 'HẾT THỜI GIAN',
-                icon: '⚠️',
-                prompt: 'CHƯA HOÀN THÀNH CHỚP MẮT ĐÚNG HẠN',
-                hint: 'Đang chuyển sang Bước 3: Thử thách quay đầu...',
-                timerText: '0.0s',
-                isTimerUrgent: true,
-                telemetry: 'Quá thời hạn quy định (10s)',
-                percent: '0%',
-                fillWidth: '0%'
+              rejectActiveChallenge({
+                stageText: 'THẤT BÀI: CHỚP MẮT QUÁ HẠN',
+                reasons: ['Không hoàn thành thử thách chớp mắt trong thời gian quy định (10 giây)'],
+                criteria: {
+                  face_detected: true,
+                  single_face: true,
+                  pose_valid: true,
+                  anti_spoof_real: false,
+                  both_models_detected: false,
+                  blink_passed: false,
+                  head_movement_passed: false,
+                  same_person_verified: true
+                }
               });
-              setTimeout(() => {
-                proceedToHeadMovementChallenge();
-              }, 800);
               return;
             }
 
-            // Kiểm tra nhiều người hoặc đổi người trong lúc chớp mắt
+            // Kiểm tra nhiều người trong lúc chớp mắt
             if (data.num_faces !== undefined && data.num_faces > 1) {
               updateChallengeHUD({
                 stageText: 'CẢNH BÁO AN NINH',
@@ -3059,16 +3958,21 @@
               return;
             }
 
+            // Kiểm tra tráo đổi người -> REJECT NGAY LẬP TỨC
             if (data.same_person === false) {
-              const oval = document.getElementById('faceGuideOval');
-              if (oval) oval.className = 'face-guide-oval state-warning';
-              updateChallengeHUD({
-                stageText: '🚨 CẢNH BÁO TRÁO ĐỔI NGƯỜI!',
-                icon: '⛔',
-                prompt: (data.error || 'PHÁT HIỆN ĐỔI NGƯỜI (FACE MISMATCH)').toUpperCase(),
-                hint: 'Người đang đứng trước camera KHÔNG PHẢI người đã chụp ở Bước 1!',
-                isTimerUrgent: true,
-                telemetry: `Trạng thái: ${data.label || 'ĐỊNH DANH KHÔNG KHỚP'}`
+              rejectActiveChallenge({
+                stageText: 'CẢNH BÁO AN NINH: TRÁO ĐỔI NGƯỜI',
+                reasons: ['Phát hiện tráo đổi người thực hiện thử thách (Face Identity Mismatch)!'],
+                criteria: {
+                  face_detected: true,
+                  single_face: true,
+                  pose_valid: true,
+                  anti_spoof_real: false,
+                  both_models_detected: false,
+                  blink_passed: false,
+                  head_movement_passed: false,
+                  same_person_verified: false
+                }
               });
               return;
             }
@@ -3152,6 +4056,9 @@
       setStepStatus(3, 'active');
       currentState = APP_STATE.CHALLENGE_HEAD;
 
+      // Đồng bộ LED RGB: Màu Xanh ngọc Cyan (Bước 3: Thử thách quay đầu)
+      syncEsp32Led('stage3_turn');
+
       // PHÓNG TO OVAL ĐỂ GIỮ TRỌN KHUÔN MẶT KHI QUAY
       const faceOval = document.getElementById('faceGuideOval');
       if (faceOval) faceOval.classList.add('stage-turn');
@@ -3197,13 +4104,35 @@
 
     function startHeadChallengeLoop() {
       stopChallengeLoop();
+      const headStartTime = Date.now();
+      const maxHeadTimeoutSec = headTimeoutSeconds + 2.0;
 
       challengeLoopInterval = setInterval(async () => {
         if (currentState !== APP_STATE.CHALLENGE_HEAD || isHeadProcessing) return;
 
         const isReady = (inputMode === 'webcam' && webcamStream && document.getElementById('webcamVideo').readyState >= 2) ||
-          (inputMode === 'esp32');
+          (inputMode === 'esp32' && isEsp32Connected);
         if (!isReady) return;
+
+        const elapsedSec = (Date.now() - headStartTime) / 1000;
+        if (elapsedSec > maxHeadTimeoutSec) {
+          headPassed = false;
+          rejectActiveChallenge({
+            stageText: 'THẤT BÀI: QUAY ĐẦU QUÁ HẠN',
+            reasons: ['Không hoàn thành thử thách quay đầu trong thời gian quy định'],
+            criteria: {
+              face_detected: true,
+              single_face: true,
+              pose_valid: true,
+              anti_spoof_real: false,
+              both_models_detected: false,
+              blink_passed: true,
+              head_movement_passed: false,
+              same_person_verified: true
+            }
+          });
+          return;
+        }
 
         isHeadProcessing = true;
         try {
@@ -3257,14 +4186,22 @@
               return;
             }
 
+            // Kiểm tra tráo đổi người -> REJECT NGAY LẬP TỨC
             if (data.same_person === false) {
-              updateChallengeHUD({
-                stageText: '🚨 CẢNH BÁO TRÁO ĐỔI NGƯỜI!',
-                icon: '⛔',
-                prompt: 'PHÁT HIỆN ĐỔI NGƯỜI (FACE MISMATCH)',
-                hint: 'Người đang quay đầu KHÔNG PHẢI người đã chụp ở Bước 1!',
-                isTimerUrgent: true,
-                telemetry: 'Định danh không khớp'
+              headPassed = false;
+              rejectActiveChallenge({
+                stageText: 'CẢNH BÁO AN NINH: TRÁO ĐỔI NGƯỜI',
+                reasons: ['Phát hiện tráo đổi người thực hiện thử thách quay đầu (Face Identity Mismatch)!'],
+                criteria: {
+                  face_detected: true,
+                  single_face: true,
+                  pose_valid: true,
+                  anti_spoof_real: false,
+                  both_models_detected: false,
+                  blink_passed: true,
+                  head_movement_passed: false,
+                  same_person_verified: false
+                }
               });
               return;
             }
@@ -3336,23 +4273,23 @@
                 finishLivenessAndSubmitVerify();
               }, 700);
             } else if (data.state === 'FAILED') {
+              // Thất bại quay đầu -> REJECT NGAY LẬP TỨC (không chạy full pipeline)
               headPassed = false;
-              stopChallengeLoop();
-              updateChallengeHUD({
-                stageText: 'HẾT THỜI GIAN',
-                icon: '⚠️',
-                prompt: 'CHƯA HOÀN THÀNH QUAY ĐẦU ĐÚNG HẠN',
-                hint: 'Đang tổng hợp báo cáo eKYC...',
-                timerText: '0.0s',
-                isTimerUrgent: true,
-                telemetry: 'Quá thời gian quy định',
-                percent: `${pct}%`,
-                fillWidth: `${pct}%`
+              rejectActiveChallenge({
+                stageText: 'THẤT BÀI: QUAY ĐẦU QUÁ HẠN',
+                reasons: ['Không hoàn thành thử thách quay đầu trong thời gian quy định'],
+                criteria: {
+                  face_detected: true,
+                  single_face: true,
+                  pose_valid: true,
+                  anti_spoof_real: false,
+                  both_models_detected: false,
+                  blink_passed: true,
+                  head_movement_passed: false,
+                  same_person_verified: true
+                }
               });
-
-              setTimeout(() => {
-                finishLivenessAndSubmitVerify();
-              }, 900);
+              return;
             }
           }
         } catch (e) {
@@ -3443,17 +4380,22 @@
 
       updateMainActionButtonText();
       currentState = APP_STATE.PREVIEW_ALIGN;
+      syncEsp32Led('idle');
       startPoseCheckLoop();
     }
 
     function showChallengeHUD() {
       document.getElementById('challengeCardOverlay').style.display = 'flex';
       document.getElementById('ovalFeedbackPill').style.display = 'none';
+      const hud = document.getElementById('poseTelemetryHud');
+      if (hud) hud.style.display = 'none';
     }
 
     function hideChallengeHUD() {
       document.getElementById('challengeCardOverlay').style.display = 'none';
       document.getElementById('ovalFeedbackPill').style.display = 'flex';
+      const hud = document.getElementById('poseTelemetryHud');
+      if (hud) hud.style.display = 'block';
     }
 
     function updateChallengeHUD({ stageText, icon, prompt, hint, timerText, isTimerUrgent, telemetry, percent, fillWidth }) {
@@ -3475,6 +4417,25 @@
     // SUBMISSION & FINAL ENSEMBLE VERIFY (Bước 4: Thẩm Định)
     // =========================================================================
     async function finishLivenessAndSubmitVerify() {
+      // Chỉ thực hiện thẩm định AI nếu CẢ 2 bước liveness đều hoàn thành thành công
+      if (!blinkPassed || !headPassed) {
+        rejectActiveChallenge({
+          stageText: 'THỬ THÁCH CHƯA HOÀN THÀNH',
+          reasons: ['Chưa hoàn thành đầy đủ cả 2 thử thách chớp mắt và quay đầu!'],
+          criteria: {
+            face_detected: true,
+            single_face: true,
+            pose_valid: true,
+            anti_spoof_real: false,
+            both_models_detected: false,
+            blink_passed: Boolean(blinkPassed),
+            head_movement_passed: Boolean(headPassed),
+            same_person_verified: false
+          }
+        });
+        return;
+      }
+
       setStepStatus(3, 'completed');
       setStepStatus(4, 'active');
       currentState = APP_STATE.FINAL_VERIFYING;
@@ -3514,6 +4475,7 @@
       setStepStatus(3, 'completed');
       setStepStatus(4, 'active');
       currentState = APP_STATE.FINAL_VERIFYING;
+      syncEsp32Led('stage1');
 
       let fileToSend = null;
       if (inputMode === 'webcam') {
@@ -3541,6 +4503,12 @@
           return;
         }
         fileToSend = selectedFileBlob;
+      }
+
+      if (!fileToSend) {
+        alert('Không thể lấy frame từ camera. Vui lòng kiểm tra lại kết nối!');
+        currentState = APP_STATE.IDLE;
+        return;
       }
 
       await sendVerificationPayload({
@@ -3612,7 +4580,8 @@
 
         // Reset to preview state after 2 seconds
         setTimeout(() => {
-          if (webcamStream || inputMode === 'esp32') {
+          syncEsp32Led('idle');
+          if (webcamStream || (inputMode === 'esp32' && isEsp32Connected)) {
             currentState = APP_STATE.PREVIEW_ALIGN;
             autoTriggerBlocked = false;
             consecutiveGoodFrames = 0;
@@ -3636,6 +4605,7 @@
       const reasonsList = document.getElementById('reasonsList');
 
       if (data.approved) {
+        syncEsp32Led('approved');
         banner.className = 'verdict-banner approved';
         badge.className = 'verdict-badge approved';
         badge.textContent = 'eKYC APPROVED';
@@ -3643,6 +4613,7 @@
         icon.textContent = '🎯';
         reasonsBox.style.display = 'none';
       } else {
+        syncEsp32Led('rejected');
         banner.className = 'verdict-banner rejected';
         badge.className = 'verdict-badge rejected';
         badge.textContent = 'eKYC REJECTED';
@@ -3766,6 +4737,7 @@
     // UTILITIES: CAPTURE BLOBS & FLASH (Webcam & ESP32-CAM)
     // =========================================================================
     async function getEsp32LatestFrameBlob() {
+      if (!isEsp32Connected) throw new Error('ESP32-CAM đã ngắt kết nối');
       const res = await fetch(`${API_BASE_URL}/api/stream/latest?t=${Date.now()}`);
       if (!res.ok) throw new Error('Chưa nhận được frame từ ESP32-CAM qua cổng Node.js (:3000)');
       return await res.blob();
@@ -3773,28 +4745,31 @@
 
     async function captureThumbnailBlob(video, targetW, targetH) {
       if (inputMode === 'esp32') {
+        if (!isEsp32Connected) return null;
         const espImg = document.getElementById('esp32StreamImg');
-        if (espImg && espImg.complete && espImg.naturalWidth > 0) {
-          try {
-            const blob = await new Promise((resolve) => {
-              const canvas = document.getElementById('hiddenCanvas');
-              canvas.width = targetW;
-              canvas.height = targetH;
-              const ctx = canvas.getContext('2d');
-              ctx.save();
-              ctx.translate(targetW, 0);
-              ctx.scale(-1, 1); // Đồng bộ gương chuẩn như webcam
-              ctx.drawImage(espImg, 0, 0, targetW, targetH);
-              ctx.restore();
-              canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.85);
-            });
-            if (blob && blob.size > 500) {
-              return blob;
-            }
-          } catch (e) {
-            // Tự động fallback sang tải từ Node.js buffer nếu canvas có hạn chế CORS
-          }
+        if (!espImg || !espImg.src || espImg.style.display === 'none' || !espImg.complete || espImg.naturalWidth <= 0) {
+          return null;
         }
+        try {
+          const blob = await new Promise((resolve) => {
+            const canvas = document.getElementById('hiddenCanvas');
+            canvas.width = targetW;
+            canvas.height = targetH;
+            const ctx = canvas.getContext('2d');
+            ctx.save();
+            ctx.translate(targetW, 0);
+            ctx.scale(-1, 1); // Đồng bộ gương chuẩn như webcam
+            ctx.drawImage(espImg, 0, 0, targetW, targetH);
+            ctx.restore();
+            canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.85);
+          });
+          if (blob && blob.size > 500) {
+            return blob;
+          }
+        } catch (e) {
+          // Tự động fallback sang tải từ Node.js buffer nếu canvas có hạn chế CORS
+        }
+        if (!isEsp32Connected) return null;
         try {
           return await getEsp32LatestFrameBlob();
         } catch (e) {
@@ -3822,27 +4797,34 @@
 
     async function captureFullFrameBlob() {
       if (inputMode === 'esp32') {
+        if (!isEsp32Connected) return null;
         const espImg = document.getElementById('esp32StreamImg');
-        if (espImg && espImg.complete && espImg.naturalWidth > 0) {
-          try {
-            const blob = await new Promise((resolve) => {
-              const canvas = document.getElementById('hiddenCanvas');
-              const vw = espImg.naturalWidth || 640;
-              const vh = espImg.naturalHeight || 480;
-              canvas.width = vw;
-              canvas.height = vh;
-              const ctx = canvas.getContext('2d');
-              ctx.save();
-              ctx.translate(vw, 0);
-              ctx.scale(-1, 1); // Đồng bộ gương chuẩn như webcam
-              ctx.drawImage(espImg, 0, 0, vw, vh);
-              ctx.restore();
-              canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.95);
-            });
-            if (blob && blob.size > 1000) return blob;
-          } catch (e) {}
+        if (!espImg || !espImg.src || espImg.style.display === 'none' || !espImg.complete || espImg.naturalWidth <= 0) {
+          return null;
         }
-        return await getEsp32LatestFrameBlob();
+        try {
+          const blob = await new Promise((resolve) => {
+            const canvas = document.getElementById('hiddenCanvas');
+            const vw = espImg.naturalWidth || 640;
+            const vh = espImg.naturalHeight || 480;
+            canvas.width = vw;
+            canvas.height = vh;
+            const ctx = canvas.getContext('2d');
+            ctx.save();
+            ctx.translate(vw, 0);
+            ctx.scale(-1, 1); // Đồng bộ gương chuẩn như webcam
+            ctx.drawImage(espImg, 0, 0, vw, vh);
+            ctx.restore();
+            canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.95);
+          });
+          if (blob && blob.size > 1000) return blob;
+        } catch (e) {}
+        if (!isEsp32Connected) return null;
+        try {
+          return await getEsp32LatestFrameBlob();
+        } catch (e) {
+          return null;
+        }
       }
       return new Promise((resolve) => {
         const video = document.getElementById('webcamVideo');

@@ -23,27 +23,23 @@ public:
         pinMode(LED_GPIO_NUM, OUTPUT);
         digitalWrite(LED_GPIO_NUM, LOW);
 #endif
-        // Đặt chân 48 làm OUTPUT
-        pinMode(RGB_LED_PIN, OUTPUT);
-        // Trạng thái chờ: Sáng màu Xanh Dương rõ ràng
+        // Đặt trạng thái ban đầu: Tắt sạch rồi chuyển về Xanh Dương
+        neopixelWrite(RGB_LED_PIN, 0, 0, 0);
+        delayMicroseconds(60);
         setStageIndicator("idle");
     }
 
     /**
      * @brief Đặt màu cho LED RGB chân 48 (WS2812 / NeoPixel)
-     *        Trên ESP32 Arduino Core, neopixelWrite là hàm C chuẩn (không phải macro #define).
+     *        Sử dụng trực tiếp API neopixelWrite chuẩn của ESP32-S3 Core.
+     *        TUYỆT ĐỐI KHÔNG gọi digitalWrite trên chân NeoPixel vì sẽ khóa đường tín hiệu ở mức HIGH.
      */
     void setLedColor(uint8_t red, uint8_t green, uint8_t blue) {
         Serial.printf("[LED48] RGB Color -> R:%d, G:%d, B:%d\n", red, green, blue);
-        // Gọi trực tiếp API neopixelWrite của ESP32-S3 Core
+        // Xuất chuỗi xung RMT 800kHz cho WS2812
         neopixelWrite(RGB_LED_PIN, red, green, blue);
-        
-        // Đồng thời xuất trạng thái logic nếu là board dùng LED đơn
-        if (red > 0 || green > 0 || blue > 0) {
-            digitalWrite(RGB_LED_PIN, HIGH);
-        } else {
-            digitalWrite(RGB_LED_PIN, LOW);
-        }
+        // Giữ chân LOW ít nhất 50us để chip WS2812 chốt dữ liệu màu mới (Latch code)
+        delayMicroseconds(60);
     }
 
     /**
@@ -56,20 +52,23 @@ public:
      * - "rejected":      Màu Đỏ cảnh báo (Thất bại / Giả mạo / Hết giờ)
      */
     void setStageIndicator(const String& stage) {
-        Serial.printf("[HardwareController] Switching LED Stage: %s\n", stage.c_str());
-        if (stage == "idle") {
-            setLedColor(0, 15, 60);          // Xanh dương dịu mắt
-        } else if (stage == "stage1") {
-            setLedColor(60, 0, 70);          // Tím vừa phải (Bước 1)
-        } else if (stage == "stage2_blink") {
-            setLedColor(80, 40, 0);          // Vàng cam vừa phải (Bước 2 chớp mắt)
-        } else if (stage == "stage3_turn") {
-            setLedColor(0, 60, 60);          // Xanh ngọc Cyan vừa phải (Bước 3 quay đầu)
-        } else if (stage == "approved") {
+        String s = stage;
+        s.toLowerCase();
+        s.trim();
+        Serial.printf("[HardwareController] Switching LED Stage: %s\n", s.c_str());
+        if (s == "idle" || s == "ready" || s == "preview") {
+            setLedColor(0, 15, 60);          // Xanh dương dịu mắt (Idle/Chờ)
+        } else if (s == "stage1" || s == "init" || s == "capture") {
+            setLedColor(60, 0, 70);          // Tím vừa phải (Bước 1: Chụp ảnh & Anti-Spoofing)
+        } else if (s == "stage2_blink" || s == "stage2" || s == "blink") {
+            setLedColor(80, 40, 0);          // Vàng cam vừa phải (Bước 2: Chớp mắt)
+        } else if (s == "stage3_turn" || s == "stage3" || s == "turn" || s == "head") {
+            setLedColor(0, 60, 60);          // Xanh ngọc Cyan vừa phải (Bước 3: Quay đầu)
+        } else if (s == "approved" || s == "pass" || s == "success") {
             setLedColor(0, 80, 0);           // Xanh lá êm dịu (Pass/Mở cửa)
-        } else if (stage == "rejected") {
-            setLedColor(90, 0, 0);           // Đỏ rõ nét (Cảnh báo thất bại / timeout)
-        } else if (stage == "off") {
+        } else if (s == "rejected" || s == "reject" || s == "fail" || s == "timeout" || s == "spoof") {
+            setLedColor(90, 0, 0);           // Đỏ rõ nét (Cảnh báo thất bại / timeout / spoof)
+        } else if (s == "off") {
             setLedColor(0, 0, 0);
         }
     }
