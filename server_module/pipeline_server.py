@@ -215,7 +215,7 @@ class EKYCPipelineServer:
             delta_yaw_threshold=HEAD_DELTA_YAW_THRESHOLD,
             delta_pitch_threshold=HEAD_DELTA_PITCH_THRESHOLD
         )
-        self.identity_verifier = FaceIdentityVerifier()
+        self.identity_verifier = FaceIdentityVerifier(model_path=self.face_landmarker_path)
         self.occlusion_detector = FaceOcclusionDetector()
         print("[EKYCPipelineServer] Tải toàn bộ AI Models thành công! (Ensemble, Identity & Anti-Occlusion Ready)\n")
 

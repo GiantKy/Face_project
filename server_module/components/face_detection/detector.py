@@ -75,10 +75,24 @@ def deduplicate_faces(
 
 class FaceDetector:
     def __init__(self, model_path=None, conf_thresh=0.45, iou_thresh=0.40):
-        if model_path is None:
-            cand_new = os.path.join(BASE_DIR, "models", "face_detection", "yolo_face_detection_official.pt")
-            cand_old = os.path.join(BASE_DIR, "models", "Face_Detection.pt")
-            model_path = cand_new if os.path.exists(cand_new) else cand_old
+        if model_path is None or not os.path.exists(model_path):
+            _current_file = os.path.abspath(__file__)
+            _comp_dir = os.path.dirname(os.path.dirname(_current_file))
+            _server_dir = os.path.dirname(_comp_dir)
+            _root_dir = os.path.dirname(_server_dir)
+
+            _candidates = [
+                os.path.join(_server_dir, "models", "face_detection", "yolo_face_detection_official.pt"),
+                os.path.join(_server_dir, "models", "Face_Detection.pt"),
+                os.path.join(_root_dir, "models", "face_detection", "yolo_face_detection_official.pt"),
+                os.path.join(_root_dir, "models", "Face_Detection.pt"),
+            ]
+            for _cand in _candidates:
+                if os.path.exists(_cand):
+                    model_path = _cand
+                    break
+            if model_path is None:
+                model_path = _candidates[0]
         self.model = YOLO(model_path)
         self.conf_thresh = conf_thresh
         self.iou_thresh = iou_thresh

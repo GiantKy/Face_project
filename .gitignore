@@ -59,6 +59,10 @@ CameraWebServer/esp32cam-rtsp/
 !models/README.md
 !server_module/models/**/README.md
 
+# Junction / Symlink models
+ekyc_release/models/
+
+
 # =============================================================================
 # Datasets, Captured Photos & Output Folders
 # =============================================================================

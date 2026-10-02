@@ -66,6 +66,9 @@ output/*
 temp/
 tmp/
 
+# Junction / Symlink models
+models/
+
 # --- Large Model Files (>100MB) ---
 # GitHub chặn push file > 100MB. File weights.onnx (~108MB) cần dùng Git LFS hoặc tải riêng.
 # Bỏ comment dòng dưới nếu bạn không dùng Git LFS:

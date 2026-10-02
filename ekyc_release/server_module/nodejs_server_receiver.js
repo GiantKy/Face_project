@@ -327,6 +327,7 @@ const server = http.createServer((req, res) => {
         note: err.message
       }));
     });
+    return;
   }
 
   // --------------------------------------------------------------------------

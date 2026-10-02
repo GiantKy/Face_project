@@ -47,8 +47,16 @@ class FaceOcclusionDetector:
     def _init_ai_model(self):
         try:
             from inference import get_model
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            cache_dir = os.path.join(base_dir, "models", "roboflow")
+            _current_file = os.path.abspath(__file__)
+            _comp_dir = os.path.dirname(_current_file)
+            _server_dir = os.path.dirname(_comp_dir)
+            _root_dir = os.path.dirname(_server_dir)
+
+            cache_dir = os.path.join(_server_dir, "models", "roboflow")
+            if not os.path.exists(cache_dir):
+                alt_dir = os.path.join(_root_dir, "models", "roboflow")
+                if os.path.exists(alt_dir):
+                    cache_dir = alt_dir
             target_cache = os.path.join(cache_dir, "glass-and-mask-q5de1", "2")
             alt_cache = os.path.join(cache_dir, "Mask_Glass", "2")
             if not os.path.exists(target_cache) and os.path.exists(alt_cache):

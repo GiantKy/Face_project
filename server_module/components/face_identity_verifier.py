@@ -74,10 +74,37 @@ class FaceIdentityVerifier:
 
     def __init__(self, model_path: Optional[str] = None):
         if model_path is None:
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            cand_new = os.path.join(base_dir, "models", "landmarks", "mediapipe_face_landmarker_official.task")
-            cand_old = os.path.join(base_dir, "models", "face_landmarker.task")
-            model_path = cand_new if os.path.exists(cand_new) else cand_old
+            # 1. Thử lấy từ config module
+            try:
+                from server_module.config import FACE_LANDMARKER_MODEL_PATH
+                if os.path.exists(FACE_LANDMARKER_MODEL_PATH):
+                    model_path = FACE_LANDMARKER_MODEL_PATH
+            except ImportError:
+                try:
+                    from config import FACE_LANDMARKER_MODEL_PATH
+                    if os.path.exists(FACE_LANDMARKER_MODEL_PATH):
+                        model_path = FACE_LANDMARKER_MODEL_PATH
+                except ImportError:
+                    pass
+
+        if model_path is None or not os.path.exists(model_path):
+            current_file = os.path.abspath(__file__)
+            comp_dir = os.path.dirname(current_file)
+            server_dir = os.path.dirname(comp_dir)
+            root_dir = os.path.dirname(server_dir)
+
+            candidates = [
+                os.path.join(server_dir, "models", "landmarks", "mediapipe_face_landmarker_official.task"),
+                os.path.join(server_dir, "models", "face_landmarker.task"),
+                os.path.join(root_dir, "models", "landmarks", "mediapipe_face_landmarker_official.task"),
+                os.path.join(root_dir, "models", "face_landmarker.task"),
+            ]
+            for cand in candidates:
+                if os.path.exists(cand):
+                    model_path = cand
+                    break
+            if model_path is None:
+                model_path = candidates[0]
 
         self.model_path = model_path
         self._landmarker = None

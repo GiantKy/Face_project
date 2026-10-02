@@ -17,11 +17,24 @@ FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 # Path to the face_landmarker.task model
-# Go up: landmark_detection -> src -> Face-Project (project root)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-cand_landmark_new = os.path.join(BASE_DIR, "models", "landmarks", "mediapipe_face_landmarker_official.task")
-cand_landmark_old = os.path.join(BASE_DIR, "models", "face_landmarker.task")
-MODEL_PATH = cand_landmark_new if os.path.exists(cand_landmark_new) else cand_landmark_old
+_current_file = os.path.abspath(__file__)
+_comp_dir = os.path.dirname(os.path.dirname(_current_file))
+_server_dir = os.path.dirname(_comp_dir)
+_root_dir = os.path.dirname(_server_dir)
+
+_candidates = [
+    os.path.join(_server_dir, "models", "landmarks", "mediapipe_face_landmarker_official.task"),
+    os.path.join(_server_dir, "models", "face_landmarker.task"),
+    os.path.join(_root_dir, "models", "landmarks", "mediapipe_face_landmarker_official.task"),
+    os.path.join(_root_dir, "models", "face_landmarker.task"),
+]
+MODEL_PATH = None
+for _c in _candidates:
+    if os.path.exists(_c):
+        MODEL_PATH = _c
+        break
+if MODEL_PATH is None:
+    MODEL_PATH = _candidates[0]
 
 
 import math
