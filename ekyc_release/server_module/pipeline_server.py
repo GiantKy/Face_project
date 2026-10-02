@@ -32,6 +32,7 @@ try:
     )
     from .config import (
         FACE_DETECTION_MODEL_PATH,
+        FACE_LANDMARKER_MODEL_PATH,
         ANTI_SPOOF_YOLO4_MODEL_PATH,
         RFDETR_MODEL_ID,
         RFDETR_API_KEY,
@@ -91,6 +92,7 @@ except (ImportError, ValueError):
     )
     from config import (
         FACE_DETECTION_MODEL_PATH,
+        FACE_LANDMARKER_MODEL_PATH,
         ANTI_SPOOF_YOLO4_MODEL_PATH,
         RFDETR_MODEL_ID,
         RFDETR_API_KEY,
@@ -176,6 +178,7 @@ class EKYCPipelineServer:
     ):
         self.face_model_path = face_model_path or FACE_DETECTION_MODEL_PATH
         self.yolo_antispoof_path = yolo_antispoof_path or ANTI_SPOOF_YOLO4_MODEL_PATH
+        self.face_landmarker_path = FACE_LANDMARKER_MODEL_PATH
         self.rfdetr_model_id = rfdetr_model_id or RFDETR_MODEL_ID
         self.rfdetr_api_key = rfdetr_api_key or RFDETR_API_KEY
 
