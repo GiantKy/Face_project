@@ -1,0 +1,7 @@
+LEFT_EYE = [33, 133]
+
+RIGHT_EYE = [362, 263]
+
+NOSE = [1]
+
+MOUTH = [13, 14]

@@ -1,0 +1,467 @@
+#ifndef WEB_UI_H
+#define WEB_UI_H
+
+#include <Arduino.h>
+
+static const char INDEX_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32-S3 Camera AI eKYC</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f1f5f9; text-align: center; margin: 0; padding: 16px; box-sizing: border-box; }
+    *, *:before, *:after { box-sizing: inherit; }
+    .card { max-width: 600px; width: 100%; margin: 0 auto; background: #161e2e; padding: 24px; border-radius: 20px; border: 1px solid #1e293b; box-shadow: 0 15px 35px rgba(0,0,0,0.5); }
+    h1 { font-size: 20px; color: #38bdf8; margin: 0 0 4px 0; }
+    p.sub { color: #94a3b8; font-size: 13px; margin: 0 0 14px 0; }
+    .ip-box { background: #0f172a; padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; border: 1px solid #334155; }
+    .ip-box input { background: #1e293b; border: 1px solid #475569; color: #fff; padding: 6px 10px; border-radius: 6px; width: 140px; font-family: monospace; font-size: 13px; }
+    .ip-box button { background: #3b82f6; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+    
+    /* Khung TRÊN: Luồng Camera Live Stream thời gian thực (Mở rộng tỉ lệ chuẩn 4:3 480x360) */
+    .stream-container { position: relative; width: 100%; max-width: 480px; aspect-ratio: 4 / 3; margin: 0 auto 16px auto; border-radius: 20px; border: 2px solid #38bdf8; overflow: hidden; background: #020617; box-shadow: 0 0 25px rgba(56, 189, 248, 0.25); transition: border-color 0.3s; }
+    .stream-container img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .stream-badge { position: absolute; top: 10px; left: 10px; background: rgba(16, 185, 129, 0.85); color: #fff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 10px; letter-spacing: 0.5px; z-index: 4; }
+    .stream-reload-btn { position: absolute; top: 8px; right: 8px; background: rgba(15,23,42,0.75); color: #fff; border: 1px solid #334155; border-radius: 8px; cursor: pointer; padding: 4px 8px; font-size: 12px; z-index: 4; }
+    .stream-reload-btn:hover { background: #1e293b; }
+
+    /* Khung DƯỚI: Snapshot B1 & Chân Dung Đối Chiếu Cố Định (Tỉ lệ 4:3 mở rộng) */
+    .snapshot-card { display: none; margin: 16px auto 14px auto; background: #0f172a; border: 1px solid #334155; border-radius: 16px; padding: 14px; }
+    .snapshot-title { font-size: 11px; font-weight: 700; color: #94a3b8; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: space-between; }
+    .snapshot-viewport { width: 100%; max-width: 360px; aspect-ratio: 4 / 3; margin: 0 auto; border-radius: 14px; overflow: hidden; border: 2px solid #10b981; box-shadow: 0 6px 20px rgba(0,0,0,0.6); background: #020617; }
+    .snapshot-viewport img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .snapshot-meta { margin-top: 10px; font-size: 13px; font-weight: 700; color: #34d399; }
+
+    /* Overlay hướng dẫn trực quan ngay trên luồng Stream */
+    .stream-challenge-overlay { position: absolute; bottom: 12px; left: 14px; right: 14px; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(6px); border: 1px solid #38bdf8; border-radius: 12px; padding: 8px 12px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 700; color: #38bdf8; pointer-events: none; z-index: 5; transition: all 0.3s; }
+    .stream-challenge-overlay.blink { border-color: #10b981; color: #34d399; animation: pulse 1.2s infinite; }
+    .stream-challenge-overlay.turn-left { border-color: #f59e0b; color: #fbbf24; animation: slideLeft 1s infinite alternate; }
+    .stream-challenge-overlay.turn-right { border-color: #f59e0b; color: #fbbf24; animation: slideRight 1s infinite alternate; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.04); opacity: 0.85; } }
+    @keyframes slideLeft { 0% { transform: translateX(0); } 100% { transform: translateX(-6px); } }
+    @keyframes slideRight { 0% { transform: translateX(0); } 100% { transform: translateX(6px); } }
+
+    /* HUD Oval Guide: Căn khuôn mặt trực quan & Tự động phóng to ở Giai đoạn 3 */
+    .stream-oval-wrapper { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 4; }
+    .stream-oval { width: 185px; height: 255px; border-radius: 50% / 46%; position: relative; border: 2.5px dashed #38bdf8; box-shadow: 0 0 22px rgba(56, 189, 248, 0.4), inset 0 0 15px rgba(56, 189, 248, 0.15); transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    .stream-oval.blink { border: 3px solid #10b981; box-shadow: 0 0 25px rgba(16, 185, 129, 0.55), inset 0 0 18px rgba(16, 185, 129, 0.2); animation: pulse 1.2s infinite; }
+    /* Giai đoạn 3: Phóng to oval ngang +25% để giữ trọn khuôn mặt khi quay */
+    .stream-oval.stage-turn { width: 255px !important; height: 275px !important; border-radius: 48% / 46% !important; border: 3px solid #f59e0b !important; box-shadow: 0 0 35px rgba(245, 158, 11, 0.65), inset 0 0 22px rgba(245, 158, 11, 0.25) !important; }
+    .stream-oval.stage-turn.turn-left { animation: slideLeft 1s infinite alternate; }
+    .stream-oval.stage-turn.turn-right { animation: slideRight 1s infinite alternate; }
+    .stream-oval.completed { border: 3.5px solid #10b981 !important; box-shadow: 0 0 35px rgba(16, 185, 129, 0.8) !important; }
+    .stream-radar-line { position: absolute; top: 0; left: 10%; right: 10%; height: 2px; background: linear-gradient(90deg, transparent, #38bdf8, transparent); box-shadow: 0 0 10px #38bdf8; animation: radarScan 2.2s ease-in-out infinite alternate; }
+    .stream-oval.blink .stream-radar-line { background: linear-gradient(90deg, transparent, #10b981, transparent); box-shadow: 0 0 12px #10b981; }
+    .stream-oval.stage-turn .stream-radar-line { background: linear-gradient(90deg, transparent, #fbbf24, transparent); box-shadow: 0 0 14px #f59e0b; }
+    @keyframes radarScan { 0% { top: 6%; opacity: 0.3; } 50% { opacity: 1; } 100% { top: 92%; opacity: 0.3; } }
+    .stream-oval-tick { position: absolute; background: #38bdf8; }
+    .stream-oval.blink .stream-oval-tick { background: #10b981; }
+    .stream-oval.stage-turn .stream-oval-tick { background: #f59e0b; }
+    .stream-oval-tick.tick-top { top: -6px; left: 50%; transform: translateX(-50%); width: 22px; height: 3px; border-radius: 2px; }
+    .stream-oval-tick.tick-bottom { bottom: -6px; left: 50%; transform: translateX(-50%); width: 22px; height: 3px; border-radius: 2px; }
+    .stream-oval-tick.tick-left { left: -6px; top: 50%; transform: translateY(-50%); width: 3px; height: 22px; border-radius: 2px; }
+    .stream-oval-tick.tick-right { right: -6px; top: 50%; transform: translateY(-50%); width: 3px; height: 22px; border-radius: 2px; }
+
+    .step-hud { background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 12px; margin-bottom: 14px; text-align: left; }
+    .step-title { font-size: 13px; font-weight: 700; color: #38bdf8; margin-bottom: 4px; display: flex; justify-content: space-between; }
+    .step-desc { font-size: 12px; color: #cbd5e1; line-height: 1.4; }
+
+    .btn-main { background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; border: none; padding: 13px 18px; font-size: 15px; font-weight: 700; border-radius: 12px; cursor: pointer; width: 100%; box-shadow: 0 4px 15px rgba(37,99,235,0.4); transition: all 0.2s; margin-bottom: 8px; }
+    .btn-main:hover { transform: translateY(-1px); filter: brightness(1.1); }
+    .btn-main:disabled { background: #475569; cursor: not-allowed; box-shadow: none; transform: none; }
+    .btn-step { background: #10b981; }
+
+    #resultBox { margin-top: 14px; padding: 14px; border-radius: 10px; font-size: 13px; font-weight: 600; line-height: 1.5; display: none; }
+    .pass { background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; }
+    .fail { background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #f87171; }
+    .load { background: rgba(59, 130, 246, 0.15); border: 1px solid #3b82f6; color: #60a5fa; }
+    .node-link { margin-top: 14px; font-size: 12px; color: #64748b; }
+    .node-link a { color: #38bdf8; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>📷 ESP32-S3 Camera eKYC</h1>
+    <p class="sub">Bước 1 VGA 640x480 | Bước 2-3 Stream 320x240</p>
+
+    <div class="ip-box">
+      <span>⚙️ Máy chủ AI:</span>
+      <div>
+        <input type="text" id="aiIp" value="%AI_SERVER_IP%">
+        <button onclick="saveAiIp()">💾 Lưu</button>
+      </div>
+    </div>
+
+    <!-- KHUNG TRÊN: Luồng Live Stream / Motion Tracker -->
+    <div id="streamBox" class="stream-container">
+      <span id="streamBadge" class="stream-badge">LIVE 30 FPS</span>
+      <button class="stream-reload-btn" onclick="reloadStream()" title="Tải lại luồng Stream">🔄</button>
+      <img id="camStream" src="" alt="Camera Live Stream" onerror="handleStreamError(this)">
+      <!-- HUD Oval Guide: Căn chỉnh khuôn mặt trực quan & Phóng to ở Giai đoạn 3 -->
+      <div class="stream-oval-wrapper">
+        <div class="stream-oval" id="streamOvalGuide">
+          <div class="stream-radar-line"></div>
+          <div class="stream-oval-tick tick-top"></div>
+          <div class="stream-oval-tick tick-bottom"></div>
+          <div class="stream-oval-tick tick-left"></div>
+          <div class="stream-oval-tick tick-right"></div>
+        </div>
+      </div>
+      <div id="streamChallengeOverlay" class="stream-challenge-overlay">
+        <span id="overlayIcon">👀</span>
+        <span id="overlayText">NHÌN THẲNG VÀO CAMERA</span>
+      </div>
+    </div>
+
+    <!-- KHUNG DƯỚI: Snapshot B1 & Chân Dung Khóa Cố Định -->
+    <div id="snapshotCard" class="snapshot-card">
+      <div class="snapshot-title">
+        <span>📸 ẢNH CHỤP BƯỚC 1 (FACE & ANTI-SPOOFING)</span>
+        <span id="snapshotQualityBadge" style="color:#38bdf8;font-size:10px;">VGA 640x480</span>
+      </div>
+      <div id="snapshotViewport" class="snapshot-viewport">
+        <img id="snapshotImg" src="" alt="Ảnh chụp Bước 1">
+      </div>
+      <div id="snapshotMeta" class="snapshot-meta">✅ MẶT THẬT (REAL)</div>
+    </div>
+
+    <!-- Hướng dẫn từng bước -->
+    <div id="stepHud" class="step-hud">
+      <div class="step-title">
+        <span id="stepTitle">BƯỚC 1/3: KHỞI TẠO XÁC THỰC</span>
+        <span id="stepBadge" style="color:#38bdf8">1/3</span>
+      </div>
+      <div id="stepDesc" class="step-desc">Đứng cách camera 35-50cm, nhìn thẳng tự nhiên và bấm "Bắt Đầu".</div>
+    </div>
+
+    <button id="actionBtn" class="btn-main" onclick="onActionClick()">🚀 BẮT ĐẦU XÁC THỰC eKYC</button>
+    <div id="resultBox"></div>
+
+    <div class="node-link">
+      🖥️ Kết quả đẩy tự động sang Node.js Server: 
+      <a href="http://localhost:3000" target="_blank">http://localhost:3000</a>
+    </div>
+  </div>
+
+  <script>
+    let currentSessionId = '';
+    let currentStep = 'start';
+    let currentPrompt = '';
+
+    // Khởi chạy luồng Live Stream mượt mà từ Port 81
+    window.addEventListener('DOMContentLoaded', () => {
+      initStream();
+    });
+
+    function initStream() {
+      const streamImg = document.getElementById('camStream');
+      const streamUrl = `${location.protocol}//${location.hostname}:81/stream`;
+      streamImg.src = streamUrl;
+    }
+
+    function reloadStream() {
+      const streamImg = document.getElementById('camStream');
+      streamImg.src = '';
+      setTimeout(() => {
+        streamImg.src = `${location.protocol}//${location.hostname}:81/stream?t=` + Date.now();
+      }, 150);
+    }
+
+    function handleStreamError(img) {
+      console.warn('Stream bi ngat, dang ket noi lai...');
+      setTimeout(() => { reloadStream(); }, 2000);
+    }
+
+    function saveAiIp() {
+      const ip = document.getElementById('aiIp').value.trim();
+      if (!ip) return;
+      fetch('/set-ai-ip?ip=' + encodeURIComponent(ip))
+        .then(() => alert('Đã lưu IP Máy chủ AI: ' + ip));
+    }
+
+    function updateOverlay(step, action) {
+      const overlay = document.getElementById('streamChallengeOverlay');
+      const icon = document.getElementById('overlayIcon');
+      const text = document.getElementById('overlayText');
+      const box = document.getElementById('streamBox');
+      const badge = document.getElementById('streamBadge');
+      const oval = document.getElementById('streamOvalGuide');
+
+      if (step === 'start') {
+        if (badge) badge.innerText = 'QVGA 320x240';
+        icon.innerText = '👀';
+        text.innerText = 'NHÌN THẲNG VÀO CAMERA';
+        overlay.className = 'stream-challenge-overlay';
+        box.style.borderColor = '#38bdf8';
+        if (oval) oval.className = 'stream-oval';
+      } else if (step === 'eye_blink') {
+        if (badge) badge.innerText = 'QVGA 320x240 (HIGH FPS)';
+        icon.innerText = '👁️';
+        text.innerText = 'NHẮM MẮT LẠI RỒI MỞ RA';
+        overlay.className = 'stream-challenge-overlay blink';
+        box.style.borderColor = '#10b981';
+        if (oval) oval.className = 'stream-oval blink';
+      } else if (step === 'head_movement') {
+        if (badge) badge.innerText = 'CHALLENGE 320x240 (HIGH FPS)';
+        if (action === 'TURN_LEFT') {
+          icon.innerText = '⬅️';
+          text.innerText = 'QUAY MẶT SANG BÊN TRÁI';
+          overlay.className = 'stream-challenge-overlay turn-left';
+          if (oval) oval.className = 'stream-oval stage-turn turn-left';
+        } else {
+          icon.innerText = '➡️';
+          text.innerText = 'QUAY MẶT SANG BÊN PHẢI';
+          overlay.className = 'stream-challenge-overlay turn-right';
+          if (oval) oval.className = 'stream-oval stage-turn turn-right';
+        }
+        box.style.borderColor = '#f59e0b';
+      } else if (step === 'completed') {
+        if (badge) badge.innerText = 'COMPLETED (REAL)';
+        icon.innerText = '🎉';
+        text.innerText = 'XÁC THỰC THÀNH CÔNG (REAL)!';
+        overlay.className = 'stream-challenge-overlay';
+        box.style.borderColor = '#10b981';
+        if (oval) oval.className = 'stream-oval completed';
+      }
+    }
+
+    // Hàm gọi API và parse JSON an toàn tuyệt đối chống lỗi Unexpected end of JSON
+    async function fetchJSON(url) {
+      const res = await fetch(url);
+      const text = await res.text();
+      if (!text || text.trim() === '') {
+        throw new Error('Máy chủ không phản hồi dữ liệu (Empty Response). Hãy kiểm tra IP máy chủ AI và đảm bảo start_ai_server.bat đang chạy!');
+      }
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        throw new Error('Dữ liệu phản hồi không đúng định dạng JSON: ' + text.substring(0, 100));
+      }
+    }
+
+    function renderCapturedPreview(data) {
+      if (!data) return '';
+      const b64 = data.captured_image_base64 || data.crop_face_base64;
+      if (!b64) return '';
+      const src = b64.startsWith('data:') ? b64 : ('data:image/jpeg;base64,' + b64);
+      const isReal = !!data.is_real;
+      const borderCol = isReal ? '#10b981' : '#ef4444';
+      const label = isReal ? '✅ MẶT THẬT (REAL)' : ('❌ ' + (data.verdict || 'THẤT BẠI'));
+      return '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed rgba(255,255,255,0.15);">' +
+               '<div style="font-size:11px;color:#94a3b8;margin-bottom:6px;font-weight:600;">📸 ẢNH VỪA CHỤP ĐƯỢC TỪ CAMERA:</div>' +
+               '<img src="' + src + '" alt="Ảnh camera vừa chụp" style="width:100%;max-width:320px;aspect-ratio:4/3;border-radius:14px;border:2px solid ' + borderCol + ';object-fit:cover;display:block;margin:0 auto;box-shadow:0 4px 16px rgba(0,0,0,0.6);">' +
+               '<div style="font-size:12px;font-weight:700;color:' + borderCol + ';margin-top:6px;">' + label + '</div>' +
+             '</div>';
+    }
+
+    async function onActionClick() {
+      const btn = document.getElementById('actionBtn');
+      const box = document.getElementById('resultBox');
+      const hudTitle = document.getElementById('stepTitle');
+      const hudDesc = document.getElementById('stepDesc');
+      const hudBadge = document.getElementById('stepBadge');
+      const streamBox = document.getElementById('streamBox');
+
+      btn.disabled = true;
+      box.style.display = 'block';
+      box.className = 'load';
+
+      try {
+        // =====================================================================
+        // BƯỚC 1/3: CHỤP ẢNH TĨNH -> FACE DETECT & ENSEMBLE ANTI-SPOOFING
+        // =====================================================================
+        fetch('/set-led?status=stage1').catch(()=>{}); // Bật LED Tím (Bước 1)
+        box.innerHTML = '⏳ <b>BƯỚC 1/3:</b> Đang chụp ảnh & duyệt Anti-Spoofing AI (YOLO + RF-DETR)...';
+        hudTitle.innerText = 'BƯỚC 1/3: DUYỆT ANTI-SPOOFING';
+        hudBadge.innerText = '1/3';
+        hudDesc.innerText = 'Đang kiểm tra khuôn mặt và xác thực người thật...';
+
+        const data = await fetchJSON('/challenge-start');
+
+        // Hiển thị bức ảnh đã chụp ở bước 1 vào khung dưới cố định (#snapshotCard)
+        if (data.captured_image_base64) {
+          const src = data.captured_image_base64.startsWith('data:') ? data.captured_image_base64 : ('data:image/jpeg;base64,' + data.captured_image_base64);
+          const snapCard = document.getElementById('snapshotCard');
+          const snapImg = document.getElementById('snapshotImg');
+          const snapMeta = document.getElementById('snapshotMeta');
+          const snapVp = document.getElementById('snapshotViewport');
+          
+          if (snapCard && snapImg) {
+            snapImg.src = src;
+            snapCard.style.display = 'block';
+            if (data.is_real) {
+              snapVp.style.borderColor = '#10b981';
+              snapMeta.style.color = '#34d399';
+              snapMeta.innerHTML = '✅ MẶT THẬT (REAL) - Độ tin cậy: ' + ((data.confidence || 0.99) * 100).toFixed(1) + '%';
+            } else {
+              snapVp.style.borderColor = '#ef4444';
+              snapMeta.style.color = '#f87171';
+              snapMeta.innerHTML = '❌ TỪ CHỐI (SPOOF / KHÔNG HỢP LỆ)';
+            }
+          }
+        }
+
+        // Nếu giả mạo (SPOOF) hoặc không phát hiện mặt -> FAIL-FAST ngay
+        if (!data.success || !data.passed || !data.is_real) {
+          btn.disabled = false;
+          fetch('/set-led?status=rejected').catch(()=>{}); // Bật LED Đỏ báo hiệu thất bại
+          box.className = 'fail';
+          box.innerHTML = '❌ <b>TỪ CHỐI XÁC THỰC:</b> ' + (data.message || 'Phát hiện giả mạo (SPOOF) hoặc góc mặt không hợp lệ!');
+          streamBox.style.borderColor = '#ef4444';
+          updateOverlay('start');
+          hudTitle.innerText = 'BƯỚC 1/3: THẤT BẠI';
+          hudBadge.innerText = '✕';
+          btn.innerText = '🚀 THỬ LẠI (NHÌN THẲNG)';
+          return;
+        }
+
+        // =====================================================================
+        // BƯỚC 1/3 ĐÃ ĐẠT (REAL): Chuyển sang BƯỚC 2/3: THỬ THÁCH CHỚP MẮT
+        // =====================================================================
+        fetch('/set-led?status=stage2_blink').catch(()=>{}); // Bật LED Vàng/Cam (Bước 2 Chớp Mắt)
+        currentSessionId = data.session_id;
+        const promptText = data.action_prompt || 'Hãy quay đầu';
+        const challengeAction = data.challenge_action || 'TURN_LEFT';
+
+        const stBadge = document.getElementById('streamBadge');
+        if (stBadge) stBadge.innerText = 'LIVE STREAM (CHỚP MẮT)';
+
+        box.className = 'pass';
+        box.innerHTML = '✅ <b>BƯỚC 1/3 ĐẠT!</b> Đã xác thực khuôn mặt thật & khóa ảnh bên dưới.<br>' +
+                        '👁️ <b>BƯỚC 2/3: THỬ THÁCH NHẮM/MỞ MẮT (EYE BLINK)</b><br>' +
+                        '<i>Hãy nhắm mắt nhẹ 0.5s - 1s rồi mở mắt ra tự nhiên. Khung trên đang stream thời gian thực 30 FPS...</i>';
+        hudTitle.innerText = 'BƯỚC 2/3: THỬ THÁCH CHỚP MẮT';
+        hudBadge.innerText = '2/3';
+        hudDesc.innerText = 'Hãy NHẮM MẮT LẠI (giữ ~1 giây) rồi MỞ MẮT RA tự nhiên. Theo dõi trực tiếp trên khung trên!';
+        btn.innerText = '👁️ ĐANG THEO DÕI CHỚP MẮT (BƯỚC 2/3)...';
+        btn.className = 'btn-main btn-step';
+        updateOverlay('eye_blink');
+
+        // =====================================================================
+        // BƯỚC 2/3: PUSH-IMAGE LIÊN TỤC KIỂM TRA CHỚP MẮT (eye_blink)
+        // =====================================================================
+        let blinkPassed = false;
+        let blinkRes = null;
+        const blinkStartTime = Date.now();
+        const STEP_TIMEOUT_MS = 10000; // Giới hạn 10 giây cho mỗi thử thách
+
+        while (Date.now() - blinkStartTime < STEP_TIMEOUT_MS) {
+          try {
+            blinkRes = await fetchJSON('/challenge-step?session_id=' + encodeURIComponent(currentSessionId) + '&step=eye_blink');
+            if (blinkRes && blinkRes.success) {
+              if (blinkRes.ear) {
+                const earVal = blinkRes.ear.current !== undefined ? blinkRes.ear.current : 0;
+                const stateStr = blinkRes.blink_state ? ' (ĐANG NHẮM)' : '';
+                btn.innerText = '👁️ ĐANG THEO DÕI CHỚP MẮT...' + stateStr + ' (EAR: ' + earVal.toFixed(2) + ')';
+              }
+              if (blinkRes.passed) {
+                blinkPassed = true;
+                break;
+              }
+            }
+          } catch (e) {
+            console.warn('Lỗi step blink:', e);
+          }
+          await new Promise(r => setTimeout(r, 10));
+        }
+
+        if (!blinkPassed) {
+          btn.disabled = false;
+          fetch('/set-led?status=rejected').catch(()=>{}); // Bật LED Đỏ báo hiệu hết giờ / thất bại Bước 2
+          box.className = 'fail';
+          box.innerHTML = '❌ <b>BƯỚC 2/3 THẤT BẠI:</b> ' + ((blinkRes && blinkRes.message) || 'Chưa phát hiện chớp mắt hoặc hết thời gian (10s)!');
+          streamBox.style.borderColor = '#ef4444';
+          btn.innerText = '🚀 THỬ LẠI TỪ ĐẦU';
+          btn.className = 'btn-main';
+          updateOverlay('start');
+          currentSessionId = '';
+          return;
+        }
+
+        // =====================================================================
+        // BƯỚC 2/3 ĐÃ ĐẠT: Chuyển sang BƯỚC 3/3: THỬ THÁCH QUAY ĐẦU (head_movement)
+        // =====================================================================
+        fetch('/set-led?status=stage3_turn').catch(()=>{}); // Bật LED Xanh Cyan (Bước 3 Quay Đầu)
+        const headPrompt = (blinkRes && blinkRes.head_prompt) || promptText;
+        const headAction = (blinkRes && blinkRes.target_head_action) || challengeAction;
+        const actionIcon = (headAction === 'TURN_LEFT') ? '⬅️' : '➡️';
+
+        if (stBadge) stBadge.innerText = 'LIVE STREAM (QUAY ĐẦU)';
+
+        box.className = 'pass';
+        box.innerHTML = '✅ <b>BƯỚC 2/3 ĐẠT!</b> Đã xác nhận chớp mắt thành công!<br>' +
+                        actionIcon + ' <b>BƯỚC 3/3: ' + headPrompt + '</b><br>' +
+                        '<i>Khung trên đang stream góc quay mặt thời gian thực...</i>';
+        hudTitle.innerText = 'BƯỚC 3/3: THỬ THÁCH QUAY ĐẦU';
+        hudBadge.innerText = '3/3';
+        hudDesc.innerText = headPrompt + ' (theo hướng của bạn). Quay rõ góc mặt để hoàn tất!';
+        btn.innerText = actionIcon + ' ĐANG THEO DÕI QUAY ĐẦU (BƯỚC 3/3)...';
+        btn.className = 'btn-main btn-step';
+        updateOverlay('head_movement', headAction);
+
+        // =====================================================================
+        // BƯỚC 3/3: PUSH-IMAGE LIÊN TỤC KIỂM TRA QUAY ĐẦU (head_movement)
+        // =====================================================================
+        let headApproved = false;
+        let headRes = null;
+        const headStartTime = Date.now();
+
+        while (Date.now() - headStartTime < STEP_TIMEOUT_MS) {
+          try {
+            headRes = await fetchJSON('/challenge-step?session_id=' + encodeURIComponent(currentSessionId) + '&step=head_movement');
+            if (headRes && headRes.success) {
+              const prog = headRes.progress !== undefined ? Math.round(headRes.progress * 100) : 0;
+              const deltaYaw = headRes.delta ? headRes.delta.yaw : 0;
+              btn.innerText = actionIcon + ' ' + headPrompt + ' (' + prog + '% - ΔYaw: ' + deltaYaw + '°)';
+              if (headRes.approved || (headRes.passed && headRes.step === 'completed')) {
+                headApproved = true;
+                break;
+              }
+            }
+          } catch (e) {
+            console.warn('Lỗi step head:', e);
+          }
+          await new Promise(r => setTimeout(r, 10));
+        }
+
+        btn.disabled = false;
+
+        if (headApproved && headRes && headRes.approved) {
+          fetch('/set-led?status=approved').catch(()=>{}); // Bật LED Xanh Lá (Thành công - Mở cửa)
+          if (stBadge) stBadge.innerText = 'APPROVED (REAL)';
+          box.className = 'pass';
+          box.innerHTML = '🎉 <b>XÁC THỰC TOÀN DIỆN THÀNH CÔNG (REAL)!</b><br>' +
+                          'Đã vượt qua toàn bộ 3 bước: Anti-Spoof + Chớp Mắt + Quay Đầu!<br>' +
+                          '<i>🔓 Cửa đã mở & dữ liệu đã chuyển tới Node.js!</i>';
+          hudTitle.innerText = 'HOÀN TẤT 3/3 BƯỚC (REAL)';
+          hudBadge.innerText = '3/3';
+          hudDesc.innerText = 'Người thật (REAL) - Độ tin cậy: ' + ((headRes.confidence || 1.0) * 100).toFixed(1) + '%';
+          btn.innerText = '🔄 BẮT ĐẦU PHIÊN MỚI';
+          btn.className = 'btn-main';
+          updateOverlay('completed');
+          currentSessionId = '';
+        } else {
+          fetch('/set-led?status=rejected').catch(()=>{}); // Bật LED Đỏ báo hiệu hết giờ / thất bại Bước 3
+          box.className = 'fail';
+          box.innerHTML = '❌ <b>BƯỚC 3/3 THẤT BẠI:</b> ' + ((headRes && headRes.message) || 'Góc quay đầu chưa đạt yêu cầu hoặc hết thời gian (10s)!');
+          streamBox.style.borderColor = '#ef4444';
+          btn.innerText = '🚀 THỬ LẠI TỪ ĐẦU';
+          btn.className = 'btn-main';
+          updateOverlay('start');
+          currentSessionId = '';
+        }
+      } catch (err) {
+        btn.disabled = false;
+        fetch('/set-led?status=rejected').catch(()=>{}); // Bật LED Đỏ khi lỗi kết nối
+        box.className = 'fail';
+        box.innerHTML = '❌ <b>Lỗi kết nối:</b> ' + err.message;
+        streamBox.style.borderColor = '#ef4444';
+        btn.innerText = '🚀 THỬ LẠI';
+      }
+    }
+  </script>
+</body>
+</html>)rawliteral";
+
+#endif // WEB_UI_H

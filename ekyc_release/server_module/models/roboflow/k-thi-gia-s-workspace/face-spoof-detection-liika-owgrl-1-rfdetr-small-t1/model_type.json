@@ -1,0 +1,5 @@
+{
+    "project_task_type": "object-detection",
+    "model_type": "rfdetr-small",
+    "model_id": "k-thi-gia-s-workspace/face-spoof-detection-liika-owgrl-1-rfdetr-small-t1"
+}

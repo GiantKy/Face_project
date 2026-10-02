@@ -1,0 +1,72 @@
+# ==============================================================================
+# Git Ignore Configuration for eKYC System (AI Server + ESP32 PlatformIO)
+# ==============================================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# --- Node.js ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- PlatformIO & Embedded ---
+.pio/
+.pioenvs/
+.piolibdeps/
+.clang_complete
+.gcc-flags.json
+
+# --- IDEs & Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Logs & Runtime Output ---
+*.log
+server_module/captured_faces/*
+!server_module/captured_faces/.gitkeep
+output/*
+!output/.gitkeep
+temp/
+tmp/
+
+# --- Large Model Files (>100MB) ---
+# GitHub chặn push file > 100MB. File weights.onnx (~108MB) cần dùng Git LFS hoặc tải riêng.
+# Bỏ comment dòng dưới nếu bạn không dùng Git LFS:
+# server_module/models/**/weights.onnx

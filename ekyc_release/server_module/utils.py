@@ -1,0 +1,923 @@
+"""
+Utilities module for E-KYC Server Module.
+Cung cấp các hàm tiền xử lý ảnh, giải mã Base64/Bytes, tính IoU, tính EAR và vẽ HUD kết quả.
+"""
+
+import os
+import io
+import base64
+import math
+import unicodedata
+from typing import Union, Tuple, List, Optional, Dict, Any
+import numpy as np
+import cv2
+
+try:
+    from .components.landmark_detection.draw_landmarks import draw_landmarks
+except Exception:
+    try:
+        from components.landmark_detection.draw_landmarks import draw_landmarks
+    except Exception:
+        def draw_landmarks(frame, landmarks):
+            return frame
+
+
+
+def remove_vietnamese_accents(text: str) -> str:
+    """Chuyển đổi văn bản tiếng Việt có dấu thành không dấu để cv2.putText hiển thị không bị lỗi font."""
+    if not text:
+        return ""
+    text = str(text).replace("đ", "d").replace("Đ", "D")
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join([c for c in nfkd if not unicodedata.combining(c)])
+
+
+def load_image(image_input: Union[str, bytes, np.ndarray]) -> np.ndarray:
+    """
+    Nạp ảnh đa năng từ nhiều nguồn đầu vào:
+    - Đường dẫn file ảnh (str / Path)
+    - Chuỗi Base64 (có hoặc không có prefix data:image/...;base64,)
+    - Raw bytes buffer
+    - Đối tượng cv2 numpy.ndarray sẵn có
+    
+    Trả về:
+        np.ndarray: Ảnh định dạng BGR chuẩn của OpenCV.
+    """
+    if isinstance(image_input, np.ndarray):
+        return image_input.copy()
+
+    if isinstance(image_input, bytes):
+        nparr = np.frombuffer(image_input, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            raise ValueError("Không thể giải mã mảng bytes thành hình ảnh OpenCV hợp lệ.")
+        return img
+
+    if isinstance(image_input, str):
+        # 1. Kiểm tra xem có phải chuỗi Base64 không
+        if image_input.startswith("data:image") or ";base64," in image_input or len(image_input) > 500:
+            raw_base64 = image_input
+            if ";base64," in raw_base64:
+                raw_base64 = raw_base64.split(";base64,")[1]
+            try:
+                img_bytes = base64.b64decode(raw_base64)
+                nparr = np.frombuffer(img_bytes, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                if img is not None:
+                    return img
+            except Exception as e:
+                pass
+
+        # 2. Nếu không phải Base64 hoặc giải mã thất bại, thử đọc như đường dẫn file
+        if os.path.exists(image_input):
+            img = cv2.imread(image_input)
+            if img is not None:
+                return img
+            raise ValueError(f"Không thể đọc file ảnh từ đường dẫn: {image_input}")
+
+        raise ValueError("Đầu vào image_input không phải là đường dẫn file hợp lệ, chuỗi Base64 hoặc bytes.")
+
+    raise TypeError(f"Kiểu dữ liệu {type(image_input)} không được hỗ trợ để nạp ảnh.")
+
+
+def image_to_base64(image: np.ndarray, ext: str = ".jpg", quality: int = 90) -> str:
+    """Chuyển đổi ảnh OpenCV numpy array sang chuỗi Base64."""
+    if image is None or image.size == 0:
+        return ""
+    encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), quality] if ext.lower() in [".jpg", ".jpeg"] else []
+    success, buffer = cv2.imencode(ext, image, encode_params)
+    if not success:
+        return ""
+    b64_str = base64.b64encode(buffer).decode("utf-8")
+    return f"data:image/jpeg;base64,{b64_str}"
+
+
+def calculate_iou(boxA: List[int], boxB: List[int]) -> float:
+    """Tính Intersection over Union (IoU) giữa 2 bounding box [x1, y1, x2, y2]."""
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+    boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+    boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+
+    iou = interArea / float(boxAArea + boxBArea - interArea + 1e-6)
+    return float(iou)
+
+
+def calc_dist(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
+    """Tính khoảng cách Euclidean giữa 2 điểm (x, y)."""
+    return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
+
+
+def compute_eye_aspect_ratio(landmarks: List[Tuple[int, int]]) -> Tuple[float, float, float]:
+    """
+    Tính EAR (Eye Aspect Ratio) từ danh sách 478 MediaPipe face landmarks.
+    Trả về: (ear_left, ear_right, ear_avg)
+    """
+    if not landmarks or len(landmarks) < 468:
+        return 0.0, 0.0, 0.0
+
+    l_top = (calc_dist(landmarks[160], landmarks[144]) + calc_dist(landmarks[158], landmarks[153])) / 2.0
+    l_width = calc_dist(landmarks[33], landmarks[133])
+    ear_left = (l_top / l_width) if l_width > 0 else 0.0
+
+    r_top = (calc_dist(landmarks[385], landmarks[380]) + calc_dist(landmarks[387], landmarks[373])) / 2.0
+    r_width = calc_dist(landmarks[362], landmarks[263])
+    ear_right = (r_top / r_width) if r_width > 0 else 0.0
+
+    ear_avg = (ear_left + ear_right) / 2.0
+    return float(ear_left), float(ear_right), float(ear_avg)
+
+
+def get_default_oval_params(w: int, h: int) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    """
+    Tính tọa độ tâm và 2 bán trục của khung Oval tiêu chuẩn theo tỷ lệ khung hình:
+    - Tâm: (w // 2, int(h * 0.505))
+    - Bán trục dọc: int(h * 0.38)
+    - Bán trục ngang: int(ay * 0.65)
+    """
+    cx = w // 2
+    cy = int(h * 0.505)
+    ay = int(h * 0.38)
+    ax = int(ay * 0.65)
+    return (cx, cy), (ax, ay)
+
+
+def is_point_in_oval(pt: Tuple[float, float], center: Tuple[int, int], axes: Tuple[int, int], tolerance: float = 1.0) -> bool:
+    """Kiểm tra một điểm (x, y) có nằm trong hình ellipse/oval hay không."""
+    cx, cy = center
+    ax, ay = axes
+    if ax <= 0 or ay <= 0:
+        return False
+    norm_x = (float(pt[0]) - cx) / float(ax * tolerance)
+    norm_y = (float(pt[1]) - cy) / float(ay * tolerance)
+    return (norm_x ** 2 + norm_y ** 2) <= 1.0
+
+
+def is_face_in_oval(bbox: Union[List[int], Tuple[int, ...]], center: Tuple[int, int], axes: Tuple[int, int], tolerance: float = 1.0) -> bool:
+    """Kiểm tra tâm khuôn mặt có nằm gọn trong khung Oval hay không."""
+    x1, y1, x2, y2 = bbox
+    face_cx = (x1 + x2) / 2.0
+    face_cy = (y1 + y2) / 2.0
+    return is_point_in_oval((face_cx, face_cy), center, axes, tolerance=tolerance)
+
+
+def is_landmarks_in_oval(
+    landmarks: Union[List[Tuple[int, int]], List[Any]],
+    img_w: int,
+    img_h: int,
+    center: Optional[Tuple[int, int]] = None,
+    axes: Optional[Tuple[int, int]] = None,
+    tolerance: float = 1.0
+) -> bool:
+    """
+    Kiểm tra tâm khuôn mặt từ landmarks (pixel hoặc normalized) có nằm trong khung oval hay không.
+    """
+    if not landmarks:
+        return False
+    if center is None or axes is None:
+        center, axes = get_default_oval_params(img_w, img_h)
+
+    xs = []
+    ys = []
+    for lm in landmarks:
+        if hasattr(lm, "x") and hasattr(lm, "y"):
+            xs.append(lm.x * img_w)
+            ys.append(lm.y * img_h)
+        elif isinstance(lm, (tuple, list)) and len(lm) >= 2:
+            if 0.0 <= lm[0] <= 1.0 and 0.0 <= lm[1] <= 1.0 and img_w > 1 and img_h > 1:
+                xs.append(lm[0] * img_w)
+                ys.append(lm[1] * img_h)
+            else:
+                xs.append(float(lm[0]))
+                ys.append(float(lm[1]))
+
+    if not xs or not ys:
+        return False
+
+    face_cx = (min(xs) + max(xs)) / 2.0
+    face_cy = (min(ys) + max(ys)) / 2.0
+    return is_point_in_oval((face_cx, face_cy), center, axes, tolerance=tolerance)
+
+
+def check_face_oval_fit(
+    landmarks: Union[List[Tuple[int, int]], List[Any]],
+    img_w: int,
+    img_h: int,
+    oval_center: Optional[Tuple[int, int]] = None,
+    oval_axes: Optional[Tuple[int, int]] = None,
+    tolerance: float = 1.0,
+    min_ratio: float = 0.30,
+    max_ratio: float = 0.90,
+    min_face_height: int = 105
+) -> Dict[str, Any]:
+    """
+    Kiểm tra độ vừa vặn và căn chỉnh của khuôn mặt đối với khung Oval tiêu chuẩn (Oval Fit Standard):
+    - Tỷ lệ chiều cao khuôn mặt (face_size_h / oval_h) phải nằm trong khoảng [min_ratio, max_ratio].
+    - Chiều cao khuôn mặt tối thiểu phải >= min_face_height.
+    - Tâm khuôn mặt không được lệch quá 35% bán trục oval (|dx| <= 0.35*ax, |dy| <= 0.35*ay).
+
+    Returns:
+        Dict chứa trạng thái khớp oval:
+        - fit_oval (bool): True khi mặt thỏa mãn toàn bộ tiêu chí (trong oval, không lệch tâm, vừa vặn).
+        - face_in_oval (bool): Tâm mặt nằm trong oval.
+        - is_too_far (bool): Mặt ở quá xa (quá nhỏ so với oval).
+        - is_too_close (bool): Mặt ở quá gần (tràn ra khỏi oval).
+        - is_off_center (bool): Mặt bị lệch tâm oval.
+        - off_center_hint (str): Hướng dẫn dịch chuyển mặt vào tâm.
+        - face_size_h (int): Chiều cao khuôn mặt (px).
+        - face_size_w (int): Chiều rộng khuôn mặt (px).
+        - ratio_to_oval (float): Tỷ lệ chiều cao mặt / chiều cao oval.
+        - guide_msg (str): Thông điệp hướng dẫn trực quan.
+    """
+    if not landmarks:
+        return {
+            "fit_oval": False,
+            "face_in_oval": False,
+            "is_too_far": True,
+            "is_too_close": False,
+            "is_off_center": False,
+            "off_center_hint": "",
+            "face_size_h": 0,
+            "face_size_w": 0,
+            "ratio_to_oval": 0.0,
+            "guide_msg": "Không tìm thấy khuôn mặt"
+        }
+
+    if oval_center is None or oval_axes is None:
+        oval_center, oval_axes = get_default_oval_params(img_w, img_h)
+
+    cx, cy = oval_center
+    ax, ay = oval_axes
+    oval_h = 2 * ay
+
+    xs = []
+    ys = []
+    for lm in landmarks:
+        if hasattr(lm, "x") and hasattr(lm, "y"):
+            xs.append(lm.x * img_w)
+            ys.append(lm.y * img_h)
+        elif isinstance(lm, (tuple, list)) and len(lm) >= 2:
+            if 0.0 <= lm[0] <= 1.0 and 0.0 <= lm[1] <= 1.0 and img_w > 1 and img_h > 1:
+                xs.append(lm[0] * img_w)
+                ys.append(lm[1] * img_h)
+            else:
+                xs.append(float(lm[0]))
+                ys.append(float(lm[1]))
+
+    if not xs or not ys:
+        return {
+            "fit_oval": False,
+            "face_in_oval": False,
+            "is_too_far": True,
+            "is_too_close": False,
+            "is_off_center": False,
+            "off_center_hint": "",
+            "face_size_h": 0,
+            "face_size_w": 0,
+            "ratio_to_oval": 0.0,
+            "guide_msg": "Không có tọa độ landmarks"
+        }
+
+    f_min_x, f_max_x = min(xs), max(xs)
+    f_min_y, f_max_y = min(ys), max(ys)
+    face_cx = (f_min_x + f_max_x) / 2.0
+    face_cy = (f_min_y + f_max_y) / 2.0
+    face_size_h = int(round(f_max_y - f_min_y))
+    face_size_w = int(round(f_max_x - f_min_x))
+
+    face_in_oval = is_point_in_oval((face_cx, face_cy), oval_center, oval_axes, tolerance=tolerance)
+    ratio_to_oval = (face_size_h / float(oval_h)) if oval_h > 0 else 0.0
+
+    # Ngưỡng kích thước: vừa theo tỷ lệ oval vừa theo pixel tối thiểu
+    effective_min_h = min(min_face_height, int(round(oval_h * min_ratio)))
+    is_too_far = (ratio_to_oval < min_ratio) or (face_size_h < effective_min_h)
+    is_too_close = (ratio_to_oval > max_ratio)
+
+    dx = face_cx - cx
+    dy = face_cy - cy
+    is_off_center = False
+    off_center_hint = ""
+    # Ngưỡng lệch tâm: Cho phép dung sai tự nhiên (55% bán kính ngang, 50% bán kính dọc)
+    # tránh hiện tượng rung lắc vi mô khiến người dùng phải liên tục nhích đầu trái phải
+    thresh_x = ax * 0.55
+    thresh_y = ay * 0.50
+    if abs(dx) > thresh_x or abs(dy) > thresh_y:
+        is_off_center = True
+        hints = []
+        if dx > thresh_x:
+            hints.append("Qua Trai")
+        elif dx < -thresh_x:
+            hints.append("Qua Phai")
+        if dy > thresh_y:
+            hints.append("Len Tren")
+        elif dy < -thresh_y:
+            hints.append("Xuong Duoi")
+        off_center_hint = f"Dich mat {' + '.join(hints)} vao tam oval"
+
+    fit_oval = bool(face_in_oval and (not is_off_center) and (not is_too_far) and (not is_too_close))
+
+    if not face_in_oval:
+        guide_msg = "Vui lòng đưa khuôn mặt vào trong khung oval"
+    elif is_off_center:
+        guide_msg = off_center_hint or "Vui lòng căn chỉnh khuôn mặt vào giữa khung oval"
+    elif is_too_far:
+        guide_msg = "Vui lòng tiến lại gần camera hơn để vừa vặn khung oval"
+    elif is_too_close:
+        guide_msg = "Vui lòng lùi xa camera một chút"
+    else:
+        guide_msg = "Khuôn mặt đã khớp chuẩn khung oval!"
+
+    return {
+        "fit_oval": fit_oval,
+        "face_in_oval": bool(face_in_oval),
+        "is_too_far": bool(is_too_far),
+        "is_too_close": bool(is_too_close),
+        "is_off_center": bool(is_off_center),
+        "off_center_hint": off_center_hint,
+        "face_size_h": face_size_h,
+        "face_size_w": face_size_w,
+        "ratio_to_oval": round(ratio_to_oval, 4),
+        "guide_msg": guide_msg
+    }
+
+
+def filter_faces_in_oval(
+    faces: List[Dict[str, Any]],
+    center: Optional[Tuple[int, int]] = None,
+    axes: Optional[Tuple[int, int]] = None,
+    img_w: int = 640,
+    img_h: int = 480,
+    tolerance: float = 1.0,
+    return_split: bool = False,
+    oval_center: Optional[Tuple[int, int]] = None,
+    oval_axes: Optional[Tuple[int, int]] = None
+) -> Union[List[Dict[str, Any]], Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]]:
+    """
+    Lọc danh sách khuôn mặt theo khung oval:
+    - Nếu return_split=True: trả về tuple (faces_in_oval, faces_outside_oval).
+    - Nếu return_split=False (mặc định):
+      Chỉ lấy các khuôn mặt có tâm nằm trong khung oval, các khuôn mặt ngoài oval thì lược bỏ hoàn toàn.
+      Nếu không có khuôn mặt nào trong oval, trả về danh sách rỗng [].
+    - Áp dụng Central Face Anchor: nếu có >= 2 mặt nhưng có 1 mặt trung tâm và mặt khác ở rìa biên,
+      sẽ tự động loại bỏ mặt ở rìa biên, giữ lại mặt trung tâm duy nhất.
+    """
+    if center is None:
+        center = oval_center
+    if axes is None:
+        axes = oval_axes
+    if center is None or axes is None:
+        center, axes = get_default_oval_params(img_w, img_h)
+    in_oval = []
+    out_oval = []
+    for f in faces:
+        bbox = f.get("bbox") if isinstance(f, dict) else f
+        if bbox is not None and is_face_in_oval(bbox, center, axes, tolerance=tolerance):
+            in_oval.append(f)
+        else:
+            out_oval.append(f)
+
+    # Central Face Anchor Prioritization
+    if len(in_oval) > 1 and axes[0] > 0 and axes[1] > 0:
+        cx, cy = center
+        ax, ay = axes
+
+        def _get_norm_dist(face_item):
+            b = face_item.get("bbox") if isinstance(face_item, dict) else face_item
+            if b is None or len(b) < 4:
+                return 999.0
+            fcx = (b[0] + b[2]) / 2.0
+            fcy = (b[1] + b[3]) / 2.0
+            return math.sqrt(((fcx - cx) / float(ax)) ** 2 + ((fcy - cy) / float(ay)) ** 2)
+
+        dists = [_get_norm_dist(f) for f in in_oval]
+        min_dist = min(dists)
+        # Nếu có 1 mặt chủ thể nằm chuẩn ở trung tâm (dist <= 0.45 * axes)
+        # và có mặt khác ở rìa biên ngoài (dist > 0.75 * axes), loại bỏ mặt ở rìa biên
+        if min_dist <= 0.45:
+            anchored_in = []
+            for f, d in zip(in_oval, dists):
+                if d <= 0.75:
+                    anchored_in.append(f)
+                else:
+                    out_oval.append(f)
+            in_oval = anchored_in
+
+    if return_split:
+        return in_oval, out_oval
+
+    return in_oval
+
+
+def get_oval_masked_frame(
+    frame: np.ndarray,
+    center: Optional[Tuple[int, int]] = None,
+    axes: Optional[Tuple[int, int]] = None,
+    blur_ksize: int = 45,
+    dim_factor: float = 0.35
+) -> np.ndarray:
+    """
+    Làm mờ bối cảnh ngoại vi và giảm độ sáng xung quanh, chỉ giữ rõ nét vùng khuôn mặt bên trong khung Oval.
+    Áp dụng công thức làm mờ Gaussian Bokeh từ test_pipeline_ensemble_full.py.
+    """
+    h, w = frame.shape[:2]
+    if center is None or axes is None:
+        center, axes = get_default_oval_params(w, h)
+
+    cx, cy = center
+    ax, ay = axes
+
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.ellipse(mask, (cx, cy), (ax, ay), 0, 0, 360, 255, -1)
+    outside_mask = (mask == 0)
+
+    masked = frame.copy()
+    ksize = blur_ksize if blur_ksize % 2 == 1 else blur_ksize + 1
+    blurred = cv2.GaussianBlur(masked, (ksize, ksize), 0)
+    masked[outside_mask] = (blurred[outside_mask] * dim_factor).astype(np.uint8)
+    return masked
+
+
+def draw_oval_face_guide(
+    image: np.ndarray,
+    center: Optional[Tuple[int, int]] = None,
+    axes: Optional[Tuple[int, int]] = None,
+    is_aligned: bool = False,
+    is_detected: bool = False,
+    color: Tuple[int, int, int] = (0, 255, 127)
+) -> np.ndarray:
+    """
+    Vẽ khung Oval hướng dẫn lên ảnh:
+    - Làm mờ và làm tối bối cảnh bên ngoài oval (Bokeh effect).
+    - Vẽ viền phát sáng (Glow aura) 2 lớp xung quanh oval.
+    - Vẽ viền chính của oval với màu sắc trạng thái (Xanh lá, Đỏ, Vàng hoặc Cyan).
+    """
+    h, w = image.shape[:2]
+    if center is None or axes is None:
+        center, axes = get_default_oval_params(w, h)
+
+    cx, cy = center
+    ax, ay = axes
+
+    # Mask oval
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.ellipse(mask, (cx, cy), (ax, ay), 0, 0, 360, 255, -1)
+    outside_mask = (mask == 0)
+
+    # Làm mờ bokeh ngoại vi
+    blurred = cv2.GaussianBlur(image, (35, 35), 0)
+    image[outside_mask] = (blurred[outside_mask] * 0.60).astype(np.uint8)
+
+    # Viền glow
+    glow_color = (int(color[0] * 0.35), int(color[1] * 0.35), int(color[2] * 0.35))
+    cv2.ellipse(image, (cx, cy), (ax + 3, ay + 3), 0, 0, 360, glow_color, 1, cv2.LINE_AA)
+    cv2.ellipse(image, (cx, cy), (max(10, ax - 3), max(10, ay - 3)), 0, 0, 360, glow_color, 1, cv2.LINE_AA)
+
+    # Viền oval chính
+    thickness = 3 if is_aligned else 2
+    cv2.ellipse(image, (cx, cy), (ax, ay), 0, 0, 360, color, thickness, cv2.LINE_AA)
+
+    return image
+
+
+
+def json_serialize_helper(obj: Any) -> Any:
+    """Chuyển đổi kiểu dữ liệu numpy/OpenCV sang Python native types để xuất JSON sạch."""
+    if isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    if isinstance(obj, (np.integer, int)):
+        return int(obj)
+    if isinstance(obj, (np.floating, float)):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return str(obj)
+
+
+def draw_ui_card(image: np.ndarray, x: int, y: int, w: int, h: int, bg_color=(15, 15, 20), alpha=0.85):
+    """Vẽ khung card bán trong suốt làm nền HUD."""
+    overlay = image.copy()
+    cv2.rectangle(overlay, (x, y), (x + w, y + h), bg_color, -1)
+    cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+    cv2.rectangle(image, (x, y), (x + w, y + h), (100, 100, 100), 1)
+
+
+def draw_pipeline_result_hud(
+    image: np.ndarray,
+    img_idx: Any,
+    face_info: Optional[Dict[str, Any]],
+    num_faces: int,
+    pose_info: Optional[Dict[str, Any]],
+    pose_valid: bool,
+    anti_spoof_info: Optional[Dict[str, Any]],
+    spoof_iou: float,
+    blink_passed: bool,
+    blink_count: int,
+    head_movement_passed: bool,
+    head_action_name: str,
+    final_pass: bool,
+    reasons: List[str]
+) -> np.ndarray:
+    """Vẽ bảng HUD kết quả eKYC trực quan lên ảnh theo chuẩn test_pipeline_full."""
+    h, w = image.shape[:2]
+    vis = image.copy()
+
+    clean_reasons = [remove_vietnamese_accents(r) for r in reasons] if (not final_pass and reasons) else []
+    num_reasons = len(clean_reasons)
+    extra_h = max(0, num_reasons * 22) if num_reasons > 0 else 0
+
+    card_w = min(540, w - 20)
+    card_h = min(h - 25, 235 + extra_h)
+    draw_ui_card(vis, 15, 15, card_w, card_h, bg_color=(15, 15, 20), alpha=0.88)
+
+    cv2.putText(vis, f"E-KYC SERVER PIPELINE REPORT (ID: {img_idx})", (25, 42),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.60, (0, 230, 255), 2, cv2.LINE_AA)
+    cv2.line(vis, (25, 50), (15 + card_w - 20, 50), (80, 80, 80), 1)
+
+    # 1. Face Detect
+    if face_info:
+        if num_faces == 1:
+            f_txt = f"1. Face Detect   : 1 FACE (CONF: {face_info['confidence']:.2f}) -> PASS"
+            f_col = (0, 255, 0)
+        else:
+            f_txt = f"1. Face Detect   : MULTI-FACE ({num_faces} FACES) -> WARNING"
+            f_col = (0, 165, 255)
+    else:
+        f_txt = "1. Face Detect   : NO FACE DETECTED -> FAIL"
+        f_col = (0, 0, 255)
+    cv2.putText(vis, f_txt, (25, 72), cv2.FONT_HERSHEY_SIMPLEX, 0.44, f_col, 1, cv2.LINE_AA)
+
+    # 2. Pose 3D
+    if pose_info:
+        yaw = pose_info.get("yaw", 0.0)
+        pitch = pose_info.get("pitch", 0.0)
+        roll = pose_info.get("roll", 0.0)
+        p_stat = "PASS" if pose_valid else "FAIL"
+        p_txt = f"2. Head Pose [{p_stat}] : Y:{yaw:+.1f} P:{pitch:+.1f} R:{roll:+.1f}"
+        p_col = (0, 255, 0) if pose_valid else (0, 0, 255)
+    else:
+        p_txt = "2. Head Pose     : UNKNOWN"
+        p_col = (0, 0, 255)
+    cv2.putText(vis, p_txt, (25, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.44, p_col, 1, cv2.LINE_AA)
+
+    # 3. Anti-Spoof Ensemble
+    if anti_spoof_info:
+        as_lbl = anti_spoof_info.get("label", "UNKNOWN")
+        as_conf = anti_spoof_info.get("confidence", 0.0)
+        as_col = (0, 255, 0) if anti_spoof_info.get("is_real", False) else (0, 0, 255)
+        iou_str = f" | IoU:{spoof_iou:.2f}" if spoof_iou > 0 else ""
+        both = anti_spoof_info.get("both_detected", False)
+        src_tag = "Ensemble" if both else "1-Model"
+        as_txt = f"3. Anti-Spoof [{src_tag}]: {as_lbl} ({as_conf*100:.1f}%{iou_str})"
+    else:
+        as_txt = "3. Anti-Spoof Ensemble : NO DATA"
+        as_col = (0, 165, 255)
+    cv2.putText(vis, as_txt, (25, 118), cv2.FONT_HERSHEY_SIMPLEX, 0.44, as_col, 1, cv2.LINE_AA)
+    # Sub-line: YOLO + RF-DETR detail
+    if anti_spoof_info:
+        yolo_d = anti_spoof_info.get("yolo_res", "N/A")
+        rf_d = anti_spoof_info.get("rfdetr_res", "N/A")
+        sub_txt = f"   YOLO: {yolo_d} | RF-DETR: {rf_d}"
+        cv2.putText(vis, sub_txt, (25, 133), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (180, 190, 200), 1, cv2.LINE_AA)
+
+    # 4. Blink Liveness
+    b_txt = f"4. Blink Liveness: PASS ({blink_count} blinks)" if blink_passed else f"4. Blink Liveness: FAIL ({blink_count} blinks)"
+    b_col = (0, 255, 0) if blink_passed else (0, 0, 255)
+    cv2.putText(vis, b_txt, (25, 156), cv2.FONT_HERSHEY_SIMPLEX, 0.44, b_col, 1, cv2.LINE_AA)
+
+    # 5. Head Movement Liveness
+    h_act = str(head_action_name).upper()
+    hm_txt = f"5. Head Movement : PASS [{h_act}]" if head_movement_passed else f"5. Head Movement : FAIL [{h_act}]"
+    hm_col = (0, 255, 0) if head_movement_passed else (0, 0, 255)
+    cv2.putText(vis, hm_txt, (25, 179), cv2.FONT_HERSHEY_SIMPLEX, 0.44, hm_col, 1, cv2.LINE_AA)
+
+    cv2.line(vis, (25, 195), (15 + card_w - 20, 195), (80, 80, 80), 1)
+
+    # 6. Final Decision
+    verdict_text = "eKYC: APPROVED (HOP LE)" if final_pass else "eKYC: REJECTED (TU CHOI)"
+    verdict_col = (0, 255, 0) if final_pass else (0, 0, 255)
+    cv2.putText(vis, verdict_text, (25, 223),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.65, verdict_col, 2, cv2.LINE_AA)
+
+    if not final_pass and clean_reasons:
+        cv2.putText(vis, "Ly do tu choi:", (25, 245),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.44, (0, 200, 255), 1, cv2.LINE_AA)
+        start_y = 265
+        line_spacing = 20
+        for idx_r, r_text in enumerate(clean_reasons[:5]):
+            if len(r_text) > 65:
+                r_text = r_text[:62] + "..."
+            line_txt = f" * {r_text}"
+            cv2.putText(vis, line_txt, (25, start_y + idx_r * line_spacing),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.40, (140, 210, 255), 1, cv2.LINE_AA)
+
+    return vis
+
+
+def create_pipeline_result_dashboard(
+    img_idx: Any,
+    face_info: Optional[Dict[str, Any]] = None,
+    num_faces: int = 1,
+    pose_info: Optional[Dict[str, Any]] = None,
+    pose_valid: bool = True,
+    anti_spoof_info: Optional[Dict[str, Any]] = None,
+    spoof_iou: float = 0.0,
+    blink_passed: bool = True,
+    blink_count: int = 0,
+    head_movement_passed: bool = True,
+    head_action_name: str = "NONE",
+    final_pass: bool = True,
+    reasons: Optional[List[str]] = None,
+    face_crop: Optional[np.ndarray] = None,
+    target_height: Optional[int] = None,
+    width: int = 560
+) -> np.ndarray:
+    """
+    Tạo một Canvas bảng Dashboard kết quả độc lập (không vẽ đè lên ảnh khuôn mặt).
+    Giao diện Dark Theme hiện đại, trực quan, chuyên nghiệp.
+    
+    Tham số:
+        target_height: Chiều cao mong muốn (thường truyền bằng chiều cao ảnh khuôn mặt để ghép song song).
+        width: Chiều rộng Dashboard (mặc định 560px).
+    """
+    clean_reasons = [remove_vietnamese_accents(r) for r in reasons] if (not final_pass and reasons) else []
+    num_reasons = len(clean_reasons)
+    extra_h = max(0, num_reasons * 24)
+
+    min_h = 490 + extra_h
+    h = max(min_h, target_height) if target_height else min_h
+    w = max(500, width)
+
+    # Nền Dark Slate cao cấp
+    canvas = np.full((h, w, 3), (20, 22, 28), dtype=np.uint8)
+
+    # 1. Header Card
+    hdr_h = 70
+    cv2.rectangle(canvas, (10, 10), (w - 10, hdr_h), (32, 36, 48), -1)
+    cv2.rectangle(canvas, (10, 10), (w - 10, hdr_h), (60, 70, 90), 1)
+
+    cv2.putText(canvas, "E-KYC VERIFICATION DASHBOARD", (24, 38),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 230, 255), 2, cv2.LINE_AA)
+    session_str = f"Session ID: {img_idx} | Mode: Dual-Window"
+    cv2.putText(canvas, session_str, (24, 58),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.40, (170, 180, 195), 1, cv2.LINE_AA)
+
+    # Nếu có ảnh crop mặt, gắn thumbnail nhỏ vào góc phải header
+    if face_crop is not None and face_crop.size > 0:
+        try:
+            th_size = 50
+            thumb = cv2.resize(face_crop, (th_size, th_size))
+            tx1 = w - 10 - th_size - 8
+            ty1 = 12
+            cv2.rectangle(canvas, (tx1 - 2, ty1 - 2), (tx1 + th_size + 2, ty1 + th_size + 2), (0, 230, 255), 1)
+            canvas[ty1:ty1 + th_size, tx1:tx1 + th_size] = thumb
+        except Exception:
+            pass
+
+    cur_y = hdr_h + 12
+
+    # Helper vẽ section card
+    def _draw_card(title: str, lines: List[Tuple[str, Tuple[int, int, int], float]], card_h: int):
+        nonlocal cur_y
+        cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + card_h), (27, 30, 40), -1)
+        cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + card_h), (50, 58, 75), 1)
+        # Accent bar bên trái
+        cv2.rectangle(canvas, (10, cur_y), (14, cur_y + card_h), (0, 200, 240), -1)
+
+        cv2.putText(canvas, title, (24, cur_y + 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.46, (220, 225, 235), 1, cv2.LINE_AA)
+
+        line_y = cur_y + 40
+        for text, col, font_scale in lines:
+            cv2.putText(canvas, text, (24, line_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, col, 1, cv2.LINE_AA)
+            line_y += 20
+        cur_y += card_h + 8
+
+    # Section 1: Face Detection
+    if face_info:
+        conf = face_info.get("confidence", 0.0)
+        if num_faces == 1:
+            f_lines = [
+                (f"Status: PASS  |  Faces: 1 detected  |  Confidence: {conf*100:.1f}%", (80, 220, 80), 0.42)
+            ]
+        else:
+            f_lines = [
+                (f"Status: WARNING | MULTI-FACE ({num_faces} faces detected)", (0, 165, 255), 0.42)
+            ]
+    else:
+        f_lines = [("Status: FAIL  |  NO FACE DETECTED", (70, 70, 240), 0.42)]
+    _draw_card("1. FACE DETECTION", f_lines, card_h=52)
+
+    # Section 2: Head Pose 3D
+    if pose_info:
+        yaw = pose_info.get("yaw", 0.0)
+        pitch = pose_info.get("pitch", 0.0)
+        roll = pose_info.get("roll", 0.0)
+        p_stat = "PASS (Chuan huong thang)" if pose_valid else "FAIL (Goc quay vuot nguong)"
+        p_col = (80, 220, 80) if pose_valid else (70, 70, 240)
+        p_lines = [
+            (f"Angles: Yaw: {yaw:+.1f} deg  |  Pitch: {pitch:+.1f} deg  |  Roll: {roll:+.1f} deg", (200, 210, 220), 0.41),
+            (f"Status: {p_stat}", p_col, 0.42)
+        ]
+    else:
+        p_lines = [("Status: UNKNOWN (Khong duoc tinh toan)", (70, 70, 240), 0.42)]
+    _draw_card("2. 3D HEAD POSE ESTIMATION", p_lines, card_h=68)
+
+    # Section 3: Anti-Spoofing Ensemble (YOLO_4 + RF-DETR)
+    if anti_spoof_info:
+        as_lbl = anti_spoof_info.get("label", "UNKNOWN")
+        as_conf = anti_spoof_info.get("confidence", 0.0)
+        is_real = anti_spoof_info.get("is_real", False)
+        both = anti_spoof_info.get("both_detected", False)
+        agree = anti_spoof_info.get("agreement", False)
+        as_col = (80, 220, 80) if is_real else (70, 70, 240)
+        iou_str = f"  |  IoU: {spoof_iou:.2f}" if spoof_iou > 0 else ""
+        src_tag = anti_spoof_info.get("source", "")
+        yolo_d = anti_spoof_info.get("yolo_res", "N/A")
+        rf_d = anti_spoof_info.get("rfdetr_res", "N/A")
+        agree_str = "Dong thuan" if agree else "Bat dong"
+        as_lines = [
+            (f"Verdict: {as_lbl} ({as_conf*100:.1f}%){iou_str}", as_col, 0.44),
+            (f"YOLO_4: {yolo_d}  |  RF-DETR: {rf_d}", (200, 210, 220), 0.41),
+            (f"Source: {src_tag}  |  Agreement: {agree_str}", (170, 180, 195), 0.39),
+        ]
+        # Thanh tỷ lệ xác thực Real vs Fake
+        bar_w = w - 60
+        bar_h = 8
+        bar_x = 24
+        bar_y = cur_y + 82
+        cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (45, 48, 60), -1)
+        real_fill = int(bar_w * (as_conf if is_real else (1.0 - as_conf)))
+        if real_fill > 0:
+            cv2.rectangle(canvas, (bar_x, bar_y), (bar_x + real_fill, bar_y + bar_h), (80, 220, 80), -1)
+        if bar_w - real_fill > 0:
+            cv2.rectangle(canvas, (bar_x + real_fill, bar_y), (bar_x + bar_w, bar_y + bar_h), (70, 70, 240), -1)
+    else:
+        as_lines = [("Status: NO ANTI-SPOOF DATA", (0, 180, 255), 0.42)]
+    _draw_card("3. ANTI-SPOOFING (ENSEMBLE: YOLO_4 + RF-DETR)", as_lines, card_h=100)
+
+    # Section 4: Liveness (Blink & Head Action)
+    b_stat = f"PASS ({blink_count} blinks)" if blink_passed else f"FAIL ({blink_count} blinks)"
+    b_col = (80, 220, 80) if blink_passed else (70, 70, 240)
+    h_act = str(head_action_name).upper()
+    h_stat = f"PASS [{h_act}]" if head_movement_passed else f"FAIL [{h_act}]"
+    h_col = (80, 220, 80) if head_movement_passed else (70, 70, 240)
+    l_lines = [
+        (f"Eye Blink Liveness      : {b_stat}", b_col, 0.42),
+        (f"Head Movement Liveness  : {h_stat}", h_col, 0.42)
+    ]
+    _draw_card("4. ACTIVE LIVENESS VALIDATION", l_lines, card_h=68)
+
+    # Section 5: Final Decision Card
+    dec_h = 60 + extra_h
+    dec_bg = (24, 38, 24) if final_pass else (38, 24, 24)
+    dec_border = (80, 220, 80) if final_pass else (70, 70, 240)
+    cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + dec_h), dec_bg, -1)
+    cv2.rectangle(canvas, (10, cur_y), (w - 10, cur_y + dec_h), dec_border, 2)
+
+    verdict_text = "FINAL VERDICT: APPROVED (HOP LE)" if final_pass else "FINAL VERDICT: REJECTED (TU CHOI)"
+    cv2.putText(canvas, verdict_text, (24, cur_y + 28),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.60, dec_border, 2, cv2.LINE_AA)
+
+    if not final_pass and clean_reasons:
+        cv2.putText(canvas, "Ly do tu choi / Reject Reasons:", (24, cur_y + 48),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.41, (0, 210, 255), 1, cv2.LINE_AA)
+        r_start_y = cur_y + 68
+        for idx_r, r_t in enumerate(clean_reasons[:5]):
+            if len(r_t) > 62:
+                r_t = r_t[:59] + "..."
+            cv2.putText(canvas, f"  * {r_t}", (24, r_start_y + idx_r * 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.39, (160, 215, 255), 1, cv2.LINE_AA)
+
+    # Footer note
+    cv2.putText(canvas, "Press [M]: Toggle Dual-Window | [Q]/[ESC]: Close", (24, h - 12),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.35, (100, 110, 130), 1, cv2.LINE_AA)
+
+    return canvas
+
+
+def create_side_by_side_result(
+    image: np.ndarray,
+    dashboard: np.ndarray,
+    divider_width: int = 10,
+    divider_color: Tuple[int, int, int] = (40, 45, 58)
+) -> np.ndarray:
+    """
+    Ghép ảnh khuôn mặt và bảng Dashboard thành một ảnh duy nhất (Side-by-Side):
+    - Bên trái: Ảnh khuôn mặt (tự động đồng bộ chiều cao).
+    - Giữa: Dải ngăn cách thanh lịch.
+    - Bên phải: Bảng kết quả Dashboard chi tiết.
+    Giúp xem kết quả rõ ràng mà không bao giờ bị đè bảng lên ảnh khuôn mặt.
+    """
+    h_img, w_img = image.shape[:2]
+    h_dash, w_dash = dashboard.shape[:2]
+
+    # Đồng bộ chiều cao theo giá trị lớn hơn
+    target_h = max(h_img, h_dash)
+
+    # Padding hoặc resize ảnh khuôn mặt nếu chênh lệch lớn
+    if h_img != target_h:
+        scale = target_h / float(h_img)
+        new_w = int(w_img * scale)
+        img_resized = cv2.resize(image, (new_w, target_h), interpolation=cv2.INTER_LINEAR)
+    else:
+        img_resized = image
+
+    # Nếu dashboard thấp hơn target_h, tạo canvas mới mở rộng
+    if h_dash != target_h:
+        dash_padded = np.full((target_h, w_dash, 3), (20, 22, 28), dtype=np.uint8)
+        dash_padded[:h_dash, :w_dash] = dashboard
+    else:
+        dash_padded = dashboard
+
+    # Dải phân cách
+    divider = np.full((target_h, divider_width, 3), divider_color, dtype=np.uint8)
+
+    # Ghép ngang
+    combined = np.hstack([img_resized, divider, dash_padded])
+    return combined
+
+
+def show_dual_window_result(
+    win_img_name: str,
+    img: np.ndarray,
+    win_dash_name: str,
+    dash: np.ndarray,
+    offset_x: int = 80,
+    offset_y: int = 80,
+    wait_key: bool = True
+) -> int:
+    """
+    Hiển thị 2 cửa sổ OpenCV riêng biệt cạnh nhau trên màn hình:
+    - Cửa sổ 1: Ảnh khuôn mặt (không bị che khuất)
+    - Cửa sổ 2: Bảng thông số Dashboard chi tiết
+    Tự động tính toán vị trí để 2 cửa sổ đặt song song, không bị đè lên nhau.
+    """
+    cv2.namedWindow(win_img_name, cv2.WINDOW_AUTOSIZE)
+    cv2.namedWindow(win_dash_name, cv2.WINDOW_AUTOSIZE)
+
+    # Cửa sổ 1 ở (offset_x, offset_y)
+    cv2.imshow(win_img_name, img)
+    cv2.moveWindow(win_img_name, offset_x, offset_y)
+
+    # Cửa sổ 2 đặt ngay bên phải Cửa sổ 1
+    w_img = img.shape[1]
+    dash_x = offset_x + w_img + 20
+    cv2.imshow(win_dash_name, dash)
+    cv2.moveWindow(win_dash_name, dash_x, offset_y)
+
+    if wait_key:
+        return cv2.waitKey(0) & 0xFF
+    return -1
+
+
+def extract_landmarks_with_fallback(
+    landmark_detector: Any,
+    raw_frame: np.ndarray,
+    proc_frame: Optional[np.ndarray] = None,
+    min_landmarks: int = 468,
+    oval_center: Optional[Tuple[int, int]] = None,
+    oval_axes: Optional[Tuple[int, int]] = None,
+    filter_oval: bool = True
+) -> Optional[List[Tuple[int, int]]]:
+    """
+    Trích xuất khuôn mặt và 468/478 landmarks MediaPipe với cơ chế fallback thích nghi:
+    1. Dò trên ảnh tiền xử lý (proc_frame) nếu được cung cấp (tối ưu khi thiếu sáng/ngược sáng).
+    2. Fallback sang ảnh gốc tự nhiên (raw_frame) nếu ảnh tiền xử lý không bắt đủ landmarks.
+    Hỗ trợ lọc oval để ưu tiên khuôn mặt trong khung oval khi có nhiều người.
+    """
+    if landmark_detector is None or raw_frame is None or raw_frame.size == 0:
+        return None
+    landmarks = None
+    if proc_frame is not None and proc_frame.size > 0:
+        try:
+            landmarks = landmark_detector.detect(
+                proc_frame,
+                oval_center=oval_center,
+                oval_axes=oval_axes,
+                filter_oval=filter_oval
+            )
+        except TypeError:
+            landmarks = landmark_detector.detect(proc_frame)
+        except Exception:
+            landmarks = None
+    if not landmarks or len(landmarks) < min_landmarks:
+        try:
+            landmarks = landmark_detector.detect(
+                raw_frame,
+                oval_center=oval_center,
+                oval_axes=oval_axes,
+                filter_oval=filter_oval
+            )
+        except TypeError:
+            landmarks = landmark_detector.detect(raw_frame)
+        except Exception:
+            landmarks = None
+    return landmarks if (landmarks and len(landmarks) >= min_landmarks) else None
+
+
+
