@@ -24,7 +24,8 @@ ekyc_release/
 │   └── static/index.html      # Giao diện Web UI chuyên nghiệp (HUD, Telemetry, Oval Guide, Fail-Fast)
 │
 ├── requirements.txt           # Danh sách thư viện Python cần thiết
-├── start_all.bat              # Kịch bản khởi động 1-click cả Node.js và AI Server
+├── start_ai_server.bat        # Kịch bản khởi động FastAPI AI Server (:8000)
+├── start_nodejs_receiver.bat  # Kịch bản khởi động Node.js Stream Relay & Web Dashboard (:3000)
 ├── .gitattributes             # Cấu hình Git LFS cho file trọng số mô hình lớn
 └── .gitignore                 # Loại trừ file build, cache và dữ liệu tạm thời
 ```
@@ -68,13 +69,12 @@ cd ..
 
 ### 4. Khởi Chạy Hệ Thống
 
-**Cách 1: Khởi động 1-Click (Khuyên dùng)**
-Nhấp đúp chuột vào tệp:
-```bash
-start_all.bat
-```
+**Cách 1: Khởi động qua file .bat (Khuyên dùng)**
+Nhấp đúp chuột để khởi động 2 dịch vụ độc lập:
+1. `start_nodejs_receiver.bat` (Port 3000: Web Dashboard & Stream Relay)
+2. `start_ai_server.bat` (Port 8000: FastAPI Pipeline AI Server)
 
-**Cách 2: Khởi động thủ công**
+**Cách 2: Khởi động thủ công qua dòng lệnh**
 - **Cửa sổ 1 (Node.js Relay Hub :3000):**
   ```bash
   cd server_module
@@ -82,7 +82,7 @@ start_all.bat
   ```
 - **Cửa sổ 2 (AI Pipeline Server :8000):**
   ```bash
-  uvicorn server_module.app:app --host 0.0.0.0 --port 8000 --reload
+  python server_module/app.py
   ```
 
 Sau khi chạy, mở trình duyệt truy cập:
