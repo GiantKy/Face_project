@@ -56,7 +56,7 @@ POSE_MAX_PITCH = 24.0     # Độ ngước lên/cúi xuống tối đa cho phép
 POSE_MAX_ROLL = 18.0      # Độ nghiêng đầu tối đa cho phép (nới lỏng từ 15.0 -> 18.0)
 MIN_FACE_HEIGHT = 145     # Chiều cao khuôn mặt tối thiểu trong khung hình (tránh ngồi quá xa, ~40% Oval 480p)
 OVAL_FIT_MIN_RATIO = 0.40  # Tỷ lệ tối thiểu của chiều cao mặt so với chiều cao khung Oval (40%)
-OVAL_FIT_MAX_RATIO = 0.60  # Tỷ lệ tối đa của chiều cao mặt so với chiều cao khung Oval (60%)
+OVAL_FIT_MAX_RATIO = 0.90  # Tỷ lệ tối đa của chiều cao mặt so với chiều cao khung Oval (90% - khoảng 328px)
 
 # Ngưỡng Liveness Blink (Eye Aspect Ratio - EAR)
 EAR_EYE_CLOSED_THRESHOLD = 0.20   # Dưới ngưỡng này coi như mắt nhắm (bắt trọn chớp mắt tự nhiên)

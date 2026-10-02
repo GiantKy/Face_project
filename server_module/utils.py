@@ -211,7 +211,7 @@ def check_face_oval_fit(
     oval_axes: Optional[Tuple[int, int]] = None,
     tolerance: float = 1.0,
     min_ratio: float = 0.40,
-    max_ratio: float = 0.60,
+    max_ratio: float = 0.90,
     min_face_height: int = 145
 ) -> Dict[str, Any]:
     """
